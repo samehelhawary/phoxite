@@ -1,0 +1,41 @@
+name: Publish
+
+# Publishing a GitHub release sends its VSIX packages to the extension stores. The VS Code
+# Marketplace takes them through Trusted Publishing: the publisher has a policy naming this
+# repository and this workflow file, so no token is stored. It runs once the repository
+# variable MARKETPLACE_PUBLISH is `true`. Open VSX runs when its token is configured
+# (OVSX_PAT).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release whose packages to publish, as its tag (v0.1.0)
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - name: Download the packages of the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.vsix" --dir dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Publish to the VS Code Marketplace
+        if: vars.MARKETPLACE_PUBLISH == 'true'
+        run: npx @vscode/vsce@latest publish --oidc --packagePath dist/*.vsix
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        run: for vsix in dist/*.vsix; do npx ovsx publish "$vsix" -p "$OVSX_PAT"; done

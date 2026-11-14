@@ -1,8 +1,8 @@
 name: Release
 
 # A `v*` tag builds the server for each platform, packages a platform-specific VSIX for
-# each, and attaches both to a draft GitHub release. Publishing to the VS Code Marketplace
-# and Open VSX runs only when their tokens are configured (VSCE_PAT, OVSX_PAT).
+# each, and attaches both to a draft GitHub release. Publishing that release sends the
+# packages to the extension stores (publish.yml).
 
 on:
   push:
@@ -60,9 +60,6 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    env:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -77,12 +74,3 @@ jobs:
         with:
           draft: true
           files: dist/*
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Publish to the VS Code Marketplace
-        if: env.VSCE_PAT != ''
-        run: for vsix in dist/*.vsix; do npx @vscode/vsce publish --packagePath "$vsix"; done
-      - name: Publish to Open VSX
-        if: env.OVSX_PAT != ''
-        run: for vsix in dist/*.vsix; do npx ovsx publish "$vsix" -p "$OVSX_PAT"; done
