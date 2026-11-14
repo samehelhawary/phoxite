@@ -1,5 +1,21 @@
 # Plan: standalone PHP engine + LSP server + VS Code extension
 
+## Status (2026-11-14)
+
+- **Phase 0 done** (this repository): `ide-php` depends on no OpenIDEA crate (`cargo tree -p ide-php
+  -e normal` lists no `ide-*` crate; only the differential test keeps them as dev-dependencies).
+  It has its own base types in `php_engine::base` (positions, edits, diagnostics, ids, errors, events, the
+  `Document` buffer), its own settings (`base::settings::PhpConfig`, `LaravelSettings`), the composer
+  readers that were in `ide_sdk::php`, and `project::walk` in place of `ide_vfs`. `ide-host` converts at
+  its edge with `crates/ide-host/src/php_convert.rs` (`.core()` / `.php()`); Settings › PHP becomes a
+  `PhpConfig` there (`php_config`). Step 6 (moving the Blade/Twig routing of `ide-host` into the engine)
+  is not done: the LSP server has its own copy of that routing for now.
+- **Phases 1–4 done locally** in `D:\projects\php-engine` (not pushed, no GitHub repo yet): the engine
+  copied by `scripts/sync_from_openidea.py` (crate renamed `php_engine`), the `php-engine-lsp` server,
+  the VS Code extension, CI and a release workflow. See that repository's `README.md`,
+  `docs/editors.md` and `docs/openidea.md`.
+- **Phase 5 waits** for the OpenIDEA maintainers (see `docs/openidea.md` in the new repository).
+
 ## Context
 
 `crates/ide-php` (≈118k lines, 900 tests, PR l0ng-ai/openidea#3343) is a native PHP/Laravel code-intelligence
@@ -7,6 +23,7 @@ engine that today only runs inside OpenIDEA. The goal is to reuse it in other ed
 by turning it into its own project that speaks LSP.
 
 Decisions made:
+
 - **Shared home.** A new repo owns the engine. OpenIDEA's `ide-php` becomes a thin dependency on it, so fixes
   land once for every editor. The OpenIDEA maintainers have to agree to this.
 - **v1 scope = PHP + Laravel core.** v1 covers everything that maps onto standard LSP: completion, goto, hover,
@@ -20,13 +37,14 @@ Choose the final name before publishing. It must not use "Laravel Idea", "PhpSto
 
 Coupling of `ide-php` today (from `crates/php-engine/Cargo.toml` and its imports):
 
-| Dependency | What is used | Problem | Action |
-|---|---|---|---|
-| `ide-core` | `Pos`, `Range`, `DocId`, `TextEdit`, `WorkspaceEdit`, `FileEdit`, `Location`, `OutlineItem`, `Severity`, `Visibility`, `Diagnostic`, `CancellationToken`, `IdeResult/IdeError/ErrorKind`, `IdeEvent`/`SharedSink`/`ServerStatus`/`ServerId`, `settings::{Settings, LaravelSettings, LaravelModuleSystem, LaravelCodeGeneration}`, `InspectionOverride` | OpenIDEA-private, pulls specta/windows-sys; `Settings` is the whole IDE settings tree | Engine-owned `base` module with the same shapes; engine-owned config structs |
-| `ide-sdk` | 5 fns in `ide_sdk::php` (`stub_key`, `stub_sets`, `default_stub_sets`, `language_level`, `include_paths`) | pulls ide-language, ide-run | Move those functions into the engine (they only read settings plus `composer.json`) |
-| `ide-vfs` | `walk_files`, `ExcludeMatcher` | pulls gix, notify, trash | Re-implement on `ignore` + `globset` inside the engine |
+| Dependency | What is used                                                                                                                                                                                                                                                                                                                                           | Problem                                                                               | Action                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `ide-core` | `Pos`, `Range`, `DocId`, `TextEdit`, `WorkspaceEdit`, `FileEdit`, `Location`, `OutlineItem`, `Severity`, `Visibility`, `Diagnostic`, `CancellationToken`, `IdeResult/IdeError/ErrorKind`, `IdeEvent`/`SharedSink`/`ServerStatus`/`ServerId`, `settings::{Settings, LaravelSettings, LaravelModuleSystem, LaravelCodeGeneration}`, `InspectionOverride` | OpenIDEA-private, pulls specta/windows-sys; `Settings` is the whole IDE settings tree | Engine-owned `base` module with the same shapes; engine-owned config structs        |
+| `ide-sdk`  | 5 fns in `ide_sdk::php` (`stub_key`, `stub_sets`, `default_stub_sets`, `language_level`, `include_paths`)                                                                                                                                                                                                                                              | pulls ide-language, ide-run                                                           | Move those functions into the engine (they only read settings plus `composer.json`) |
+| `ide-vfs`  | `walk_files`, `ExcludeMatcher`                                                                                                                                                                                                                                                                                                                         | pulls gix, notify, trash                                                              | Re-implement on `ignore` + `globset` inside the engine                              |
 
 Host-side logic that belongs to the engine but lives in `ide-host` today. Every editor needs it, so it must move down:
+
 - `crates/ide-host/src/php.rs` (1.1k lines): `PhpService`, which adapts engine results to editor requests, merges route hints into inlay hints, builds route/model lenses, runs code-action query/resolve and the hierarchy refactorings, and handles `will_rename_files`.
 - `crates/ide-host/src/blade.rs` (600 lines): the Blade service, which routes requests into the embedded PHP document, provides directive/component completion and view usages, runs template quick-fixes, and is where `BladeObserver` publishes diagnostics.
 - `crates/ide-host/src/twig.rs`, `crates/ide-host/src/laravel_files.rs`, and the non-UI parts of `crates/ide-host/src/ops/laravel.rs` and `ops/routes.rs` (`live_schema`, the route list, the generation context, generators). The custom-UI parts are needed only for the later phase.
