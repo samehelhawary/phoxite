@@ -35,7 +35,7 @@ jobs:
           node-version: 22
       - name: Publish to the VS Code Marketplace
         if: vars.MARKETPLACE_PUBLISH == 'true'
-        run: npx @vscode/vsce@latest publish --oidc --packagePath dist/*.vsix
+        run: npx @vscode/vsce@latest publish --oidc --skip-duplicate --packagePath dist/*.vsix
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
-        run: for vsix in dist/*.vsix; do npx ovsx publish "$vsix" -p "$OVSX_PAT"; done
+        run: for vsix in dist/*.vsix; do npx ovsx publish "$vsix" --skip-duplicate -p "$OVSX_PAT"; done
