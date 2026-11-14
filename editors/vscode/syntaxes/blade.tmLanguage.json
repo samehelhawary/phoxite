@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Blade",
   "scopeName": "text.html.php.blade",
-  "comment": "Blade templates: HTML with Blade comments, echoes and directives whose arguments and @php blocks are PHP. Written for php-engine (Apache-2.0).",
+  "comment": "Blade templates: HTML with Blade comments, echoes and directives whose arguments and @php blocks are PHP. Written for phoxite (Apache-2.0).",
   "patterns": [
     { "include": "#comment" },
     { "include": "#php-block" },

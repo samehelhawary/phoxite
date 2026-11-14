@@ -1154,7 +1154,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "php-engine"
+name = "phoxite"
 version = "0.1.0"
 dependencies = [
  "blake3",
@@ -1190,7 +1190,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "php-engine-lsp"
+name = "phoxite-lsp"
 version = "0.1.0"
 dependencies = [
  "blake3",
@@ -1199,7 +1199,7 @@ dependencies = [
  "lsp-server",
  "lsp-types",
  "parking_lot",
- "php-engine",
+ "phoxite",
  "serde",
  "serde_json",
  "tempfile",

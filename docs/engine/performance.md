@@ -10,7 +10,7 @@ Final verification (phase 9.8, 2026-11-11, `pnpm perf:rust` with the corpora and
 - Outside the PHP engine, `plugins/load_50` (119 ms, budget 20 ms), `search_5k/literal` and `regex` (114 ms and 117 ms, budget 100 ms) and `syntax_2mb/outline_after_keystroke_incremental` (394 ms, budget 350 ms) were over in the full run. They're recorded here and not investigated.
 - Memory (`memory` test, laravel/framework): the engine uses 179 MB after requests (peak 180 MB), Intelephense 333 MB.
 
-Phase 6.3 of the [roadmap](ROADMAP.md). The budgets are criterion benches in `crates/php-engine/benches/engine.rs`, gated by `pnpm perf:rust` against `perf/budgets.json` (`rust.php_…`, means in µs).
+Phase 6.3 of the [roadmap](ROADMAP.md). The budgets are criterion benches in `crates/phoxite/benches/engine.rs`, gated by `pnpm perf:rust` against `perf/budgets.json` (`rust.php_…`, means in µs).
 
 | Bench                                                      | Budget | Measured (2026-11-07) |
 | ---------------------------------------------------------- | ------ | --------------------- |

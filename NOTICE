@@ -1,7 +1,7 @@
-php-engine
+Phoxite
 Copyright 2026 OpenIDEA contributors
 
-php-engine is the native PHP engine of OpenIDEA (https://github.com/l0ng-ai/openidea),
+Phoxite is the native PHP engine of OpenIDEA (https://github.com/l0ng-ai/openidea),
 licensed under the Apache License 2.0, packaged on its own with a language server and
 editor extensions.
 
@@ -10,11 +10,11 @@ licensed under the Apache License 2.0, Copyright JetBrains s.r.o. and contributo
 documentation comments contain material by the PHP Documentation Group, licensed under
 CC-BY 3.0 (https://www.php.net/manual/en/cc.license.php).
 
-The Laravel code-generation templates (crates/php-engine/templates/laravel) follow the
+The Laravel code-generation templates (crates/phoxite/templates/laravel) follow the
 make: command stubs of laravel/framework, Copyright (c) Taylor Otwell, licensed under the
 MIT License.
 
-php-engine is not affiliated with, endorsed by or sponsored by JetBrains s.r.o. or
+Phoxite is not affiliated with, endorsed by or sponsored by JetBrains s.r.o. or
 Laravel Holdings Inc. PhpStorm is a trademark of JetBrains s.r.o.; Laravel is a trademark
 of Laravel Holdings Inc.
 

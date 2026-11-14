@@ -345,7 +345,7 @@ The checks of phases 8.21–8.29, in the order they were made. Later sections su
 
 ### Parity check (phase 8.21)
 
-The checklist is `crates/php-engine/tests/laravel_parity.rs`. It runs on `fixtures/laravel-app`, copied with `fixtures/laravel-stubs` as its `vendor/` and with Livewire and Inertia installed, plus a Livewire component and an Inertia page. Outside route files, each goto probe is also written to `app/Parity/Uses.php` before indexing, so find usages has a usage in a second file to find.
+The checklist is `crates/phoxite/tests/laravel_parity.rs`. It runs on `fixtures/laravel-app`, copied with `fixtures/laravel-stubs` as its `vendor/` and with Livewire and Inertia installed, plus a Livewire component and an Inertia page. Outside route files, each goto probe is also written to `app/Parity/Uses.php` before indexing, so find usages has a usage in a second file to find.
 
 - `every_reference_kind_completes_goes_to_finds_usages_and_inspects` covers every reference kind of `refs::kinds()`. The test fails if a kind is added without a check. For each kind it checks:
   - completion lists a known value
@@ -398,7 +398,7 @@ All 33 generators produce files that parse: New Model, the 31 class generators a
 
 ### Performance (phase 8.21)
 
-The criterion benches live in `crates/php-engine/benches/engine.rs` and run with `pnpm perf:rust`. Their budgets are in `perf/budgets.json`.
+The criterion benches live in `crates/phoxite/benches/engine.rs` and run with `pnpm perf:rust`. Their budgets are in `perf/budgets.json`.
 
 - `php_laravel_app/*` runs on the fixture app.
 - `php_laravel_real/*` runs on the application in `LARAVEL_APP_DIR`. Without it, those benches and their budgets are skipped.
@@ -465,7 +465,7 @@ LARAVEL_APP_DIR=../php-corpus/apps/monica cargo test -p ide-php --release --test
 
 #### Incremental model (phase 8.22, 2026-11-09)
 
-The parts read from single files are now kept per file (`crates/php-engine/src/engine/parts.rs`), next to the index in the engine's memory:
+The parts read from single files are now kept per file (`crates/phoxite/src/engine/parts.rs`), next to the index in the engine's memory:
 
 - configuration keys per `config/*.php`, per framework default and per `mergeConfigFrom` file, and the `mergeConfigFrom` calls of each provider
 - translations per language file, PHP or JSON
@@ -640,7 +640,7 @@ LARAVEL_APP_DIR=../php-corpus/apps/bagisto cargo bench -p ide-php --bench engine
 
 #### Cold model, stored parts and Inspect Code (phase 9.4, 2026-11-11)
 
-Monica's cold model had grown from 358 ms (8.23) to 542 ms (8.29). The new `crates/php-engine/examples/model_profile.rs` times each part of the model on a real application (`cargo run --release -p ide-php --example model_profile -- ../php-corpus/apps/monica`). On Monica, before the changes below, the cold build spent its time like this:
+Monica's cold model had grown from 358 ms (8.23) to 542 ms (8.29). The new `crates/phoxite/examples/model_profile.rs` times each part of the model on a real application (`cargo run --release -p ide-php --example model_profile -- ../php-corpus/apps/monica`). On Monica, before the changes below, the cold build spent its time like this:
 
 | Part                      | Time   | Why                                                                                                                                                                                                |
 | ------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

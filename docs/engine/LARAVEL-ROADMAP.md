@@ -16,7 +16,7 @@ The feature list below comes from Laravel Idea's **public** documentation (larav
 
 ### Where the code lives
 
-- `crates/php-engine/src/frameworks/laravel/`, an extension of the provider added in phase 7.1 (`types/provider/laravel.rs`). Split it into:
+- `crates/phoxite/src/frameworks/laravel/`, an extension of the provider added in phase 7.1 (`types/provider/laravel.rs`). Split it into:
   - `project` (the Laravel project model)
   - `refs` (string references)
   - `eloquent`, `routes`, `views`, `config`, `lang`, `validation`, `auth`, `assets`, `artisan`, `generate`, `intentions`, `packages`

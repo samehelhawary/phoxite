@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Packages the VS Code extension with a server binary.
 
-    python scripts/package_vscode.py --server target/release/php-engine-lsp [--target win32-x64]
+    python scripts/package_vscode.py --server target/release/phoxite-lsp [--target win32-x64]
 
 Copies the binary into editors/vscode/server/ and runs `vsce package` (with
 `--target` for a platform-specific VSIX). The VSIX lands in editors/vscode/.
@@ -31,7 +31,7 @@ TARGETS = {
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--server", required=True, help="the php-engine-lsp binary")
+    parser.add_argument("--server", required=True, help="the phoxite-lsp binary")
     parser.add_argument("--target", help="a VS Code platform (win32-x64…) or a Rust target triple")
     args = parser.parse_args()
     if not os.path.isfile(args.server):
@@ -41,7 +41,7 @@ def main():
     out_dir = os.path.join(EXTENSION, "server")
     shutil.rmtree(out_dir, ignore_errors=True)
     os.makedirs(out_dir)
-    binary = os.path.join(out_dir, "php-engine-lsp.exe" if windows else "php-engine-lsp")
+    binary = os.path.join(out_dir, "phoxite-lsp.exe" if windows else "phoxite-lsp")
     shutil.copy2(args.server, binary)
     os.chmod(binary, os.stat(binary).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     npx = "npx.cmd" if os.name == "nt" else "npx"

@@ -6,10 +6,10 @@ developed in OpenIDEA's `crates/ide-php` and copied here:
 
     python scripts/sync_from_openidea.py ../openidea
 
-It replaces `crates/php-engine/{src,tests,examples,benches,stubs}`, the
-fixtures and `docs/engine`, renames the crate (`ide_php` to `php_engine`,
+It replaces `crates/phoxite/{src,tests,examples,benches,stubs}`, the
+fixtures and `docs/engine`, renames the crate (`ide_php` to `phoxite`,
 snapshot files included), leaves out OpenIDEA's own tests, and records the
-source commit in `crates/php-engine/SYNCED_FROM`. `crates/php-engine/Cargo.toml`
+source commit in `crates/phoxite/SYNCED_FROM`. `crates/phoxite/Cargo.toml`
 is this repository's own and is not touched.
 """
 
@@ -36,14 +36,14 @@ def copy_tree(src, dst, rename=False, prefix=""):
             rel = os.path.normpath(os.path.join(rel_dir, name)).replace(os.sep, "/")
             if f"{prefix}{rel}" in SKIP or name.endswith(".snap.new"):
                 continue
-            out_name = name.replace("ide_php__", "php_engine__") if rename else name
+            out_name = name.replace("ide_php__", "phoxite__") if rename else name
             out = os.path.join(dst, rel_dir, out_name)
             os.makedirs(os.path.dirname(out), exist_ok=True)
             if rename and name.endswith(TEXT):
                 with open(os.path.join(root, name), "rb") as f:
                     text = f.read().decode("utf-8")
-                text = re.sub(r"\bide_php\b", "php_engine", text)
-                text = text.replace("crates/ide-php/", "crates/php-engine/")
+                text = re.sub(r"\bide_php\b", "phoxite", text)
+                text = text.replace("crates/ide-php/", "crates/phoxite/")
                 with open(out, "wb") as f:
                     f.write(text.encode("utf-8"))
             else:
@@ -57,7 +57,7 @@ def main():
     crate = os.path.join(openidea, "crates", "ide-php")
     if not os.path.isdir(crate):
         sys.exit(f"{crate} is not a directory")
-    target = os.path.join(HERE, "crates", "php-engine")
+    target = os.path.join(HERE, "crates", "phoxite")
     for part in ("src", "tests", "examples", "benches", "stubs"):
         copy_tree(os.path.join(crate, part), os.path.join(target, part), rename=True, prefix=f"{part}/")
     # The Laravel generators' default templates live in OpenIDEA's frontend

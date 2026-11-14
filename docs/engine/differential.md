@@ -1,6 +1,6 @@
 # Native engine vs Intelephense: differential report
 
-Phase 6.2 ran `crates/php-engine/tests/differential.rs` on the three corpora and on `fixtures/php-library`. This is the summary; the full per-sample reports are written to `target/php-differential/<name>.{md,json}` by each run.
+Phase 6.2 ran `crates/phoxite/tests/differential.rs` on the three corpora and on `fixtures/php-library`. This is the summary; the full per-sample reports are written to `target/php-differential/<name>.{md,json}` by each run.
 
 ```text
 cargo test -p ide-php --test differential -- --ignored --exact fixture

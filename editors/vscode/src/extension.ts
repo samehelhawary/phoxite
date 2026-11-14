@@ -1,4 +1,4 @@
-// The VS Code client of php-engine-lsp.
+// The VS Code client of phoxite-lsp.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -19,15 +19,15 @@ let output: vscode.OutputChannel | undefined;
 const OTHER_SERVERS = ["bmewburn.vscode-intelephense-client", "zobo.php-intellisense", "phpactor.vscode-phpactor"];
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  output = vscode.window.createOutputChannel("PHP Engine", { log: true });
+  output = vscode.window.createOutputChannel("Phoxite", { log: true });
   context.subscriptions.push(
     output,
-    vscode.commands.registerCommand("phpEngine.restart", () => restart(context)),
-    vscode.commands.registerCommand("phpEngine.showOutput", () => output?.show()),
-    vscode.commands.registerCommand("phpEngine.rescan", () =>
-      client?.sendRequest("workspace/executeCommand", { command: "phpEngine.rescan", arguments: [] }),
+    vscode.commands.registerCommand("phoxite.restart", () => restart(context)),
+    vscode.commands.registerCommand("phoxite.showOutput", () => output?.show()),
+    vscode.commands.registerCommand("phoxite.rescan", () =>
+      client?.sendRequest("workspace/executeCommand", { command: "phoxite.rescan", arguments: [] }),
     ),
-    vscode.commands.registerCommand("phpEngine.openLocation", openLocation),
+    vscode.commands.registerCommand("phoxite.openLocation", openLocation),
     vscode.commands.registerCommand("laravel.routeActions", routeActions),
     vscode.commands.registerCommand("laravel.modelView", (cls: unknown) =>
       vscode.window.showInformationMessage(
@@ -46,29 +46,29 @@ export async function deactivate(): Promise<void> {
 
 /** The server executable: the setting, else the one bundled for this platform. */
 function serverPath(context: vscode.ExtensionContext): string | undefined {
-  const configured = vscode.workspace.getConfiguration("phpEngine").get<string>("server.path")?.trim();
+  const configured = vscode.workspace.getConfiguration("phoxite").get<string>("server.path")?.trim();
   if (configured) return configured;
-  const name = process.platform === "win32" ? "php-engine-lsp.exe" : "php-engine-lsp";
+  const name = process.platform === "win32" ? "phoxite-lsp.exe" : "phoxite-lsp";
   const bundled = path.join(context.extensionPath, "server", name);
   return fs.existsSync(bundled) ? bundled : undefined;
 }
 
 function settings(): unknown {
-  return vscode.workspace.getConfiguration("phpEngine");
+  return vscode.workspace.getConfiguration("phoxite");
 }
 
 async function start(context: vscode.ExtensionContext): Promise<void> {
   const command = serverPath(context);
   if (!command) {
     const choice = await vscode.window.showErrorMessage(
-      "PHP Engine: no language server for this platform. Set `phpEngine.server.path` to a php-engine-lsp executable.",
+      "Phoxite: no language server for this platform. Set `phoxite.server.path` to a phoxite-lsp executable.",
       "Open Settings",
     );
-    if (choice) void vscode.commands.executeCommand("workbench.action.openSettings", "phpEngine.server.path");
+    if (choice) void vscode.commands.executeCommand("workbench.action.openSettings", "phoxite.server.path");
     return;
   }
   const run: Executable = { command, args: ["--stdio"], options: { env: { ...process.env } } };
-  const serverOptions: ServerOptions = { run, debug: { ...run, options: { env: { ...process.env, PHP_ENGINE_LOG: "debug" } } } };
+  const serverOptions: ServerOptions = { run, debug: { ...run, options: { env: { ...process.env, PHOXITE_LOG: "debug" } } } };
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: "file", language: "php" },
@@ -78,7 +78,7 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
       { scheme: "file", pattern: "**/lang/**/*.json" },
     ],
     synchronize: {
-      configurationSection: "phpEngine",
+      configurationSection: "phoxite",
       fileEvents: [
         vscode.workspace.createFileSystemWatcher("**/*.php"),
         vscode.workspace.createFileSystemWatcher("**/composer.{json,lock}"),
@@ -96,11 +96,11 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     outputChannel: output,
     revealOutputChannelOn: RevealOutputChannelOn.Never,
   };
-  client = new LanguageClient("phpEngine", "PHP Engine", serverOptions, clientOptions);
+  client = new LanguageClient("phoxite", "Phoxite", serverOptions, clientOptions);
   try {
     await client.start();
   } catch (e) {
-    void vscode.window.showErrorMessage(`PHP Engine: the language server didn't start: ${String(e)}`);
+    void vscode.window.showErrorMessage(`Phoxite: the language server didn't start: ${String(e)}`);
   }
 }
 
@@ -111,13 +111,13 @@ async function restart(context: vscode.ExtensionContext): Promise<void> {
 }
 
 function warnAboutOtherServers(): void {
-  if (!vscode.workspace.getConfiguration("phpEngine").get<boolean>("warnAboutOtherServers", true)) return;
+  if (!vscode.workspace.getConfiguration("phoxite").get<boolean>("warnAboutOtherServers", true)) return;
   const others = OTHER_SERVERS.map((id) => vscode.extensions.getExtension(id)).filter((e) => e !== undefined);
   if (others.length === 0) return;
   const names = others.map((e) => e.packageJSON.displayName ?? e.id).join(", ");
   void vscode.window
     .showWarningMessage(
-      `PHP Engine: ${names} is enabled too, so completions and problems show twice. Disable it for this workspace?`,
+      `Phoxite: ${names} is enabled too, so completions and problems show twice. Disable it for this workspace?`,
       "Show Extension",
       "Don't Ask Again",
     )
@@ -125,7 +125,7 @@ function warnAboutOtherServers(): void {
       if (choice === "Show Extension") {
         void vscode.commands.executeCommand("workbench.extensions.search", `@id:${others[0].id}`);
       } else if (choice === "Don't Ask Again") {
-        void vscode.workspace.getConfiguration("phpEngine").update("warnAboutOtherServers", false, true);
+        void vscode.workspace.getConfiguration("phoxite").update("warnAboutOtherServers", false, true);
       }
     });
 }

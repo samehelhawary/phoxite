@@ -32,19 +32,19 @@ frontend ── IPC ──▶ ide-host ops/lsp.rs ──▶ LanguageService (php
   forwards watcher batches, and `IndexStates` merges the engine's dumb mode
   with the project index's.
 - `crates/ide-host/src/twig.rs` registers `TwigService` for `twig`. It needs
-  no engine: `php_engine::twig` answers the outline, completion and template
+  no engine: `phoxite::twig` answers the outline, completion and template
   goto from the open document's text and the project's template directories.
 - `crates/ide-host/src/blade.rs` registers `BladeService` for `blade`
   (`*.blade.php`). Directive completion and view/component goto need no
   engine. For the PHP inside echoes, directives and `@php` blocks it asks the
-  engine: `php_engine::blade::compile` turns the view into PHP with an offset
+  engine: `phoxite::blade::compile` turns the view into PHP with an offset
   map, `PhpEngine::embedded_document` holds it under the view's id (never
   inspected, ignored by `document_changed`), and the `blade_*` methods map
   positions in and answers out. `PhpObserver` drops it when the view closes.
 - `crates/ide-host/src/php_analyzers.rs` runs PHPStan and Psalm from the
   project's `vendor/bin` on each saved PHP file of a trusted project when
   `PhpSettings.analyzers_on_save` is on, and publishes their problems under
-  the sources `phpstan` and `psalm`. `php_engine::analyzers` detects the tools,
+  the sources `phpstan` and `psalm`. `phoxite::analyzers` detects the tools,
   parses their JSON reports and drops the problems the engine's latest
   inspection of the file already reports.
 - With `Intelephense` selected, the slot is empty, the service answers
@@ -63,7 +63,7 @@ From the bottom up. Each module's `//!` header is the detailed reference.
 
 | Module                                          | What it holds                                                                                                                                                                                                                                                     |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `syntax`                                        | `ParsedFile` (Mago AST, errors, `LineIndex`) and the parse cache keyed by `(DocId, version)`. Mago is pinned and re-exported as `php_engine::mago`.                                                                                                                  |
+| `syntax`                                        | `ParsedFile` (Mago AST, errors, `LineIndex`) and the parse cache keyed by `(DocId, version)`. Mago is pinned and re-exported as `phoxite::mago`.                                                                                                                  |
 | `names`                                         | PHP name resolution: namespaces, `use` (function, const, grouped), aliases, the global fallback for functions and constants, `self`/`static`/`parent` markers.                                                                                                    |
 | `summary`                                       | `FileSummary`: what other files can see of one file (class-likes with members and signatures, functions, constants, PHPDoc as unresolved type expressions, ranges). Serialized with postcard and stamped with `SCHEMA_VERSION`; golden snapshots in `snapshots/`. |
 | `project`                                       | `ProjectLayout`: which files belong to the project (the folder minus excludes, Composer autoload and `installed.json`, include paths) and the PSR-4/PSR-0 `AutoloadMap`.                                                                                          |
@@ -239,10 +239,10 @@ the last three are guesses only what the editor shows uses
 - `crates/ide-host/tests/language_smoke.rs`: `php_native` runs the full smoke
   table on `fixtures/php-library` with the engine; the ignored `php` case runs it on
   the Intelephense fallback.
-- `crates/php-engine/tests/differential.rs` (ignored; needs Intelephense and the
+- `crates/phoxite/tests/differential.rs` (ignored; needs Intelephense and the
   corpora from `scripts/php-corpus.sh`) compares definition and hover with
   Intelephense. The last report is in [differential.md](differential.md).
-- `crates/php-engine/benches/engine.rs` holds the performance budgets, run by
+- `crates/phoxite/benches/engine.rs` holds the performance budgets, run by
   `pnpm perf:rust` against `perf/budgets.json`; see
   [performance.md](performance.md). `tests/memory.rs` compares memory with
   Intelephense.

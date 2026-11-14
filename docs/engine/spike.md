@@ -12,7 +12,7 @@ cargo run --release -p ide-php --example parse_corpus -- fixtures/php-library
 
 The example reads every `.php` file into memory first, so the timings below leave out disk reads. A counting global allocator measures the heap. Truncation is deterministic: a fixed xorshift seed picks 200 error-free files that have at least one declaration, and cuts each at a random byte offset.
 
-The probe (`php_engine::probe::outline`) runs the parser, `mago-names`, a `Walker` that collects classes, interfaces, traits, enums, functions and methods, docblock lookup and `mago-phpdoc-syntax` on each docblock. That's roughly the per-file work of phases 1.1 to 1.4.
+The probe (`phoxite::probe::outline`) runs the parser, `mago-names`, a `Walker` that collects classes, interfaces, traits, enums, functions and methods, docblock lookup and `mago-phpdoc-syntax` on each docblock. That's roughly the per-file work of phases 1.1 to 1.4.
 
 ## Results
 
@@ -63,7 +63,7 @@ Timings vary by about 15% between runs. The counts don't change.
 
 ## API notes for later phases
 
-Versions are pinned exactly (`=1.59.0`) in `crates/php-engine/Cargo.toml`, because Mago changes its CST between minor releases. `php_engine::mago::*` re-exports the crates, so callers use the same versions. Every crate is `MIT OR Apache-2.0`. The new transitive crates (blink-alloc, ariadne, codespan-reporting, ordered-float, strum, yansi, unicode-width, rand) are MIT and/or Apache-2.0, which `deny.toml` allows; this was checked by hand because cargo-deny isn't installed here. `mago-interner` isn't needed, since 1.x stores identifiers as `&'arena [u8]`.
+Versions are pinned exactly (`=1.59.0`) in `crates/phoxite/Cargo.toml`, because Mago changes its CST between minor releases. `phoxite::mago::*` re-exports the crates, so callers use the same versions. Every crate is `MIT OR Apache-2.0`. The new transitive crates (blink-alloc, ariadne, codespan-reporting, ordered-float, strum, yansi, unicode-width, rand) are MIT and/or Apache-2.0, which `deny.toml` allows; this was checked by hand because cargo-deny isn't installed here. `mago-interner` isn't needed, since 1.x stores identifiers as `&'arena [u8]`.
 
 - **Arenas (`mago-allocator`).**
   - `LocalArena::new()` is `Send` but not `Sync`, and is the fastest; use one per parse.

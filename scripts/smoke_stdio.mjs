@@ -1,4 +1,4 @@
-// Drives a php-engine-lsp binary over stdio on a project, as an editor would,
+// Drives a phoxite-lsp binary over stdio on a project, as an editor would,
 // and prints what a few requests answer and how long they take.
 //
 //   node scripts/smoke_stdio.mjs <server> <project> <file relative to the project> [line col]

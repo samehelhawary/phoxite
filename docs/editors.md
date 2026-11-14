@@ -1,7 +1,7 @@
-# Using php-engine-lsp in other editors
+# Using phoxite-lsp in other editors
 
-`php-engine-lsp` talks LSP over stdin/stdout. Download the binary for your platform from
-the GitHub releases (or `cargo install --path crates/php-engine-lsp`) and put it on `PATH`.
+`phoxite-lsp` talks LSP over stdin/stdout. Download the binary for your platform from
+the GitHub releases (or `cargo install --path crates/phoxite-lsp`) and put it on `PATH`.
 
 Turn off other PHP language servers (Intelephense, Phpactor) for the same files; otherwise
 completions and problems show twice.
@@ -14,13 +14,13 @@ keys); `cacheDir` sets the index folder.
 ```lua
 vim.filetype.add({ pattern = { [".*%.blade%.php"] = "blade" } })
 
-vim.lsp.config("php_engine", {
-  cmd = { "php-engine-lsp" },
+vim.lsp.config("phoxite", {
+  cmd = { "phoxite-lsp" },
   filetypes = { "php", "blade" },
   root_markers = { "composer.json", ".git" },
   init_options = { settings = { phpVersion = "", laravel = { routeHints = true } } },
 })
-vim.lsp.enable("php_engine")
+vim.lsp.enable("phoxite")
 ```
 
 The route lenses run the client command `laravel.routeActions`; without a handler Neovim
@@ -39,41 +39,41 @@ end
 `languages.toml`:
 
 ```toml
-[language-server.php-engine]
-command = "php-engine-lsp"
+[language-server.phoxite]
+command = "phoxite-lsp"
 config = { settings = { laravel = { routeHints = true } } }
 
 [[language]]
 name = "php"
-language-servers = ["php-engine"]
+language-servers = ["phoxite"]
 
 [[language]]
 name = "blade"
 scope = "text.html.php.blade"
 file-types = [{ glob = "*.blade.php" }]
-language-servers = ["php-engine"]
+language-servers = ["phoxite"]
 ```
 
 ## Zed
 
-Zed's PHP extension starts Intelephense or Phpactor. Point it at php-engine instead in
+Zed's PHP extension starts Intelephense or Phpactor. Point it at phoxite instead in
 `settings.json`:
 
 ```json
 {
   "lsp": {
-    "php-engine": {
-      "binary": { "path": "php-engine-lsp", "arguments": ["--stdio"] },
+    "phoxite": {
+      "binary": { "path": "phoxite-lsp", "arguments": ["--stdio"] },
       "initialization_options": { "settings": {} }
     }
   },
   "languages": {
-    "PHP": { "language_servers": ["php-engine", "!intelephense", "!phpactor"] }
+    "PHP": { "language_servers": ["phoxite", "!intelephense", "!phpactor"] }
   }
 }
 ```
 
-A Zed extension that registers the `php-engine` server is planned; until then the PHP
+A Zed extension that registers the `phoxite` server is planned; until then the PHP
 extension's server entry has to be overridden as above.
 
 ## Sublime Text (LSP package)
@@ -83,9 +83,9 @@ extension's server entry has to be overridden as above.
 ```json
 {
   "clients": {
-    "php-engine": {
+    "phoxite": {
       "enabled": true,
-      "command": ["php-engine-lsp"],
+      "command": ["phoxite-lsp"],
       "selector": "embedding.php | text.html.blade",
       "initializationOptions": { "settings": {} }
     }
@@ -101,7 +101,7 @@ Everything is plain LSP except two client commands the server's results carry:
 | --- | --- | --- |
 | `laravel.routeActions` | the routes as a JSON string | route code lenses and URI hints |
 | `laravel.modelView` | the model's class name | the code lens on Eloquent models |
-| `phpEngine.openLocation` | an LSP `Location` | quick-fixes that create a file (a missing view) |
+| `phoxite.openLocation` | an LSP `Location` | quick-fixes that create a file (a missing view) |
 
-and one server command, `phpEngine.rescan` (`workspace/executeCommand`), which indexes the
+and one server command, `phoxite.rescan` (`workspace/executeCommand`), which indexes the
 workspace folders again.

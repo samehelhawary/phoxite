@@ -1,13 +1,13 @@
 {
-  "name": "php-engine",
-  "displayName": "PHP Engine",
+  "name": "phoxite",
+  "displayName": "Phoxite — PHP & Laravel IntelliSense",
   "description": "PHP and Laravel code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections and Laravel support (routes, views, config, translations, validation, Eloquent, Blade).",
   "version": "0.1.0",
-  "publisher": "php-engine",
+  "publisher": "phoxite",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/samehelhawary/php-engine"
+    "url": "https://github.com/samehelhawary/phoxite"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -59,36 +59,36 @@
     ],
     "commands": [
       {
-        "command": "phpEngine.restart",
+        "command": "phoxite.restart",
         "title": "Restart the Language Server",
-        "category": "PHP Engine"
+        "category": "Phoxite"
       },
       {
-        "command": "phpEngine.rescan",
+        "command": "phoxite.rescan",
         "title": "Index the Project Again",
-        "category": "PHP Engine"
+        "category": "Phoxite"
       },
       {
-        "command": "phpEngine.showOutput",
+        "command": "phoxite.showOutput",
         "title": "Show the Server Log",
-        "category": "PHP Engine"
+        "category": "Phoxite"
       }
     ],
     "configuration": {
-      "title": "PHP Engine",
+      "title": "Phoxite",
       "properties": {
-        "phpEngine.server.path": {
+        "phoxite.server.path": {
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "The `php-engine-lsp` executable. Empty: the one bundled with the extension."
+          "markdownDescription": "The `phoxite-lsp` executable. Empty: the one bundled with the extension."
         },
-        "phpEngine.phpVersion": {
+        "phoxite.phpVersion": {
           "type": "string",
           "default": "",
           "markdownDescription": "The PHP version the code is checked against, e.g. `8.3`. Empty: from `composer.json` (`config.platform.php`, else the lowest version `require.php` allows), else the latest."
         },
-        "phpEngine.includePaths": {
+        "phoxite.includePaths": {
           "type": "array",
           "items": {
             "type": "string"
@@ -96,7 +96,7 @@
           "default": [],
           "markdownDescription": "Folders outside the project whose code is indexed too: absolute, `~/…`, or relative to the project."
         },
-        "phpEngine.stubs": {
+        "phoxite.stubs": {
           "type": "array",
           "items": {
             "type": "string"
@@ -104,7 +104,7 @@
           "default": [],
           "markdownDescription": "Extra phpstorm-stubs sets (`redis`, `swoole`, `wordpress`…) on top of the defaults and the `ext-*` requirements of `composer.json`."
         },
-        "phpEngine.exclude": {
+        "phoxite.exclude": {
           "type": [
             "array",
             "null"
@@ -115,7 +115,7 @@
           "default": null,
           "markdownDescription": "Globs of files and folders left out of the index (`node_modules`, `/storage`). `null`: `node_modules`, `.git`, `storage/framework` and `bootstrap/cache`. `vendor` is read through Composer's `installed.json` either way."
         },
-        "phpEngine.inspections": {
+        "phoxite.inspections": {
           "type": "object",
           "default": {},
           "markdownDescription": "Per-inspection settings by id, e.g. `{ \"PhpUndefinedMethod\": { \"enabled\": false }, \"PhpTypeMismatch\": { \"strict\": true, \"severity\": \"error\" } }`. The key `*` with `enabled: false` turns every inspection off.",
@@ -141,7 +141,7 @@
             }
           }
         },
-        "phpEngine.laravel.detection": {
+        "phoxite.laravel.detection": {
           "type": "string",
           "enum": [
             "auto",
@@ -151,12 +151,12 @@
           "default": "auto",
           "markdownDescription": "Laravel support: `auto` when `composer.json` requires `laravel/framework`, the lock file lists it, or `artisan` exists."
         },
-        "phpEngine.laravel.routeHints": {
+        "phoxite.laravel.routeHints": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Code lenses on controller methods listing their routes, and the full URI after each route registration."
         },
-        "phpEngine.laravel.modules": {
+        "phoxite.laravel.modules": {
           "type": "string",
           "enum": [
             "auto",
@@ -167,7 +167,7 @@
           "default": "auto",
           "markdownDescription": "Which modules of a modular application are read: `nwidart/laravel-modules`, module folders (`modules/`, `app-modules/`…), both (`auto`), or none."
         },
-        "phpEngine.laravel.inertiaPages": {
+        "phoxite.laravel.inertiaPages": {
           "type": "array",
           "items": {
             "type": "string"
@@ -175,13 +175,13 @@
           "default": [],
           "markdownDescription": "Folders of Inertia pages, relative to the project. Empty: the `ide.json` page paths, else `resources/js/Pages`."
         },
-        "phpEngine.format.lineWidth": {
+        "phoxite.format.lineWidth": {
           "type": "number",
           "default": 120,
           "minimum": 40,
           "markdownDescription": "The line length Format Document tries to stay within."
         },
-        "phpEngine.warnAboutOtherServers": {
+        "phoxite.warnAboutOtherServers": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Warn when another PHP language server (Intelephense, PHP Intelephense, Phpactor) is active too: both would answer every request."

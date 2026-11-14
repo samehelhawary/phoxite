@@ -1,9 +1,9 @@
-# php-engine
+# Phoxite
 
 PHP and Laravel code intelligence written in Rust, packaged for any editor: a library
-(`php-engine`), a language server (`php-engine-lsp`) and a VS Code extension.
+(`phoxite`), a language server (`phoxite-lsp`) and a VS Code extension.
 
-It is the native PHP engine of [OpenIDEA](https://github.com/l0ng-ai/openidea), where it
+Phoxite is the native PHP engine of [OpenIDEA](https://github.com/l0ng-ai/openidea), where it
 replaced Intelephense, and keeps its feature set:
 
 - **PHP:** completion with auto-import, hover, signature help, go to definition, type
@@ -23,8 +23,8 @@ replaced Intelephense, and keeps its feature set:
 
 | Path | What |
 | --- | --- |
-| `crates/php-engine` | The engine: parsing (Mago), indexes (redb), types, inspections, refactorings, Laravel. |
-| `crates/php-engine-lsp` | The language server over stdio. |
+| `crates/phoxite` | The engine: parsing (Mago), indexes (redb), types, inspections, refactorings, Laravel. |
+| `crates/phoxite-lsp` | The language server over stdio. |
 | `editors/vscode` | The VS Code extension (also Cursor, VSCodium, Windsurf through Open VSX). |
 | `docs/editors.md` | Setting the server up in Neovim, Helix, Zed and Sublime Text. |
 | `docs/engine` | The engine's design notes and roadmap, from OpenIDEA. |
@@ -33,7 +33,7 @@ replaced Intelephense, and keeps its feature set:
 ## Building
 
 ```sh
-cargo build --release -p php-engine-lsp      # target/release/php-engine-lsp
+cargo build --release -p phoxite-lsp      # target/release/phoxite-lsp
 cargo test --workspace
 ```
 
@@ -43,15 +43,15 @@ The VS Code extension, with a locally built server:
 cd editors/vscode
 npm install
 npm run build
-# Point "phpEngine.server.path" at target/release/php-engine-lsp, then press F5
+# Point "phoxite.server.path" at target/release/phoxite-lsp, then press F5
 # in VS Code with this folder open, or package it:
-python ../../scripts/package_vscode.py --server ../../target/release/php-engine-lsp
+python ../../scripts/package_vscode.py --server ../../target/release/phoxite-lsp
 ```
 
 ## Configuration
 
 The server reads its settings from `initializationOptions.settings` and from
-`workspace/didChangeConfiguration`, as one object or under a `phpEngine` key:
+`workspace/didChangeConfiguration`, as one object or under a `phoxite` key:
 
 ```json
 {
@@ -66,7 +66,7 @@ The server reads its settings from `initializationOptions.settings` and from
 ```
 
 `initializationOptions.cacheDir` sets where the indexes live (default: the user's cache
-folder, `php-engine/<hash of the folder>`).
+folder, `phoxite/<hash of the folder>`).
 
 ## Licence
 

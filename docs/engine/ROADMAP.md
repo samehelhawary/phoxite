@@ -84,18 +84,18 @@ The design:
 - [x] Phase 0.5: Mago test-drive and `ide-php` skeleton
   1. Create `crates/ide-php`: workspace member, `ide-core` dependency, crate docs.
   2. Add pinned Mago crate dependencies (`mago-syntax`, `mago-names`, `mago-phpdoc-syntax`, plus whichever span and interner crates they need).
-  3. Add an ignored test or example, `crates/php-engine/examples/parse_corpus.rs`. It parses every `.php` file in the corpora and reports files per second, peak memory, the number of files with errors, and how well parsing recovers on 200 files cut short at random offsets.
+  3. Add an ignored test or example, `crates/phoxite/examples/parse_corpus.rs`. It parses every `.php` file in the corpora and reports files per second, peak memory, the number of files with errors, and how well parsing recovers on 200 files cut short at random offsets.
   4. Write the results and the API notes the later phases need in `docs/php-engine/spike.md`.
 
   If Mago can't be used (licence, API or recovery problems), block the phase and explain why.
 
 - [x] Phase 0.6: Comparison harness
-      Add `crates/php-engine/tests/differential.rs` (ignored; needs Intelephense and the corpora). Over N sampled identifier positions in a corpus, it asks Intelephense (through `ide-lsp`) and the engine (through its public API, once that exists) for definition and hover. It writes a JSON and Markdown report of agreements and differences to `target/php-differential/`. Until the engine answers, only the Intelephense side and the report format run. Test: the report is produced on `fixtures/php-library`.
+      Add `crates/phoxite/tests/differential.rs` (ignored; needs Intelephense and the corpora). Over N sampled identifier positions in a corpus, it asks Intelephense (through `ide-lsp`) and the engine (through its public API, once that exists) for definition and hover. It writes a JSON and Markdown report of agreements and differences to `target/php-differential/`. Until the engine answers, only the Intelephense side and the report format run. Test: the report is produced on `fixtures/php-library`.
 
 ## Plan 1: Syntax, summaries, index
 
 - [x] Phase 1.1: Syntax adapter
-      Add an `php_engine::syntax` module:
+      Add an `phoxite::syntax` module:
   - Parse with Mago and convert between byte offsets and `ide-text` UTF-16 positions.
   - Add a `ParsedFile` with the AST, errors and line index.
   - Add a parse cache keyed by `(DocId, version)`.
@@ -134,7 +134,7 @@ The design:
   Store them as unresolved type expressions in the summary. Tests: golden summaries.
 
 - [x] Phase 1.5: Persistent indexes
-      Add `php_engine::index`:
+      Add `phoxite::index`:
   - redb tables (FQN → decl id, lower-case short name → FQNs, class → direct subclasses, namespace → children) and summaries keyed by content hash, stored under the project cache directory with a schema stamp.
   - The first build runs in parallel with rayon and can be cancelled. Later changes only re-index changed or removed files.
 
@@ -185,7 +185,7 @@ The design:
 ## Plan 2: Types
 
 - [x] Phase 2.1: Type model
-      Add `php_engine::types::Type`:
+      Add `phoxite::types::Type`:
   - scalars and literals, `array`, lists and shapes, `iterable`
   - objects with generic arguments, `static`, `self`, `$this`
   - unions, intersections and nullable types
@@ -492,7 +492,7 @@ The design:
 Runs after Plan 7. Before any 8.x phase, read [LARAVEL-ROADMAP.md](LARAVEL-ROADMAP.md): it holds the design (the Laravel project model, the string-reference framework, the reused OpenIDEA pieces, the `fixtures/laravel-app` fixture) and the clean-room rules for this plan. The feature list comes only from Laravel Idea's public documentation; never decompile or copy from Laravel Idea, PhpStorm or any closed-source product, and call the feature "Laravel support" in the product.
 
 - [x] Phase 8.1: Laravel fixture app
-      Create `fixtures/laravel-app` as described in the design, with a short README listing what each file exercises. Add `crates/php-engine/tests/laravel_app.rs`, which opens it with the engine and checks it indexes with no diagnostics except deliberate ones. Add a `laravel` case to `language_smoke` (ignored like the PHP one) that checks hover and completion on a model attribute. Tests: the new integration test.
+      Create `fixtures/laravel-app` as described in the design, with a short README listing what each file exercises. Add `crates/phoxite/tests/laravel_app.rs`, which opens it with the engine and checks it indexes with no diagnostics except deliberate ones. Add a `laravel` case to `language_smoke` (ignored like the PHP one) that checks hover and completion on a model attribute. Tests: the new integration test.
 
 - [x] Phase 8.2: Laravel project model
       Build `LaravelProject` (see the design):

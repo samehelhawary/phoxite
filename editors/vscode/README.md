@@ -1,4 +1,4 @@
-# PHP Engine for VS Code
+# Phoxite for VS Code
 
 PHP and Laravel code intelligence from a native engine written in Rust: no PHP, Node.js or
 licence needed for any feature.
@@ -12,7 +12,7 @@ licence needed for any feature.
 - Rename (a class's file is renamed with it); moving files updates namespaces and references
 - Quick-fixes and refactorings, Organize Imports, Format Document (PSR-12)
 - Inspections: undefined classes, functions, methods and properties, type mismatches, unused
-  imports and more, each one configurable (`phpEngine.inspections`)
+  imports and more, each one configurable (`phoxite.inspections`)
 
 ## Laravel
 
@@ -32,14 +32,14 @@ directive, section, stack and component names; the template's own problems; form
 
 | Setting | |
 | --- | --- |
-| `phpEngine.phpVersion` | The PHP version; empty: from `composer.json`. |
-| `phpEngine.includePaths` | Folders outside the project to index. |
-| `phpEngine.stubs` | Extra extension stubs (`redis`, `swoole`…). |
-| `phpEngine.exclude` | Globs left out of the index. |
-| `phpEngine.inspections` | Per-inspection `enabled`, `strict` and `severity`. |
-| `phpEngine.laravel.*` | Detection, route hints, modules, Inertia page folders. |
-| `phpEngine.format.lineWidth` | The line length for Format Document. |
-| `phpEngine.server.path` | Use another `php-engine-lsp` binary. |
+| `phoxite.phpVersion` | The PHP version; empty: from `composer.json`. |
+| `phoxite.includePaths` | Folders outside the project to index. |
+| `phoxite.stubs` | Extra extension stubs (`redis`, `swoole`…). |
+| `phoxite.exclude` | Globs left out of the index. |
+| `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`. |
+| `phoxite.laravel.*` | Detection, route hints, modules, Inertia page folders. |
+| `phoxite.format.lineWidth` | The line length for Format Document. |
+| `phoxite.server.path` | Use another `phoxite-lsp` binary. |
 
 Disable Intelephense or other PHP language servers in the workspaces where you use this
 extension; the extension offers to when it finds one.

@@ -36,7 +36,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - run: cargo build --release --locked -p php-engine-lsp --target ${{ matrix.target }}
+      - run: cargo build --release --locked -p phoxite-lsp --target ${{ matrix.target }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -45,11 +45,11 @@ jobs:
         run: |
           cd editors/vscode && npm ci && npm run vscode:prepublish && cd ../..
           python scripts/package_vscode.py \
-            --server target/${{ matrix.target }}/release/php-engine-lsp${{ matrix.exe }} \
+            --server target/${{ matrix.target }}/release/phoxite-lsp${{ matrix.exe }} \
             --target ${{ matrix.target }}
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/php-engine-lsp${{ matrix.exe }} \
-            dist/php-engine-lsp-${{ matrix.target }}${{ matrix.exe }}
+          cp target/${{ matrix.target }}/release/phoxite-lsp${{ matrix.exe }} \
+            dist/phoxite-lsp-${{ matrix.target }}${{ matrix.exe }}
           cp editors/vscode/*.vsix dist/
       - uses: actions/upload-artifact@v4
         with:

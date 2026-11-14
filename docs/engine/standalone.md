@@ -4,14 +4,14 @@
 
 - **Phase 0 done** (this repository): `ide-php` depends on no OpenIDEA crate (`cargo tree -p ide-php
   -e normal` lists no `ide-*` crate; only the differential test keeps them as dev-dependencies).
-  It has its own base types in `php_engine::base` (positions, edits, diagnostics, ids, errors, events, the
+  It has its own base types in `phoxite::base` (positions, edits, diagnostics, ids, errors, events, the
   `Document` buffer), its own settings (`base::settings::PhpConfig`, `LaravelSettings`), the composer
   readers that were in `ide_sdk::php`, and `project::walk` in place of `ide_vfs`. `ide-host` converts at
   its edge with `crates/ide-host/src/php_convert.rs` (`.core()` / `.php()`); Settings › PHP becomes a
   `PhpConfig` there (`php_config`). Step 6 (moving the Blade/Twig routing of `ide-host` into the engine)
   is not done: the LSP server has its own copy of that routing for now.
-- **Phases 1–4 done locally** in `D:\projects\php-engine` (not pushed, no GitHub repo yet): the engine
-  copied by `scripts/sync_from_openidea.py` (crate renamed `php_engine`), the `php-engine-lsp` server,
+- **Phases 1–4 done locally** in `D:\projects\phoxite` (not pushed, no GitHub repo yet): the engine
+  copied by `scripts/sync_from_openidea.py` (crate renamed `phoxite`), the `phoxite-lsp` server,
   the VS Code extension, CI and a release workflow. See that repository's `README.md`,
   `docs/editors.md` and `docs/openidea.md`.
 - **Phase 5 waits** for the OpenIDEA maintainers (see `docs/openidea.md` in the new repository).
@@ -30,12 +30,13 @@ Decisions made:
   usages, rename, code actions, formatting, diagnostics/inspections, inlay hints, semantic tokens, code lenses and
   Blade. The Laravel custom UI (Model view, generators, routes tree, Artisan, live DB schema) comes in a later phase.
 
-Working name in this plan: `php-engine` (repo), crates `php-engine` (library) and `php-engine-lsp` (binary).
-Choose the final name before publishing. It must not use "Laravel Idea", "PhpStorm" or "Intelephense".
+The name is **Phoxite** (PHP + oxide): repo `phoxite`, crates `phoxite` (library) and `phoxite-lsp` (binary), the
+VS Code extension "Phoxite — PHP & Laravel IntelliSense" with settings under `phoxite.*`. The plan below was
+written with the working name `php-engine`.
 
 ## What has to be cut loose
 
-Coupling of `ide-php` today (from `crates/php-engine/Cargo.toml` and its imports):
+Coupling of `ide-php` today (from `crates/phoxite/Cargo.toml` and its imports):
 
 | Dependency | What is used                                                                                                                                                                                                                                                                                                                                           | Problem                                                                               | Action                                                                              |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -54,7 +55,7 @@ Host-side logic that belongs to the engine but lives in `ide-host` today. Every 
 Do this on a branch off `feat/php-engine`, so the boundary is proven while 900 tests and the OpenIDEA integration
 tests still guard it. The result is upstreamable whether or not the split happens.
 
-1. Add `php_engine::base` with `Pos`, `Range`, `DocId`, `TextEdit`, `WorkspaceEdit`, `Location`, `OutlineItem`,
+1. Add `phoxite::base` with `Pos`, `Range`, `DocId`, `TextEdit`, `WorkspaceEdit`, `Location`, `OutlineItem`,
    `Severity`, `Visibility`, `Diagnostic`, `CancellationToken`, `Error/Result`. Keep the same field layout and UTF-16 columns.
    Replace `ide_core` imports throughout the crate. In ide-host, add `From` conversions in one module
    (`crates/ide-host/src/php_convert.rs`).
@@ -64,11 +65,11 @@ tests still guard it. The result is upstreamable whether or not the split happen
 3. Replace `&Settings` in `LayoutConfig::from_settings`, `StubFilter::from_settings` and `InspectionConfig::from_settings`
    with an engine `EngineSettings` (php version, extensions, include paths, excludes, inspection overrides,
    `LaravelSettings` copy). ide-host builds it from `Settings`.
-4. Move the five `ide_sdk::php` functions into `php_engine::project` / `php_engine::stubs`. `ide-sdk` then calls the
+4. Move the five `ide_sdk::php` functions into `phoxite::project` / `phoxite::stubs`. `ide-sdk` then calls the
    engine's versions or keeps its own copies.
-5. Re-implement `walk_files` and `ExcludeMatcher` in `php_engine::project::walk` on `ignore` + `globset`.
+5. Re-implement `walk_files` and `ExcludeMatcher` in `phoxite::project::walk` on `ignore` + `globset`.
 6. Move the protocol-neutral logic of `php.rs`, `blade.rs`, `twig.rs` and `laravel_files.rs` into a new
-   `php_engine::service` module. It exposes a `PhpWorkspace` that owns the engine(s) plus the Blade/Twig routing, and
+   `phoxite::service` module. It exposes a `PhpWorkspace` that owns the engine(s) plus the Blade/Twig routing, and
    it answers in engine types. ide-host keeps only the `LanguageService` impl doing `ide_lsp::types` conversion.
 7. Result: `ide-php/Cargo.toml` has no `ide-*` dependencies (dev-dependencies for the differential test excepted;
    gate that test behind a feature or leave it in OpenIDEA).
@@ -112,7 +113,7 @@ Stack: `lsp-server` + `lsp-types`, the rust-analyzer crates. The engine is synch
   implementation, references, documentHighlight, documentSymbol, workspace/symbol, codeAction + resolve
   (quick-fixes, intentions, Optimize Imports as `source.organizeImports`), prepareRename/rename,
   formatting/rangeFormatting (PHP and Blade), inlayHint, semanticTokens/full (legend from
-  `php_engine::semantic::{TOKEN_TYPES, TOKEN_MODIFIERS}`), codeLens, documentLink, typeHierarchy, callHierarchy.
+  `phoxite::semantic::{TOKEN_TYPES, TOKEN_MODIFIERS}`), codeLens, documentLink, typeHierarchy, callHierarchy.
 - **Commands:** route lenses and route hints carry route JSON, and model lenses carry `MODEL_VIEW_COMMAND`. Pass them
   through as client-side commands (`phpEngine.route.*`, `phpEngine.modelView`), which the extension handles.
 - **Paths:** use `url::Url` ↔ `PathBuf` with `dunce` on Windows (drive-letter case, UNC).
