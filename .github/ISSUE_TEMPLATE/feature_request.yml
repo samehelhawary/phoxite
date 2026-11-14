@@ -1,0 +1,30 @@
+name: Feature request
+description: Something Phoxite should do and doesn't.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The task, and where Phoxite falls short of it today.
+    validations:
+      required: true
+  - type: textarea
+    id: wanted
+    attributes:
+      label: What you would like
+      description: What it should do, with example code if that makes it clearer.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - PHP
+        - Laravel
+        - Blade
+        - VS Code extension
+        - Another editor
+    validations:
+      required: true

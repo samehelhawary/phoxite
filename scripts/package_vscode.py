@@ -3,8 +3,9 @@
 
     python scripts/package_vscode.py --server target/release/phoxite-lsp [--target win32-x64]
 
-Copies the binary into editors/vscode/server/ and runs `vsce package` (with
-`--target` for a platform-specific VSIX). The VSIX lands in editors/vscode/.
+Copies the binary into editors/vscode/server/ and the changelog next to the
+extension's manifest, and runs `vsce package` (with `--target` for a
+platform-specific VSIX). The VSIX lands in editors/vscode/.
 """
 
 import argparse
@@ -44,6 +45,8 @@ def main():
     binary = os.path.join(out_dir, "phoxite-lsp.exe" if windows else "phoxite-lsp")
     shutil.copy2(args.server, binary)
     os.chmod(binary, os.stat(binary).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    # The Marketplace shows the changelog of the packaged extension.
+    shutil.copy2(os.path.join(HERE, "CHANGELOG.md"), os.path.join(EXTENSION, "CHANGELOG.md"))
     npx = "npx.cmd" if os.name == "nt" else "npx"
     # esbuild bundles the client library into dist/extension.js.
     command = [npx, "vsce", "package", "--no-dependencies"]

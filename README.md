@@ -32,6 +32,8 @@ replaced Intelephense, and keeps its feature set:
 | `docs/editors.md` | Setting the server up in Neovim, Helix, Zed and Sublime Text. |
 | `docs/engine` | The engine's design notes and roadmap, from OpenIDEA. |
 | `docs/openidea.md` | How this repository and OpenIDEA share the engine. |
+| `CONTRIBUTING.md` | Building, testing and sending a change. |
+| `CHANGELOG.md` | What each release changed. |
 
 ## Building
 

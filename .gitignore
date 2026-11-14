@@ -4,5 +4,6 @@
 editors/vscode/node_modules
 editors/vscode/dist
 editors/vscode/server
+editors/vscode/CHANGELOG.md
 editors/vscode/*.vsix
 editors/vscode/.vscode-test

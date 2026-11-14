@@ -1,0 +1,42 @@
+name: Bug report
+description: Something gives a wrong result, an error or no result.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: Code that shows it
+      description: The smallest PHP or Blade code that reproduces the problem, with where the caret was.
+      render: php
+  - type: input
+    id: version
+    attributes:
+      label: Phoxite version
+      description: The extension's version, or the output of `phoxite-lsp --version`.
+    validations:
+      required: true
+  - type: input
+    id: editor
+    attributes:
+      label: Editor and operating system
+      placeholder: VS Code 1.95 on Windows 11
+    validations:
+      required: true
+  - type: input
+    id: stack
+    attributes:
+      label: PHP and framework versions
+      placeholder: PHP 8.3, Laravel 11
+  - type: textarea
+    id: log
+    attributes:
+      label: Server log
+      description: In VS Code, run "Phoxite: Show the Server Log" and paste what it shows around the problem.
+      render: text
