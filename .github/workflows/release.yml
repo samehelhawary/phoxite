@@ -71,7 +71,7 @@ jobs:
           merge-multiple: true
       - name: Licences of the Rust dependencies
         run: |
-          cargo install --locked cargo-about
+          cargo install --locked cargo-about --features cli
           cargo about generate --workspace -o dist/THIRD_PARTY_RUST_LICENSES.html about.hbs
       - uses: softprops/action-gh-release@v2
         with:
