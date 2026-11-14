@@ -38,5 +38,5 @@ body:
     id: log
     attributes:
       label: Server log
-      description: In VS Code, run "Phoxite: Show the Server Log" and paste what it shows around the problem.
+      description: 'In VS Code, run "Phoxite: Show the Server Log" and paste what it shows around the problem.'
       render: text
