@@ -159,6 +159,7 @@ impl State {
             Ok(engine) => {
                 engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
                 engine.set_laravel_settings(php.laravel.clone());
+                crate::laravel::load_templates(self, &root, &engine);
                 tracing::info!("indexing {}", root.display());
                 self.workspaces.write().push(Workspace { root, engine });
             }
@@ -183,6 +184,7 @@ impl State {
             w.engine.set_stub_filter(StubFilter::from_config(&w.root, &php));
             w.engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
             w.engine.set_laravel_settings(php.laravel.clone());
+            crate::laravel::load_templates(self, &w.root, &w.engine);
         }
     }
 

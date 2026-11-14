@@ -34,6 +34,9 @@ function at(doc, needle, offset = 0) {
   return doc.positionAt(index + offset);
 }
 
+/** The extension's Laravel requests (what `activate` answers). */
+const laravel = () => vscode.extensions.getExtension("phoxite.phoxite").exports.laravel;
+
 const hoverText = (hovers) =>
   (hovers ?? []).flatMap((h) => h.contents.map((c) => (typeof c === "string" ? c : c.value))).join("\n");
 
@@ -176,6 +179,121 @@ const checks = [
     assert.ok((items ?? []).length > 0, "no item");
     const outgoing = await vscode.commands.executeCommand("vscode.provideOutgoingCalls", items[0]);
     return `${items[0].name}: ${(outgoing ?? []).length} outgoing calls`;
+  }],
+  ["Laravel: the project is recognised and its commands are there", async () => {
+    await until("the Laravel status", () => laravel().refreshStatus(), (active) => active === true);
+    const commands = await vscode.commands.getCommands(true);
+    for (const id of [
+      "phoxite.laravel.generate", "phoxite.laravel.newModel", "phoxite.laravel.modelView", "phoxite.laravel.artisan",
+      "phoxite.laravel.routes.goto", "phoxite.laravel.editTemplate", "laravel.modelView", "laravel.runArtisan",
+      "laravel.createTranslation",
+    ]) {
+      assert.ok(commands.includes(id), `${id} is not registered`);
+    }
+  }],
+  ["Laravel: the routes list, and going to a route", async () => {
+    const routes = await until("routes", () => laravel().routes(), (r) => r.length > 0);
+    const route = routes.find((r) => r.name === "posts.show");
+    assert.ok(route, "no posts.show");
+    await vscode.commands.executeCommand("phoxite.laravel.route.goto", { route });
+    const editor = vscode.window.activeTextEditor;
+    assert.ok(editor.document.uri.fsPath.endsWith(path.join("routes", "web.php")), editor.document.uri.fsPath);
+    assert.equal(editor.selection.start.line, route.range.start.line);
+    return `${routes.length} routes; posts.show at web.php:${route.range.start.line + 1}`;
+  }],
+  ["Laravel: a class generator writes its file", async () => {
+    const ctx = await until("the generators", () => laravel().generationContext(),
+      (c) => (c?.models ?? []).includes("App\\Models\\Post"));
+    assert.ok(ctx.generators.some((g) => g.id === "controller"), "no controller generator");
+    const created = await laravel().apply(await laravel().generateClass(
+      { generator: "enum", name: "Visibility", module: "", backing: "string", inputs: {} }));
+    assert.equal(created.length, 1);
+    const text = Buffer.from(await vscode.workspace.fs.readFile(created[0])).toString();
+    assert.ok(text.includes("enum Visibility: string"), text);
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === created[0].toString());
+    assert.ok(!doc?.isDirty, "the new file was left unsaved");
+    return `${path.relative(project, created[0].fsPath)}; ${ctx.generators.length} generators, ${ctx.models.length} models`;
+  }],
+  ["Laravel: New Model writes the model and what it ticks", async () => {
+    const created = await laravel().apply(await laravel().newModel({
+      name: "Widget", module: "", fields: [{ name: "label", ty: "string" }],
+      relations: [{ kind: "belongsTo", model: "App\\Models\\User", name: "" }], indexes: [],
+      timestamps: true, softDeletes: false, migration: true, factory: true, seeder: false,
+      controller: "none", formRequests: false, resource: false, policy: false,
+    }));
+    const names = created.map((uri) => path.basename(uri.fsPath));
+    assert.ok(names.includes("Widget.php") && names.includes("WidgetFactory.php"), names.join(", "));
+    assert.ok(names.some((n) => /^\d{4}_\d\d_\d\d_\d{6}_create_widgets_table\.php$/.test(n)), names.join(", "));
+    for (const uri of created) await vscode.workspace.fs.stat(uri);
+    return names.join(", ");
+  }],
+  ["Laravel: the New Model form and the model view open", async () => {
+    const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
+      .filter((t) => t.input instanceof vscode.TabInputWebview);
+    await vscode.commands.executeCommand("phoxite.laravel.newModel");
+    const form = await until("the form", async () => tabs().find((t) => t.input.viewType.includes("phoxite.newModel")), Boolean, 20_000);
+    await vscode.window.tabGroups.close(form);
+    await vscode.commands.executeCommand("laravel.modelView", "App\\Models\\Post");
+    const view = await until("the view", async () => tabs().find((t) => t.input.viewType.includes("phoxite.modelView")), Boolean, 20_000);
+    // The lens on the same model shows the open view again.
+    await vscode.commands.executeCommand("laravel.modelView", "App\\Models\\Post");
+    assert.equal(tabs().filter((t) => t.input.viewType.includes("phoxite.modelView")).length, 1);
+    const label = view.label;
+    await vscode.window.tabGroups.close(view);
+    return `tabs: ${form.label}, ${label}`;
+  }],
+  ["Laravel: the model view's data, and adding columns", async () => {
+    const before = await laravel().modelView("App\\Models\\Post");
+    assert.equal(before.table, "posts");
+    const created = await laravel().apply(await laravel().addColumns(before.class,
+      [{ name: "subtitle", ty: "string", nullable: true }], true));
+    assert.ok(/_add_subtitle_to_posts_table\.php$/.test(created[0].fsPath), created[0].fsPath);
+    // The server sees the migration once the file watcher reports it.
+    const after = await until("the new column", () => laravel().modelView(before.class),
+      (v) => v.columns.some((c) => c.name === "subtitle" && c.fillable));
+    return `${before.columns.length} → ${after.columns.length} columns, ${after.relations.length} relations`;
+  }],
+  ["Laravel: Artisan commands, their lens and their tasks", async () => {
+    const commands = await laravel().artisanCommands();
+    assert.ok(commands.some((c) => c.name === "posts:publish" && c.source === "class"), "no posts:publish");
+    const doc = await open("app/Console/Commands/PublishScheduledPosts.php");
+    const lenses = await until("the lens", () => vscode.commands.executeCommand("vscode.executeCodeLensProvider", doc.uri, 20),
+      (l) => (l ?? []).some((x) => x.command?.command === "laravel.runArtisan"));
+    const lens = lenses.find((l) => l.command?.command === "laravel.runArtisan");
+    assert.deepEqual(lens.command.arguments, ["posts:publish"]);
+    const tasks = await vscode.tasks.fetchTasks({ type: "artisan" });
+    const task = tasks.find((t) => t.definition.command === "posts:publish");
+    assert.ok(task, `no task in ${tasks.map((t) => t.name).join(", ")}`);
+    assert.equal(task.execution.commandLine, "php artisan posts:publish");
+    return `${commands.length} commands; lens "${lens.command.title}"; ${tasks.length} tasks`;
+  }],
+  ["Laravel: Create translation key, the action and the edit", async () => {
+    const uri = file("app/Translated.php");
+    await vscode.workspace.fs.writeFile(uri, Buffer.from("<?php\nnamespace App;\n\nfunction translated(): string {\n    return __('messages.from_the_test');\n}\n"));
+    const doc = await open("app/Translated.php");
+    const pos = at(doc, "messages.from_the_test", 3);
+    const actions = await until("the action", () => vscode.commands.executeCommand("vscode.executeCodeActionProvider", doc.uri, new vscode.Range(pos, pos)),
+      (a) => (a ?? []).some((x) => x.command?.command === "laravel.createTranslation"));
+    const action = actions.find((a) => a.command?.command === "laravel.createTranslation");
+    const request = JSON.parse(action.command.arguments[0]);
+    assert.deepEqual(request.locales.map((l) => `${l.locale}:${l.exists}`), ["en:false", "fr:false"]);
+    await laravel().apply(await laravel().createTranslation(request.key, [{ locale: "fr", text: "Depuis le test" }]));
+    const fr = Buffer.from(await vscode.workspace.fs.readFile(file("lang/fr/messages.php"))).toString();
+    const en = Buffer.from(await vscode.workspace.fs.readFile(file("lang/en/messages.php"))).toString();
+    assert.ok(fr.includes("Depuis le test"), fr);
+    assert.ok(!en.includes("from_the_test"), en);
+    return `"${action.title}"; written to lang/fr/messages.php only`;
+  }],
+  ["Laravel: an edited template replaces the default", async () => {
+    const templates = await laravel().templates();
+    const template = templates.find((t) => t.name === "Laravel Enum");
+    assert.ok(template && !template.edited, JSON.stringify(template));
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(template.path), Buffer.from(`${template.body}// from my template\n`));
+    const created = await laravel().apply(await laravel().generateClass(
+      { generator: "enum", name: "Audience", module: "", backing: "", inputs: {} }));
+    const text = Buffer.from(await vscode.workspace.fs.readFile(created[0])).toString();
+    assert.ok(text.includes("// from my template"), text);
+    return `${templates.length} templates; ${path.relative(project, template.path)}`;
   }],
 ];
 

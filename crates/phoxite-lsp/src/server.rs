@@ -20,6 +20,7 @@ use crate::commands;
 use crate::config::{InitOptions, Settings, default_cache_dir};
 use crate::convert::{self, EditSupport};
 use crate::handlers::{self as h, Goto};
+use crate::laravel;
 use crate::state::{ClientSupport, State};
 
 const INDEXING_TOKEN: &str = "phoxite/indexing";
@@ -452,6 +453,7 @@ fn dispatch(state: &State, request: Request, cancel: &CancellationToken) -> Resp
             cancel
         )),
         r::ExecuteCommand::METHOD => on!(r::ExecuteCommand, |p| execute_command(state, p)),
+        custom if laravel::METHODS.contains(&custom) => respond(id, laravel::request(state, custom, params)),
         _ => Response::new_err(id, ErrorCode::MethodNotFound as i32, format!("unknown request {method}")),
     }));
     run.unwrap_or_else(|panic| {

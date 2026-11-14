@@ -1,7 +1,7 @@
 {
   "name": "phoxite",
   "displayName": "Phoxite — PHP & Laravel IntelliSense",
-  "description": "PHP and Laravel code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections and Laravel support (routes, views, config, translations, validation, Eloquent, Blade).",
+  "description": "PHP and Laravel code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections and Laravel support (routes, views, config, translations, validation, Eloquent, Blade, generators, Artisan).",
   "version": "0.1.0",
   "publisher": "phoxite",
   "license": "Apache-2.0",
@@ -76,6 +76,74 @@
         "command": "phoxite.showOutput",
         "title": "Show the Server Log",
         "category": "Phoxite"
+      },
+      {
+        "command": "phoxite.laravel.generate",
+        "title": "Generate…",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.newModel",
+        "title": "New Eloquent Model…",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.modelView",
+        "title": "Open Model View…",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.artisan",
+        "title": "Run Artisan Command…",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.routes.goto",
+        "title": "Go to Route…",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.routes.refresh",
+        "title": "Refresh Routes",
+        "category": "Laravel",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "phoxite.laravel.editTemplate",
+        "title": "Edit Generator Template…",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.route.goto",
+        "title": "Go to Declaration",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.route.copyUrl",
+        "title": "Copy URL",
+        "category": "Laravel",
+        "icon": "$(link)"
+      },
+      {
+        "command": "phoxite.laravel.route.open",
+        "title": "Open in Browser",
+        "category": "Laravel",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "phoxite.laravel.route.copyRequest",
+        "title": "Copy HTTP Request",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.modelView.findUsages",
+        "title": "Find Usages",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.modelView.rename",
+        "title": "Rename…",
+        "category": "Laravel"
       }
     ],
     "configuration": {
@@ -179,11 +247,67 @@
           "default": [],
           "markdownDescription": "Folders of Inertia pages, relative to the project. Empty: the `ide.json` page paths, else `resources/js/Pages`."
         },
+        "phoxite.laravel.artisanCommand": {
+          "type": "string",
+          "default": "php artisan",
+          "scope": "resource",
+          "markdownDescription": "How Artisan commands are run from the project folder, e.g. `php artisan`, `./vendor/bin/sail artisan` or `docker compose exec app php artisan`."
+        },
+        "phoxite.laravel.generation.namespace": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The application's root namespace for generated classes. Empty: the one `composer.json` maps to `app/`."
+        },
+        "phoxite.laravel.generation.module": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The module generated classes go to. Empty: the application."
+        },
+        "phoxite.laravel.generation.controllerSuffix": {
+          "type": "string",
+          "default": "Controller",
+          "markdownDescription": "The suffix of generated controller classes."
+        },
+        "phoxite.laravel.generation.requestSuffix": {
+          "type": "string",
+          "default": "Request",
+          "markdownDescription": "The suffix of generated request classes."
+        },
+        "phoxite.laravel.generation.resourceSuffix": {
+          "type": "string",
+          "default": "Resource",
+          "markdownDescription": "The suffix of generated resource classes."
+        },
+        "phoxite.laravel.generation.policySuffix": {
+          "type": "string",
+          "default": "Policy",
+          "markdownDescription": "The suffix of generated policy classes."
+        },
+        "phoxite.laravel.generation.seederSuffix": {
+          "type": "string",
+          "default": "Seeder",
+          "markdownDescription": "The suffix of generated seeder classes."
+        },
+        "phoxite.laravel.generation.constructorPromotion": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Generated constructors promote their parameters to properties."
+        },
+        "phoxite.laravel.generation.typeHints": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Generated methods declare their return types."
+        },
         "phoxite.format.lineWidth": {
           "type": "number",
           "default": 120,
           "minimum": 40,
           "markdownDescription": "The line length Format Document tries to stay within."
+        },
+        "phoxite.templates.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The folder of the generator templates you edited (**Laravel: Edit Generator Template…**), relative to the project. Empty: `.phoxite/templates`."
         },
         "phoxite.warnAboutOtherServers": {
           "type": "boolean",
@@ -191,7 +315,157 @@
           "markdownDescription": "Warn when another PHP language server (Intelephense, PHP Intelephense, Phpactor) is active too: both would answer every request."
         }
       }
-    }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "phoxite.laravel.routes",
+          "name": "Laravel Routes",
+          "when": "phoxite.laravel",
+          "visibility": "collapsed",
+          "icon": "$(symbol-event)",
+          "contextualTitle": "Laravel"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "phoxite.laravel.routes",
+        "contents": "No routes were found yet. They show once the project is indexed.\n[Refresh](command:phoxite.laravel.routes.refresh)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "phoxite.laravel.generate",
+          "when": "phoxite.laravel"
+        },
+        {
+          "command": "phoxite.laravel.newModel",
+          "when": "phoxite.laravel"
+        },
+        {
+          "command": "phoxite.laravel.modelView",
+          "when": "phoxite.laravel"
+        },
+        {
+          "command": "phoxite.laravel.artisan",
+          "when": "phoxite.laravel"
+        },
+        {
+          "command": "phoxite.laravel.routes.goto",
+          "when": "phoxite.laravel"
+        },
+        {
+          "command": "phoxite.laravel.routes.refresh",
+          "when": "phoxite.laravel"
+        },
+        {
+          "command": "phoxite.laravel.editTemplate",
+          "when": "phoxite.laravel"
+        },
+        {
+          "command": "phoxite.laravel.route.goto",
+          "when": "false"
+        },
+        {
+          "command": "phoxite.laravel.route.copyUrl",
+          "when": "false"
+        },
+        {
+          "command": "phoxite.laravel.route.open",
+          "when": "false"
+        },
+        {
+          "command": "phoxite.laravel.route.copyRequest",
+          "when": "false"
+        },
+        {
+          "command": "phoxite.laravel.modelView.findUsages",
+          "when": "false"
+        },
+        {
+          "command": "phoxite.laravel.modelView.rename",
+          "when": "false"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "phoxite.laravel.generate",
+          "when": "phoxite.laravel",
+          "group": "navigation@90"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "phoxite.laravel.routes.refresh",
+          "when": "view == phoxite.laravel.routes",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "phoxite.laravel.route.copyUrl",
+          "when": "view == phoxite.laravel.routes && viewItem == route",
+          "group": "inline@1"
+        },
+        {
+          "command": "phoxite.laravel.route.open",
+          "when": "view == phoxite.laravel.routes && viewItem == route",
+          "group": "inline@2"
+        },
+        {
+          "command": "phoxite.laravel.route.goto",
+          "when": "view == phoxite.laravel.routes && viewItem == route",
+          "group": "1_route@1"
+        },
+        {
+          "command": "phoxite.laravel.route.copyUrl",
+          "when": "view == phoxite.laravel.routes && viewItem == route",
+          "group": "2_url@1"
+        },
+        {
+          "command": "phoxite.laravel.route.open",
+          "when": "view == phoxite.laravel.routes && viewItem == route",
+          "group": "2_url@2"
+        },
+        {
+          "command": "phoxite.laravel.route.copyRequest",
+          "when": "view == phoxite.laravel.routes && viewItem == route",
+          "group": "2_url@3"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "phoxite.laravel.modelView.findUsages",
+          "when": "webviewId == 'phoxite.modelView' && webviewSection == 'item'",
+          "group": "1_item@1"
+        },
+        {
+          "command": "phoxite.laravel.modelView.rename",
+          "when": "webviewId == 'phoxite.modelView' && webviewSection == 'item' && renamable",
+          "group": "1_item@2"
+        }
+      ]
+    },
+    "taskDefinitions": [
+      {
+        "type": "artisan",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The Artisan command, e.g. migrate or queue:work."
+          },
+          "arguments": {
+            "type": "string",
+            "description": "Its arguments and options, e.g. --seed --force."
+          }
+        }
+      }
+    ]
   },
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --sourcemap",

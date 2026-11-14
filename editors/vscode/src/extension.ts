@@ -10,15 +10,26 @@ import {
   RevealOutputChannelOn,
   type ServerOptions,
 } from "vscode-languageclient/node";
+import { Laravel } from "./laravel/api";
+import { registerCommands } from "./laravel/commands";
+import { registerPages } from "./laravel/pages";
+import { registerRoutes } from "./laravel/routesView";
 import { openable, parseRoutes, routePicks } from "./routes";
 
 let client: LanguageClient | undefined;
 let output: vscode.OutputChannel | undefined;
+/** The Laravel requests of the server, and whether the workspace is a Laravel project. */
+const laravel = new Laravel(() => client);
 
 /** Other PHP language servers that would answer the same requests. */
 const OTHER_SERVERS = ["bmewburn.vscode-intelephense-client", "zobo.php-intellisense", "phpactor.vscode-phpactor"];
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+/** What other extensions (and the end-to-end tests) get from this one. */
+export interface PhoxiteApi {
+  laravel: Laravel;
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<PhoxiteApi> {
   output = vscode.window.createOutputChannel("Phoxite", { log: true });
   context.subscriptions.push(
     output,
@@ -29,17 +40,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
     vscode.commands.registerCommand("phoxite.openLocation", openLocation),
     vscode.commands.registerCommand("laravel.routeActions", routeActions),
-    vscode.commands.registerCommand("laravel.modelView", (cls: unknown) =>
-      vscode.window.showInformationMessage(
-        `The model view of ${String(cls)} isn't available in VS Code yet. Its columns, relations and scopes show in completion and hover.`,
-      ),
-    ),
+    // A project becomes a Laravel one (or stops being one) with its Composer files.
+    vscode.workspace.onDidChangeWorkspaceFolders(() => void laravel.refreshStatus()),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      if (/[\\/]composer\.(json|lock)$/.test(doc.fileName)) void laravel.refreshStatus();
+    }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("phoxite.laravel.detection")) void laravel.refreshStatus();
+    }),
   );
+  registerRoutes(context, laravel);
+  registerPages(context, laravel);
+  registerCommands(context, laravel);
   warnAboutOtherServers();
   await start(context);
+  return { laravel };
 }
 
 export async function deactivate(): Promise<void> {
+  await laravel.reset();
   await client?.stop();
   client = undefined;
 }
@@ -101,10 +120,14 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     await client.start();
   } catch (e) {
     void vscode.window.showErrorMessage(`Phoxite: the language server didn't start: ${String(e)}`);
+    return;
   }
+  // Not awaited: it asks a few times while the server reads the project.
+  void laravel.refreshStatus();
 }
 
 async function restart(context: vscode.ExtensionContext): Promise<void> {
+  await laravel.reset();
   await client?.stop();
   client = undefined;
   await start(context);

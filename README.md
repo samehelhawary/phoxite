@@ -15,7 +15,10 @@ replaced Intelephense, and keeps its feature set:
 - **Laravel:** routes, views and Blade components, config, env, translations, validation
   rules, Eloquent (columns from migrations, relations, scopes, factories), gates and
   policies, Artisan commands, Livewire, Inertia, macros and modules; route code lenses and
-  URI hints; Laravel inspections with quick-fixes.
+  URI hints; Laravel inspections with quick-fixes. The server also answers what an editor
+  needs for a routes list, the Eloquent model view, the code generators, running Artisan
+  commands and "Create translation key…" (`docs/editors.md`); the VS Code extension has
+  them all.
 - **Blade:** completion, hover, goto and usages in echoes, directives and `@php` blocks;
   directive, section, stack and component names; the template's own problems; formatting.
 
@@ -60,8 +63,12 @@ The server reads its settings from `initializationOptions.settings` and from
   "stubs": ["redis"],
   "exclude": ["node_modules", "/storage"],
   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true } },
-  "laravel": { "routeHints": true, "modules": "auto", "detection": "auto" },
-  "format": { "lineWidth": 120 }
+  "laravel": {
+    "routeHints": true, "modules": "auto", "detection": "auto",
+    "generation": { "module": "", "controllerSuffix": "Controller", "typeHints": true }
+  },
+  "format": { "lineWidth": 120 },
+  "templates": { "path": ".phoxite/templates" }
 }
 ```
 

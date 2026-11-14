@@ -7,6 +7,7 @@ mod commands;
 mod config;
 mod convert;
 mod handlers;
+mod laravel;
 mod server;
 mod state;
 

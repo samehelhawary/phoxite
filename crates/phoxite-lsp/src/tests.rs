@@ -48,18 +48,23 @@ impl Client {
     }
 
     fn request<R: r::Request>(&mut self, params: Value) -> Value {
+        self.call(R::METHOD, params).unwrap_or_else(|message| panic!("{} failed: {message}", R::METHOD))
+    }
+
+    /// Sends request `method`; `Err` is the server's error message.
+    fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
         self.next += 1;
         let id = RequestId::from(self.next);
-        self.conn.sender.send(Message::Request(Request::new(id.clone(), R::METHOD.to_owned(), params))).unwrap();
+        self.conn.sender.send(Message::Request(Request::new(id.clone(), method.to_owned(), params))).unwrap();
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             let left = deadline.saturating_duration_since(Instant::now());
-            match self.conn.receiver.recv_timeout(left).unwrap_or_else(|_| panic!("no answer to {}", R::METHOD)) {
+            match self.conn.receiver.recv_timeout(left).unwrap_or_else(|_| panic!("no answer to {method}")) {
                 Message::Response(response) if response.id == id => {
-                    if let Some(error) = response.error {
-                        panic!("{} failed: {}", R::METHOD, error.message);
-                    }
-                    return response.result.unwrap_or(Value::Null);
+                    return match response.error {
+                        Some(error) => Err(error.message),
+                        None => Ok(response.result.unwrap_or(Value::Null)),
+                    };
                 }
                 Message::Notification(notification) => self.notifications.push(notification),
                 // The server asking us something (progress tokens): answer it.
@@ -89,6 +94,18 @@ impl Client {
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             let found = self.request::<R>(params.clone());
+            if done(&found) || Instant::now() > deadline {
+                return found;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+
+    /// Asks custom request `method` until `done` accepts the answer.
+    fn call_until(&mut self, method: &str, params: Value, done: impl Fn(&Value) -> bool) -> Value {
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            let found = self.call(method, params.clone()).unwrap_or_else(|message| panic!("{method}: {message}"));
             if done(&found) || Instant::now() > deadline {
                 return found;
             }
@@ -290,6 +307,200 @@ fn edits_then_member_completion_and_formatting() {
     let options = json!({ "tabSize": 4, "insertSpaces": true });
     let edits = c.request::<r::Formatting>(json!({ "textDocument": { "uri": messy }, "options": options }));
     assert!(edits.as_array().is_some_and(|e| !e.is_empty()), "{edits}");
+    c.shutdown();
+}
+
+/// A copy of the Laravel fixture with the framework stubs as its `vendor`.
+fn laravel_project() -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("laravel-app"), &root);
+    std::fs::create_dir_all(root.join("vendor")).unwrap();
+    copy_dir(&fixture("laravel-stubs"), &root.join("vendor"));
+    (dir, root)
+}
+
+/// The file names an edit's `created` lists.
+fn created(applied: &Value) -> Vec<String> {
+    let created = applied["created"].as_array().unwrap_or_else(|| panic!("no `created` in {applied}"));
+    created.iter().map(|uri| uri.as_str().unwrap().rsplit('/').next().unwrap().to_owned()).collect()
+}
+
+/// The new text of the edit of the file whose URI ends with `name`.
+fn new_text(applied: &Value, name: &str) -> String {
+    let ops = applied["edit"]["documentChanges"].as_array().unwrap_or_else(|| panic!("no operations in {applied}"));
+    ops.iter()
+        .find(|op| op["textDocument"]["uri"].as_str().is_some_and(|uri| uri.ends_with(name)))
+        .map(|op| op["edits"][0]["newText"].as_str().unwrap().to_owned())
+        .unwrap_or_else(|| panic!("no edit of {name} in {applied}"))
+}
+
+#[test]
+fn laravel_requests_for_the_client_ui() {
+    use crate::laravel as l;
+    let (_dir, root) = laravel_project();
+    let mut c = Client::start(&root);
+    assert_eq!(c.call_until(l::STATUS, Value::Null, |v| v["laravel"] == true)["laravel"], true);
+
+    // Routes, all and searched.
+    let routes = c.call_until(l::ROUTES, json!({}), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    let show = routes.as_array().unwrap().iter().find(|r| r["name"] == "posts.show").expect("posts.show");
+    assert!(show["path"].as_str().unwrap().ends_with("web.php"), "{show}");
+    assert!(show["range"]["start"]["line"].is_u64(), "{show}");
+    let searched = c.call(l::ROUTES, json!({ "query": "posts.show" })).unwrap();
+    assert!(searched.as_array().unwrap().len() < routes.as_array().unwrap().len(), "{searched}");
+
+    // The generators and what their dialogs offer (the models need the index).
+    let context = c.call_until(l::GENERATION_CONTEXT, json!({ "folder": Url::from_file_path(&root).unwrap() }), |v| {
+        v["models"].as_array().is_some_and(|m| m.iter().any(|m| m == "App\\Models\\Post"))
+    });
+    let ids: Vec<&str> = context["generators"].as_array().unwrap().iter().filter_map(|g| g["id"].as_str()).collect();
+    assert!(ids.contains(&"model") && ids.contains(&"controller"), "{ids:?}");
+    assert!(ids.iter().any(|id| id.starts_with("ide-json:")), "{ids:?}");
+    assert_eq!(context["namespace"], "App\\");
+
+    // The model view.
+    let view = c.call(l::MODEL_VIEW, json!({ "class": "App\\Models\\Post" })).unwrap();
+    assert_eq!(view["table"], "posts");
+    let columns: Vec<&str> = view["columns"].as_array().unwrap().iter().filter_map(|c| c["name"].as_str()).collect();
+    assert!(columns.contains(&"title"), "{columns:?}");
+    assert!(view["relations"].as_array().is_some_and(|r| !r.is_empty()), "{view}");
+    assert!(view["location"]["path"].as_str().unwrap().ends_with("Post.php"), "{view}");
+    let error = c.call(l::MODEL_VIEW, json!({ "class": "App\\Nope" })).unwrap_err();
+    assert!(error.contains("not an Eloquent model"), "{error}");
+
+    // Add columns: a migration and `$fillable`.
+    let added = c
+        .call(
+            l::ADD_COLUMNS,
+            json!({
+                "class": "App\\Models\\Post",
+                "columns": [{ "name": "subtitle", "ty": "string", "nullable": true }],
+                "fillable": true,
+                "timestamp": "2030_01_02_030405"
+            }),
+        )
+        .unwrap();
+    let files = created(&added);
+    assert!(files[0].starts_with("2030_01_02_030405_add_subtitle_to_posts_table"), "{files:?}");
+    assert!(new_text(&added, &files[0]).contains("->nullable()"), "{added}");
+
+    // Artisan: the project's commands and Laravel's own.
+    let commands = c.call(l::ARTISAN_COMMANDS, json!({})).unwrap();
+    let publish = commands.as_array().unwrap().iter().find(|c| c["name"] == "posts:publish").expect("posts:publish");
+    assert_eq!(publish["source"], "class");
+    assert_eq!(publish["synopsis"], "posts:publish [--dry-run]");
+    assert!(publish["location"]["path"].as_str().unwrap().ends_with("PublishScheduledPosts.php"), "{publish}");
+    assert!(commands.as_array().unwrap().iter().any(|c| c["name"] == "migrate" && c["source"] == "framework"));
+
+    // A class generator.
+    let generated = c
+        .call(l::GENERATE_CLASS, json!({ "spec": { "generator": "enum", "name": "Visibility", "backing": "string" } }))
+        .unwrap();
+    assert_eq!(created(&generated), ["Visibility.php"]);
+    assert!(new_text(&generated, "Visibility.php").contains("enum Visibility: string"), "{generated}");
+    let error =
+        c.call(l::GENERATE_CLASS, json!({ "spec": { "generator": "enum", "name": "PostStatus" } })).unwrap_err();
+    assert!(error.contains("PostStatus"), "{error}");
+
+    // The user's template replaces the default.
+    let templates = c.call(l::TEMPLATES, json!({})).unwrap();
+    let template = templates.as_array().unwrap().iter().find(|t| t["name"] == "Laravel Enum").expect("the template");
+    assert_eq!(template["edited"], false);
+    let path = PathBuf::from(template["path"].as_str().unwrap());
+    assert!(path.ends_with(".phoxite/templates/Laravel Enum.ft"), "{path:?}");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, format!("{}// from my template\n", template["body"].as_str().unwrap())).unwrap();
+    let generated =
+        c.call(l::GENERATE_CLASS, json!({ "spec": { "generator": "enum", "name": "Visibility" } })).unwrap();
+    assert!(new_text(&generated, "Visibility.php").contains("// from my template"), "{generated}");
+    let templates = c.call(l::TEMPLATES, json!({})).unwrap();
+    assert!(templates.as_array().unwrap().iter().any(|t| t["name"] == "Laravel Enum" && t["edited"] == true));
+
+    // New Model: the model and what it ticks.
+    let model = c
+        .call(
+            l::NEW_MODEL,
+            json!({
+                "spec": {
+                    "name": "Widget",
+                    "fields": [{ "name": "label", "ty": "string" }],
+                    "relations": [{ "kind": "belongsTo", "model": "App\\Models\\User" }],
+                    "migration": true, "factory": true, "controller": "resource", "policy": true
+                },
+                "timestamp": "2030_01_02_030405"
+            }),
+        )
+        .unwrap();
+    let files = created(&model);
+    for file in ["Widget.php", "2030_01_02_030405_create_widgets_table.php", "WidgetFactory.php", "WidgetPolicy.php"] {
+        assert!(files.iter().any(|f| f == file), "{file} not in {files:?}");
+    }
+    assert!(files.iter().any(|f| f == "WidgetController.php"), "{files:?}");
+    assert!(new_text(&model, "Widget.php").contains("function user()"), "{model}");
+
+    // A translation key, in the locales asked for.
+    let translated = c
+        .call(
+            l::CREATE_TRANSLATION,
+            json!({ "key": "messages.brand_new", "texts": [{ "locale": "fr", "text": "Tout neuf" }] }),
+        )
+        .unwrap();
+    assert!(translated["created"].as_array().unwrap().is_empty(), "{translated}");
+    assert!(translated["edit"].to_string().contains("Tout neuf"), "{translated}");
+    assert!(!translated["edit"].to_string().contains("lang/en/"), "{translated}");
+
+    // Its action, on a key no locale has.
+    let probe = root.join("app/Probe.php");
+    std::fs::write(
+        &probe,
+        "<?php\nnamespace App;\n\nfunction probe(): string {\n    return __('messages.nowhere_yet');\n}\n",
+    )
+    .unwrap();
+    let uri = c.open(&probe, "php");
+    let (line, col) = find(&probe, "messages.nowhere_yet", 3);
+    let actions = c.request_until::<r::CodeActionRequest>(
+        json!({
+            "textDocument": { "uri": uri },
+            "range": { "start": { "line": line, "character": col }, "end": { "line": line, "character": col } },
+            "context": { "diagnostics": [] }
+        }),
+        |v| v.to_string().contains("laravel.createTranslation"),
+    );
+    let action = actions
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["command"]["command"] == "laravel.createTranslation")
+        .unwrap_or_else(|| panic!("no action in {actions}"));
+    let request: Value = serde_json::from_str(action["command"]["arguments"][0].as_str().unwrap()).unwrap();
+    assert_eq!(request["key"], "messages.nowhere_yet");
+    let locales: Vec<&str> =
+        request["locales"].as_array().unwrap().iter().filter_map(|l| l["locale"].as_str()).collect();
+    assert_eq!(locales, ["en", "fr"]);
+
+    // The lens running a console command, on its class.
+    let command = c.open(&root.join("app/Console/Commands/PublishScheduledPosts.php"), "php");
+    let lenses = c.request_until::<r::CodeLensRequest>(json!({ "textDocument": { "uri": command } }), |v| {
+        v.to_string().contains("laravel.runArtisan")
+    });
+    let lens = lenses.as_array().unwrap().iter().find(|l| l["command"]["command"] == "laravel.runArtisan").unwrap();
+    assert_eq!(lens["command"]["arguments"], json!(["posts:publish"]));
+    assert_eq!(lens["command"]["title"], "Run artisan posts:publish");
+    c.shutdown();
+}
+
+#[test]
+fn laravel_requests_outside_laravel_projects() {
+    use crate::laravel as l;
+    let root = fixture("php-library");
+    let mut c = Client::start(&root);
+    assert_eq!(c.call(l::STATUS, Value::Null).unwrap()["laravel"], false);
+    assert_eq!(c.call(l::ROUTES, json!({})).unwrap(), json!([]));
+    assert!(c.call(l::ARTISAN_COMMANDS, json!({})).unwrap().is_null());
+    assert!(c.call(l::GENERATION_CONTEXT, json!({})).unwrap().is_null());
+    let error = c.call(l::GENERATE_CLASS, json!({ "spec": { "generator": "enum", "name": "A" } })).unwrap_err();
+    assert!(error.contains("Not a Laravel project"), "{error}");
     c.shutdown();
 }
 

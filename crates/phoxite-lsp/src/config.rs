@@ -9,8 +9,9 @@
 //!   "stubs": ["redis"],
 //!   "exclude": ["storage", "node_modules"],
 //!   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true, "severity": "error" } },
-//!   "laravel": { "routeHints": true, "modules": "auto" },
-//!   "format": { "lineWidth": 120 }
+//!   "laravel": { "routeHints": true, "modules": "auto", "generation": { "module": "Blog" } },
+//!   "format": { "lineWidth": 120 },
+//!   "templates": { "path": ".phoxite/templates" }
 //! }
 //! ```
 //!
@@ -40,6 +41,7 @@ pub struct Settings {
     pub inspections: BTreeMap<String, InspectionSetting>,
     pub laravel: LaravelSettings,
     pub format: FormatSettings,
+    pub templates: TemplateSettings,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -57,6 +59,18 @@ pub struct InspectionSetting {
 pub struct FormatSettings {
     pub line_width: u32,
 }
+
+/// The generators' templates the user edited.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TemplateSettings {
+    /// Their folder, relative to the project (or absolute); empty:
+    /// [`DEFAULT_TEMPLATES_PATH`].
+    pub path: String,
+}
+
+/// Where the edited templates of a project are unless the settings say.
+pub const DEFAULT_TEMPLATES_PATH: &str = ".phoxite/templates";
 
 impl Default for FormatSettings {
     fn default() -> Self {

@@ -478,7 +478,19 @@ pub fn code_actions(state: &State, p: lsp::CodeActionParams) -> Result<Option<ls
         }
         _ => return Ok(None),
     }
-    Ok(Some(actions.into_iter().map(|action| code_action(state, action)).collect()))
+    let mut actions: Vec<_> = actions.into_iter().map(|action| code_action(state, action)).collect();
+    // Laravel: "Create translation key…" on a key some locale lacks.
+    if wants(phoxite::imports::REWRITE)
+        && let Some(engine) = &doc.engine
+    {
+        let request = match doc.kind {
+            Kind::Php => engine.laravel_translation_request(doc.id, at.start),
+            Kind::Blade => engine.blade_translation_request(&doc.blade(), at.start),
+            _ => None,
+        };
+        actions.extend(request.as_ref().and_then(crate::commands::create_translation));
+    }
+    Ok(Some(actions))
 }
 
 // ---- formatting ----
@@ -564,8 +576,14 @@ pub fn inlay_hints(state: &State, p: lsp::InlayHintParams) -> Result<Option<Vec<
     Ok(Some(hints))
 }
 
-/// Laravel: the routes of each controller method, and the model view of
-/// each Eloquent model.
+/// Whether two paths name one file (Windows: whatever the case).
+fn same_file(a: &Path, b: &Path) -> bool {
+    let (a, b) = (dunce::simplified(a), dunce::simplified(b));
+    a == b || (cfg!(windows) && a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy()))
+}
+
+/// Laravel: the routes of each controller method, the model view of each
+/// Eloquent model, and running each console command.
 pub fn code_lens(state: &State, p: lsp::CodeLensParams) -> Result<Option<Vec<lsp::CodeLens>>> {
     let doc = snapshot(state, &p.text_document.uri)?;
     let (Kind::Php, Some(engine)) = (doc.kind, &doc.engine) else { return Ok(None) };
@@ -588,6 +606,19 @@ pub fn code_lens(state: &State, p: lsp::CodeLensParams) -> Result<Option<Vec<lsp
         }),
         data: None,
     }));
+    if let Some(artisan) = engine.laravel_artisan() {
+        for command in &artisan.commands {
+            if let (Some(path), Some(range)) = (&command.path, command.class_range)
+                && same_file(path, &doc.path)
+            {
+                lenses.push(lsp::CodeLens {
+                    range: lsp_range(range),
+                    command: Some(crate::commands::run_artisan(&command.name)),
+                    data: None,
+                });
+            }
+        }
+    }
     lenses.sort_by_key(|lens| (lens.range.start.line, lens.range.start.character));
     Ok(Some(lenses))
 }
