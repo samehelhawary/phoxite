@@ -31,6 +31,10 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "configurationDefaults": {
+      "php.suggest.basic": false,
+      "php.validate.enable": false
+    },
     "languages": [
       {
         "id": "blade",
@@ -195,7 +199,8 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test --experimental-strip-types test/*.test.mts",
     "package": "vsce package",
-    "vscode:prepublish": "npm run build -- --minify"
+    "vscode:prepublish": "npm run build -- --minify",
+    "test:e2e": "npm run build && node test/e2e/run.js"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -203,6 +208,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.0"

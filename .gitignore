@@ -5,3 +5,4 @@ editors/vscode/node_modules
 editors/vscode/dist
 editors/vscode/server
 editors/vscode/*.vsix
+editors/vscode/.vscode-test

@@ -173,7 +173,8 @@ pub fn run(connection: Connection) -> Result<(), String> {
             state.add_workspace(&path);
         }
     }
-    let mut server = Server { state, pending: Arc::default(), indexing: false };
+    let mut server =
+        Server { state, pending: Arc::default(), initialized: false, progress_open: false, shutting_down: false };
     server.main_loop(&connection, &events_rx)?;
     server.state.shutdown();
     Ok(())
@@ -183,7 +184,12 @@ struct Server {
     state: Arc<State>,
     /// The cancellation tokens of running requests.
     pending: Arc<Mutex<HashMap<RequestId, CancellationToken>>>,
-    indexing: bool,
+    /// The client sent `initialized`: the server may ask it things.
+    initialized: bool,
+    /// An indexing progress began and hasn't ended.
+    progress_open: bool,
+    /// `shutdown` came; only `exit` is left.
+    shutting_down: bool,
 }
 
 impl Server {
@@ -193,13 +199,24 @@ impl Server {
                 recv(connection.receiver) -> message => {
                     let Ok(message) = message else { return Ok(()) };
                     match message {
-                        Message::Request(request) => {
-                            if connection.handle_shutdown(&request).map_err(|e| e.to_string())? {
-                                return Ok(());
-                            }
-                            self.request(request);
+                        Message::Request(request) if request.method == r::Shutdown::METHOD => {
+                            self.shutting_down = true;
+                            let _ = connection.sender.send(Message::Response(Response::new_ok(request.id, ())));
+                        }
+                        Message::Request(request) if self.shutting_down => {
+                            let response = Response::new_err(
+                                request.id,
+                                ErrorCode::InvalidRequest as i32,
+                                "the server is shutting down".into(),
+                            );
+                            let _ = connection.sender.send(Message::Response(response));
+                        }
+                        Message::Request(request) => self.request(request),
+                        Message::Notification(notification) if notification.method == n::Exit::METHOD => {
+                            return Ok(());
                         }
                         Message::Notification(notification) => self.notification(notification),
+                        // Answers to the server's own requests (progress tokens).
                         Message::Response(_) => {}
                     }
                 }
@@ -225,10 +242,11 @@ impl Server {
 
     /// Indexing as a work-done progress, when the client shows them.
     fn progress(&mut self, indexing: bool, files: u32, symbols: u32) {
-        if !self.state.support.work_done_progress || indexing == self.indexing {
+        // Nothing before `initialized`: the client may not take requests yet.
+        if !self.state.support.work_done_progress || !self.initialized || indexing == self.progress_open {
             return;
         }
-        self.indexing = indexing;
+        self.progress_open = indexing;
         let token = lsp::NumberOrString::String(INDEXING_TOKEN.into());
         let value = if indexing {
             let create = Request::new(
@@ -255,6 +273,7 @@ impl Server {
     fn notification(&mut self, notification: Notification) {
         let state = &self.state;
         match notification.method.as_str() {
+            n::Initialized::METHOD => self.initialized = true,
             n::DidOpenTextDocument::METHOD => {
                 if let Some(p) = params::<lsp::DidOpenTextDocumentParams>(notification.params) {
                     let doc = p.text_document;

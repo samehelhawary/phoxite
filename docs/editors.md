@@ -103,5 +103,5 @@ Everything is plain LSP except two client commands the server's results carry:
 | `laravel.modelView` | the model's class name | the code lens on Eloquent models |
 | `phoxite.openLocation` | an LSP `Location` | quick-fixes that create a file (a missing view) |
 
-and one server command, `phoxite.rescan` (`workspace/executeCommand`), which indexes the
+and one server command, `phoxite.server.rescan` (`workspace/executeCommand`), which indexes the
 workspace folders again.

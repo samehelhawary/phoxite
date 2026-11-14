@@ -11,8 +11,10 @@ use serde_json::Value;
 /// creating a view.
 pub const OPEN_LOCATION: &str = "phoxite.openLocation";
 
-/// Server command: indexes the workspace folders again.
-pub const RESCAN: &str = "phoxite.rescan";
+/// Server command: indexes the workspace folders again. Not `phoxite.rescan`:
+/// LSP clients register server commands as editor commands, and the VS Code
+/// extension has its own `phoxite.rescan`.
+pub const RESCAN: &str = "phoxite.server.rescan";
 
 /// The commands the server runs.
 pub const SERVER_COMMANDS: &[&str] = &[RESCAN];

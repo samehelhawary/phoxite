@@ -25,7 +25,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("phoxite.restart", () => restart(context)),
     vscode.commands.registerCommand("phoxite.showOutput", () => output?.show()),
     vscode.commands.registerCommand("phoxite.rescan", () =>
-      client?.sendRequest("workspace/executeCommand", { command: "phoxite.rescan", arguments: [] }),
+      client?.sendRequest("workspace/executeCommand", { command: "phoxite.server.rescan", arguments: [] }),
     ),
     vscode.commands.registerCommand("phoxite.openLocation", openLocation),
     vscode.commands.registerCommand("laravel.routeActions", routeActions),

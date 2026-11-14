@@ -251,6 +251,49 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 #[test]
+fn edits_then_member_completion_and_formatting() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("laravel-app"), &root);
+    std::fs::create_dir_all(root.join("vendor")).unwrap();
+    copy_dir(&fixture("laravel-stubs"), &root.join("vendor"));
+    let mut c = Client::start(&root);
+    let file = root.join("app/Http/Controllers/PostController.php");
+    let uri = c.open(&file, "php");
+    let text = std::fs::read_to_string(&file).unwrap().replace("\r\n", "\n");
+    // An incremental insert before the class's closing brace, as VS Code sends it.
+    let brace = text.rfind('}').unwrap();
+    let probe = "    public function probe(\\App\\Models\\Post $post) { $post->; }\n";
+    let edited = format!("{}{probe}{}", &text[..brace], &text[brace..]);
+    let brace_line = text[..brace].matches('\n').count() as u32;
+    let brace_col = text[..brace].rsplit('\n').next().unwrap().encode_utf16().count() as u32;
+    let point = json!({ "line": brace_line, "character": brace_col });
+    c.notify::<n::DidChangeTextDocument>(json!({
+        "textDocument": { "uri": uri, "version": 2 },
+        "contentChanges": [{ "range": { "start": point, "end": point }, "text": probe }]
+    }));
+    let byte = edited.find("$post->;").unwrap() + "$post->".len();
+    let line = edited[..byte].matches('\n').count() as u32;
+    let col = edited[..byte].rsplit('\n').next().unwrap().encode_utf16().count() as u32;
+    let completion = c.request_until::<r::Completion>(at(&uri, line, col), |v| {
+        v["items"].as_array().is_some_and(|items| items.iter().any(|i| i["label"] == "author"))
+    });
+    let labels: Vec<&str> =
+        completion["items"].as_array().unwrap().iter().filter_map(|i| i["label"].as_str()).collect();
+    assert!(labels.contains(&"author") && labels.contains(&"comments"), "{labels:?}");
+    assert!(!labels.contains(&"$_GET"), "{labels:?}");
+
+    // Formatting a messy file gives edits; a tidy one gives an empty list.
+    let messy = root.join("app/Messy.php");
+    std::fs::write(&messy, "<?php\nnamespace App;\nclass Messy{public function a( $x ){return $x+1;}}\n").unwrap();
+    let messy = c.open(&messy, "php");
+    let options = json!({ "tabSize": 4, "insertSpaces": true });
+    let edits = c.request::<r::Formatting>(json!({ "textDocument": { "uri": messy }, "options": options }));
+    assert!(edits.as_array().is_some_and(|e| !e.is_empty()), "{edits}");
+    c.shutdown();
+}
+
+#[test]
 fn capabilities_name_every_feature() {
     let caps = crate::server::capabilities();
     for key in [
@@ -270,4 +313,16 @@ fn capabilities_name_every_feature() {
         assert!(caps.get(key).is_some_and(|v| !v.is_null()), "{key} missing");
     }
     assert_eq!(caps["positionEncoding"], "utf-16");
+    // Clients register server commands as editor commands; the VS Code
+    // extension's own commands are `phoxite.*`, so the server's must not be.
+    let package: Value =
+        serde_json::from_str(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../editors/vscode/package.json")))
+            .unwrap();
+    let extension: Vec<&str> =
+        package["contributes"]["commands"].as_array().unwrap().iter().filter_map(|c| c["command"].as_str()).collect();
+    for command in caps["executeCommandProvider"]["commands"].as_array().unwrap() {
+        let command = command.as_str().unwrap();
+        assert!(command.starts_with("phoxite.server."), "{command}");
+        assert!(!extension.contains(&command), "{command} is also an extension command");
+    }
 }
