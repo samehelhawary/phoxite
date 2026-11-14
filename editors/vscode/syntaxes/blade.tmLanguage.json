@@ -1,0 +1,85 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Blade",
+  "scopeName": "text.html.php.blade",
+  "comment": "Blade templates: HTML with Blade comments, echoes and directives whose arguments and @php blocks are PHP. Written for php-engine (Apache-2.0).",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#php-block" },
+    { "include": "#verbatim" },
+    { "include": "#raw-echo" },
+    { "include": "#echo" },
+    { "include": "#escaped" },
+    { "include": "#directive-with-arguments" },
+    { "include": "#directive" },
+    { "include": "text.html.php" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.block.blade",
+      "begin": "\\{\\{--",
+      "end": "--\\}\\}",
+      "beginCaptures": { "0": { "name": "punctuation.definition.comment.begin.blade" } },
+      "endCaptures": { "0": { "name": "punctuation.definition.comment.end.blade" } }
+    },
+    "php-block": {
+      "name": "meta.embedded.block.php.blade",
+      "contentName": "source.php",
+      "begin": "(?<![\\w@])(@php)(?!\\s*\\()",
+      "end": "(@endphp)\\b",
+      "beginCaptures": { "1": { "name": "keyword.control.directive.blade" } },
+      "endCaptures": { "1": { "name": "keyword.control.directive.blade" } },
+      "patterns": [{ "include": "source.php" }]
+    },
+    "verbatim": {
+      "begin": "(?<![\\w@])(@verbatim)\\b",
+      "end": "(@endverbatim)\\b",
+      "beginCaptures": { "1": { "name": "keyword.control.directive.blade" } },
+      "endCaptures": { "1": { "name": "keyword.control.directive.blade" } },
+      "patterns": [{ "include": "text.html.basic" }]
+    },
+    "escaped": {
+      "comment": "@{{ … }} and @@directive print as written.",
+      "name": "constant.character.escape.blade",
+      "match": "@(\\{\\{|@\\w+)"
+    },
+    "raw-echo": {
+      "name": "meta.embedded.line.php.blade",
+      "contentName": "source.php",
+      "begin": "\\{!!",
+      "end": "!!\\}",
+      "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.blade" } },
+      "endCaptures": { "0": { "name": "punctuation.section.embedded.end.blade" } },
+      "patterns": [{ "include": "source.php" }]
+    },
+    "echo": {
+      "name": "meta.embedded.line.php.blade",
+      "contentName": "source.php",
+      "begin": "(?<!@)\\{\\{",
+      "end": "\\}\\}",
+      "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.blade" } },
+      "endCaptures": { "0": { "name": "punctuation.section.embedded.end.blade" } },
+      "patterns": [{ "include": "source.php" }]
+    },
+    "directive-with-arguments": {
+      "begin": "(?<![\\w@])(@\\w+)\\s*(\\()",
+      "end": "\\)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.directive.blade" },
+        "2": { "name": "punctuation.definition.arguments.begin.blade" }
+      },
+      "endCaptures": { "0": { "name": "punctuation.definition.arguments.end.blade" } },
+      "contentName": "source.php",
+      "patterns": [{ "include": "#parentheses" }, { "include": "source.php" }]
+    },
+    "parentheses": {
+      "begin": "\\(",
+      "end": "\\)",
+      "patterns": [{ "include": "#parentheses" }, { "include": "source.php" }]
+    },
+    "directive": {
+      "name": "keyword.control.directive.blade",
+      "match": "(?<![\\w@])@\\w+"
+    }
+  }
+}

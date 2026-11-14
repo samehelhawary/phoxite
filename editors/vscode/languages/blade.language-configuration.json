@@ -1,0 +1,34 @@
+{
+  "comments": {
+    "blockComment": ["{{--", "--}}"]
+  },
+  "brackets": [
+    ["<!--", "-->"],
+    ["<", ">"],
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+    { "open": "\"", "close": "\"", "notIn": ["string"] },
+    { "open": "{{--", "close": " --}}", "notIn": ["string", "comment"] },
+    { "open": "<!--", "close": " -->", "notIn": ["comment", "string"] }
+  ],
+  "surroundingPairs": [
+    { "open": "'", "close": "'" },
+    { "open": "\"", "close": "\"" },
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "<", "close": ">" }
+  ],
+  "wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\%\\^\\&\\*\\(\\)\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\'\\\"\\,\\.\\<\\>\\/\\?\\s]+)",
+  "indentationRules": {
+    "increaseIndentPattern": "<(?!\\?|(?:area|base|br|col|frame|hr|html|img|input|link|meta|param)\\b|[^>]*\\/>)([-_\\.A-Za-z0-9]+)(?=\\s|>)\\b[^>]*>(?!.*<\\/\\1>)|<!--(?!.*-->)|\\{[^}\"']*$|^\\s*@(if|elseif|else|unless|isset|empty|auth|guest|env|production|hasSection|sectionMissing|section|push|prepend|once|for|foreach|forelse|empty|while|switch|case|default|php|verbatim|component|slot|fragment|error|can|cannot|canany|session|context|teleport)\\b(?!.*@(end\\w+|stop|show|overwrite|append)\\b)",
+    "decreaseIndentPattern": "^\\s*(<\\/(?!html)[-_\\.A-Za-z0-9]+\\b[^>]*>|-->|\\}|@(end\\w+|else|elseif|empty|case|default|stop|show|overwrite|append)\\b)"
+  }
+}

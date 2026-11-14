@@ -1,0 +1,57 @@
+[package]
+name = "php-engine"
+description = "Native PHP and Laravel code intelligence: parsing, indexes, types, inspections, refactorings and formatting"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["php", "laravel", "language-server", "ide", "static-analysis"]
+categories = ["development-tools", "parser-implementations"]
+# The phpstorm-stubs archive (stubs/phpstorm-stubs.zip) is part of the crate.
+include = ["src/**/*", "stubs/**/*", "templates/**/*", "Cargo.toml", "README.md", "LICENSE", "NOTICE"]
+
+[lib]
+name = "php_engine"
+
+[dependencies]
+globset.workspace = true
+tokio-util.workspace = true
+ignore.workspace = true
+parking_lot.workspace = true
+serde_json.workspace = true
+self_cell.workspace = true
+serde.workspace = true
+postcard.workspace = true
+redb.workspace = true
+rayon.workspace = true
+blake3.workspace = true
+tracing.workspace = true
+regex-lite = "0.1"
+nucleo-matcher.workspace = true
+zip.workspace = true
+# Mago (MIT OR Apache-2.0) parses PHP. Pinned exactly: its AST API changes
+# between minor releases.
+mago-allocator = "=1.59.0"
+mago-syntax = "=1.59.0"
+mago-names = "=1.59.0"
+mago-phpdoc-syntax = "=1.59.0"
+mago-span = "=1.59.0"
+mago-database = "=1.59.0"
+mago-syntax-core = "=1.59.0"
+mago-formatter = "=1.59.0"
+mago-php-version = "=1.59.0"
+mago-twig-syntax = "=1.59.0"
+stacker.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+serde.workspace = true
+tempfile.workspace = true
+dunce.workspace = true
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "engine"
+harness = false

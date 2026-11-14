@@ -1,0 +1,87 @@
+name: Release
+
+# A `v*` tag builds the server for each platform, packages a platform-specific VSIX for
+# each, and attaches both to a draft GitHub release. Publishing to the VS Code Marketplace
+# and Open VSX runs only when their tokens are configured (VSCE_PAT, OVSX_PAT).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-pc-windows-msvc, os: windows-latest, exe: .exe }
+          - { target: aarch64-pc-windows-msvc, os: windows-latest, exe: .exe }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-22.04, musl: true }
+          - { target: x86_64-apple-darwin, os: macos-13 }
+          - { target: aarch64-apple-darwin, os: macos-14 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --release --locked -p php-engine-lsp --target ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Package the extension
+        shell: bash
+        run: |
+          cd editors/vscode && npm ci && npm run vscode:prepublish && cd ../..
+          python scripts/package_vscode.py \
+            --server target/${{ matrix.target }}/release/php-engine-lsp${{ matrix.exe }} \
+            --target ${{ matrix.target }}
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/php-engine-lsp${{ matrix.exe }} \
+            dist/php-engine-lsp-${{ matrix.target }}${{ matrix.exe }}
+          cp editors/vscode/*.vsix dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Licences of the Rust dependencies
+        run: |
+          cargo install --locked cargo-about
+          cargo about generate --workspace -o dist/THIRD_PARTY_RUST_LICENSES.html about.hbs
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist/*
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Publish to the VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        run: for vsix in dist/*.vsix; do npx @vscode/vsce publish --packagePath "$vsix"; done
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        run: for vsix in dist/*.vsix; do npx ovsx publish "$vsix" -p "$OVSX_PAT"; done

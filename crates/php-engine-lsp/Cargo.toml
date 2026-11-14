@@ -1,0 +1,32 @@
+[package]
+name = "php-engine-lsp"
+description = "A language server for PHP and Laravel built on php-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["php", "laravel", "lsp", "language-server"]
+categories = ["development-tools"]
+
+[[bin]]
+name = "php-engine-lsp"
+path = "src/main.rs"
+
+[dependencies]
+php-engine.workspace = true
+lsp-server.workspace = true
+lsp-types.workspace = true
+crossbeam-channel.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+dunce.workspace = true
+blake3.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
