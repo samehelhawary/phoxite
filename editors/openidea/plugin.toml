@@ -25,3 +25,15 @@ id = "routes"
 title = "Laravel Routes"
 icon = "server"
 location = "left"
+
+# Runs when a route lens is clicked.
+[[contributes.commands]]
+id = "route-actions"
+title = "Laravel: Go to the Routes of This Method"
+
+# phoxite-lsp's route lenses and URI hints carry `laravel.routeActions` (the routes as
+# a JSON string) and leave running it to the client.
+[[contributes.serverCommands]]
+server = "phoxite"
+command = "laravel.routeActions"
+run = "route-actions"

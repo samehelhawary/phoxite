@@ -76,6 +76,14 @@ fn routes(ctx: &Invocation, query: &str) -> Result<Vec<Route>, Error> {
     serde_json::from_str(&answer).map_err(|e| Error::Failed(format!("{ROUTES}: {e}")))
 }
 
+/// The routes of a `laravel.routeActions` command, from its `arguments` as JSON.
+fn lens_routes(arguments: &str) -> Result<Vec<Route>, Error> {
+    let invalid = |e: serde_json::Error| Error::Invalid(format!("laravel.routeActions: {e}"));
+    let arguments: Vec<serde_json::Value> = serde_json::from_str(arguments).map_err(invalid)?;
+    let routes = arguments.first().and_then(|a| a.as_str()).unwrap_or("[]");
+    serde_json::from_str(routes).map_err(invalid)
+}
+
 /// `path` as the view shows it: relative to the project.
 fn relative<'a>(path: &'a str, root: Option<&str>) -> &'a str {
     root.and_then(|root| path.strip_prefix(root))
@@ -93,7 +101,7 @@ fn open(key: &str) -> Result<(), Error> {
 pub struct Laravel;
 
 impl Plugin for Laravel {
-    fn run_command(&mut self, id: &str, ctx: &Invocation, _arg: Option<&str>) -> Result<Option<String>, Error> {
+    fn run_command(&mut self, id: &str, ctx: &Invocation, arg: Option<&str>) -> Result<Option<String>, Error> {
         match id {
             "go-to-route" => {
                 let items: Vec<PickItem> = routes(ctx, "")?
@@ -105,6 +113,25 @@ impl Plugin for Laravel {
                 }
                 if let Some(key) = host::pick("Go to Route", &items)? {
                     open(&key)?;
+                }
+                Ok(None)
+            }
+            // A route lens or URI hint was clicked: the argument is the server command's
+            // `arguments`, whose first is the routes as a JSON string.
+            "route-actions" => {
+                let routes = lens_routes(arg.unwrap_or_default())?;
+                match routes.as_slice() {
+                    [] => {}
+                    [only] => open(&only.key())?,
+                    several => {
+                        let items: Vec<PickItem> = several
+                            .iter()
+                            .map(|r| PickItem { key: r.key(), label: r.label(), description: Some(r.detail()) })
+                            .collect();
+                        if let Some(key) = host::pick("Go to Route", &items)? {
+                            open(&key)?;
+                        }
+                    }
                 }
                 Ok(None)
             }
@@ -200,6 +227,27 @@ mod tests {
         mock.answer_next_prompt(Some(&[r#"{"path":"/project/routes/web.php","at":{"line":4,"col":0}}"#]));
         Laravel.run_command("go-to-route", &mock.invocation(), None).unwrap();
         assert_eq!(mock.opened_locations(), [("/project/routes/web.php".to_owned(), 4, 0)]);
+    }
+
+    #[test]
+    fn a_route_lens_goes_to_its_route_or_asks_which() {
+        let mock = mock();
+        let routes: Vec<serde_json::Value> = serde_json::from_str(ANSWER).unwrap();
+        let lens =
+            |routes: &[serde_json::Value]| serde_json::json!([serde_json::to_string(routes).unwrap()]).to_string();
+
+        // One route: straight to it.
+        Laravel.run_command("route-actions", &mock.invocation(), Some(&lens(&routes[..1]))).unwrap();
+        assert_eq!(mock.opened_locations(), [("/project/routes/web.php".to_owned(), 4, 0)]);
+
+        // Several: the user picks.
+        mock.answer_next_prompt(Some(&[r#"{"path":"/project/routes/api.php","at":{"line":9,"col":2}}"#]));
+        Laravel.run_command("route-actions", &mock.invocation(), Some(&lens(&routes))).unwrap();
+        assert_eq!(mock.opened_locations().last().unwrap(), &("/project/routes/api.php".to_owned(), 9, 2));
+
+        // The lens needs no request to the server, and arguments that are not routes are refused.
+        assert!(mock.language_server_requests().is_empty());
+        assert!(matches!(Laravel.run_command("route-actions", &mock.invocation(), Some("{")), Err(Error::Invalid(_))));
     }
 
     #[test]

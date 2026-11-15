@@ -9,10 +9,12 @@ So far:
 - **Laravel Routes**, a tool window listing the routes by route file; open one to
   go to it.
 - **Laravel: Go to Route…**, a picker over the same routes.
+- **Route lenses**: clicking the routes lens on a controller method, or the URI after a
+  route, goes to the route (or asks which, when there are several).
 
 It needs Phoxite chosen as the PHP server (**Settings › Languages & Frameworks › Language
 Servers**) and the `lsp:phoxite` permission, which lets the plugin send the running
-server its own requests. That is plugin API 1.9, which is not released yet: the SDK comes
+server its own requests and lets it run the commands the server's lenses carry. That is plugin API 1.9, which is not released yet: the SDK comes
 from the branch that adds it (`Cargo.toml`).
 
 ## Building
