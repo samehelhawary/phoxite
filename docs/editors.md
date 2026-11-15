@@ -12,6 +12,13 @@ completions and problems show twice.
 Settings go in the initialization options as `{ "settings": { … } }` (see the README for the
 keys); `cacheDir` sets the index folder.
 
+## OpenIDEA
+
+Nothing to download: pick **Phoxite** for PHP in **Settings › Languages & Frameworks ›
+Language Servers** and OpenIDEA installs `phoxite-lsp` from the GitHub releases. Intelephense
+stays its default, and `laravel-lsp` is not started while Phoxite serves the project. See
+`docs/openidea.md` for what else is on the way there.
+
 ## Neovim (0.11+)
 
 ```lua

@@ -1,6 +1,17 @@
 # Plan: standalone PHP engine + LSP server + VS Code extension
 
-## Status (2026-11-14)
+## Status (2026-11-15)
+
+**This plan is finished, and its "shared home" decision was replaced.** Phases 0–4 and 6
+are done and released (Phoxite 0.2.1, on the VS Code Marketplace and Open VSX). Phase 5,
+OpenIDEA depending on this repository as a crate, will not happen: OpenIDEA's maintainers
+keep their PHP support on language servers, so Phoxite stays in this repository and
+OpenIDEA lists `phoxite-lsp` as a selectable PHP server (l0ng-ai/openidea#3541, merged).
+`docs/openidea.md` describes that arrangement. The rest of this file is kept as the
+record of how the engine was cut loose; where it says "this repository" for Phase 0 it
+means OpenIDEA.
+
+## Status as written on 2026-11-14
 
 - **Phase 0 done** (this repository): `ide-php` depends on no OpenIDEA crate (`cargo tree -p ide-php
   -e normal` lists no `ide-*` crate; only the differential test keeps them as dev-dependencies).

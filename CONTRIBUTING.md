@@ -7,16 +7,14 @@ first so the approach can be agreed before you write the code.
 
 | Path | What | Notes |
 | --- | --- | --- |
-| `crates/phoxite` | The engine | Copied from OpenIDEA; see below. |
-| `crates/phoxite-lsp` | The language server | Developed here. |
-| `editors/vscode` | The VS Code extension | Developed here. |
-| `docs/engine` | The engine's design notes | Copied from OpenIDEA with the engine. |
+| `crates/phoxite` | The engine | Its tests and fixtures (`fixtures/`) go with it. |
+| `crates/phoxite-lsp` | The language server | |
+| `editors/vscode` | The VS Code extension | |
+| `docs/engine` | The engine's design notes | Update the note a change makes stale. |
 
-The engine is still developed in [OpenIDEA](https://github.com/l0ng-ai/openidea)
-(`crates/ide-php`) and copied here by `scripts/sync_from_openidea.py`, which overwrites
-`crates/phoxite`, the fixtures and `docs/engine`. Until that changes (`docs/openidea.md`),
-a pull request that edits those paths can't be merged as it is: describe the problem in an
-issue here, or send the change to OpenIDEA.
+Everything is developed in this repository, the engine included. OpenIDEA uses the server
+like any other editor (`docs/openidea.md`), so a change to release asset names, the
+`.sha256` files, `--version` or the `phoxite/*` requests needs a word there first.
 
 ## Building and testing
 
@@ -50,8 +48,8 @@ CI runs the first two blocks on every pull request; run them before you push.
 
 ## What a pull request needs
 
-- A test that fails without the change: an LSP test in `crates/phoxite-lsp/src/tests.rs`
-  for the server, a unit test in `editors/vscode/test` for the extension's logic.
+- A test that fails without the change: a test in `crates/phoxite` for the engine, an LSP
+  test in `crates/phoxite-lsp/src/tests.rs` for the server, a unit test in `editors/vscode/test` for the extension's logic.
 - The documentation it makes stale, updated in the same pull request (`README.md`,
   `docs/editors.md`, `editors/vscode/README.md`, `CHANGELOG.md`).
 - A new server request or client command described in `docs/editors.md`, so editors other

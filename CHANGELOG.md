@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The engine is developed in this repository now; it is no longer copied from OpenIDEA,
+  which offers Phoxite as a selectable PHP language server (`docs/openidea.md`).
+
 ## 0.2.1 — 2026-11-15
 
 - Each release has a `<binary>.sha256` file beside every `phoxite-lsp` binary.

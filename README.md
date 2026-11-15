@@ -3,8 +3,9 @@
 PHP and Laravel code intelligence written in Rust, packaged for any editor: a library
 (`phoxite`), a language server (`phoxite-lsp`) and a VS Code extension.
 
-Phoxite is the native PHP engine of [OpenIDEA](https://github.com/l0ng-ai/openidea), where it
-replaced Intelephense, and keeps its feature set:
+Phoxite began as a native PHP engine written for
+[OpenIDEA](https://github.com/l0ng-ai/openidea), which now offers it as one of its PHP
+language servers. What it does:
 
 - **PHP:** completion with auto-import, hover, signature help, go to definition, type
   definition and implementation, Find Usages, rename (files named after a class move with
@@ -32,9 +33,9 @@ replaced Intelephense, and keeps its feature set:
 | `crates/phoxite` | The engine: parsing (Mago), indexes (redb), types, inspections, refactorings, Laravel. |
 | `crates/phoxite-lsp` | The language server over stdio. |
 | `editors/vscode` | The VS Code extension (also Cursor, VSCodium, Windsurf through Open VSX). |
-| `docs/editors.md` | Setting the server up in Neovim, Helix, Zed and Sublime Text. |
-| `docs/engine` | The engine's design notes and roadmap, from OpenIDEA. |
-| `docs/openidea.md` | How this repository and OpenIDEA share the engine. |
+| `docs/editors.md` | Setting the server up in OpenIDEA, Neovim, Helix, Zed and Sublime Text. |
+| `docs/engine` | The engine's design notes and roadmap. |
+| `docs/openidea.md` | How OpenIDEA uses Phoxite, and what a release must keep for it. |
 | `CONTRIBUTING.md` | Building, testing and sending a change. |
 | `CHANGELOG.md` | What each release changed. |
 
