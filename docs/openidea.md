@@ -38,8 +38,10 @@ The last two are merged into OpenIDEA's `main` and come with the release after 0
   routes view and lenses, the Eloquent model view with Add Columns, the generators, New
   Eloquent Model, Run Artisan Command and "Create translation key…". Its README lists
   what it lacks next to the VS Code extension. It is not yet published in OpenIDEA's
-  plugin registry, and it has been tested against the SDK's mock host and the server's
-  real answers, not yet inside a running OpenIDEA.
+  plugin registry. It was tried in an OpenIDEA built from `main` on Windows, on a copy of
+  `fixtures/laravel-app`: both views, the lenses, the generators, New Eloquent Model, Add
+  Columns and Create translation key. Run Artisan Command was not run there (no PHP on
+  that machine).
 - Change Signature, the Extract Method options and the Generate member choosers have no
   dialog in OpenIDEA: it gets the plain actions (`docs/editors.md`).
 

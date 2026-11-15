@@ -38,6 +38,8 @@ Compared with the VS Code extension:
   migration, the event of a listener, API controllers, the module to generate into…)
   keep their defaults, and files go to the module of the project's settings.
 - New Eloquent Model has no relations, indexes, unique or default values for fields.
+- A migration's file name carries the UTC time, not the local one: a plugin has no local
+  clock to send the server.
 - No "copy URL" or "open in browser" on a route, no Find Usages or Rename from the model
   view, no editing of the generator templates, and Artisan always runs as `php artisan`.
 
