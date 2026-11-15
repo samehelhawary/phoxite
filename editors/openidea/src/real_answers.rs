@@ -37,7 +37,8 @@ fn the_model_view_shows_the_fixtures_post_model() {
     assert_eq!(view.status.as_deref(), Some("Post · table posts · key id (int)"));
     let Body::Tree(items) = view.body else { panic!("a tree") };
     let groups: Vec<_> = items.iter().filter(|i| i.parent.is_none()).map(|i| i.label.as_str()).collect();
-    assert_eq!(groups, ["Columns (12)", "Scopes (1)", "Related classes (4)"]);
+    assert_eq!(groups, ["Columns (12)", "Relations (3)", "Scopes (1)", "Accessors (1)", "Related classes (4)"]);
+    assert!(items.iter().any(|i| i.label == "author" && i.detail.as_deref() == Some("BelongsTo User")));
     assert!(items.iter().any(|i| i.label == "title" && i.detail.as_deref().is_some_and(|d| d.contains("string"))));
 }
 

@@ -40,6 +40,27 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  # The OpenIDEA plugin is its own crate, outside the workspace: a WebAssembly component.
+  openidea:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/openidea
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: editors/openidea
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo clippy --locked --target wasm32-wasip2 -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --locked --release --target wasm32-wasip2
+
   bench:
     runs-on: ubuntu-latest
     continue-on-error: true

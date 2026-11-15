@@ -8,8 +8,9 @@
 // The project's path is written as /project, so the files don't depend on the machine.
 
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -23,7 +24,11 @@ if (!server) {
   console.error("usage: node editors/openidea/tests/capture.mjs <phoxite-lsp>");
   process.exit(2);
 }
-const project = path.join(repo, "fixtures/laravel-app");
+// A copy of the fixture with Laravel's classes in vendor/, as the server's own tests set
+// it up: without them the relations and accessors of a model are not recognized.
+const project = realpathSync(mkdtempSync(path.join(os.tmpdir(), "phoxite-capture-")));
+cpSync(path.join(repo, "fixtures/laravel-app"), project, { recursive: true });
+cpSync(path.join(repo, "fixtures/laravel-stubs"), path.join(project, "vendor"), { recursive: true });
 const out = path.join(here, "fixtures");
 mkdirSync(out, { recursive: true });
 
@@ -115,4 +120,7 @@ save("createTranslation", await laravel("createTranslation", {
 
 await conn.sendRequest("shutdown");
 conn.sendNotification("exit");
-setTimeout(() => process.exit(0), 200);
+setTimeout(() => {
+  rmSync(project, { recursive: true, force: true });
+  process.exit(0);
+}, 500);

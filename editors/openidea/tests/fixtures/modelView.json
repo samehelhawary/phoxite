@@ -297,7 +297,65 @@
       }
     }
   ],
-  "relations": [],
+  "relations": [
+    {
+      "name": "author",
+      "kind": "BelongsTo",
+      "related": "App\\Models\\User",
+      "many": false,
+      "location": {
+        "path": "/project/app/Models/Post.php",
+        "range": {
+          "start": {
+            "line": 29,
+            "col": 20
+          },
+          "end": {
+            "line": 29,
+            "col": 26
+          }
+        }
+      }
+    },
+    {
+      "name": "comments",
+      "kind": "HasMany",
+      "related": "App\\Models\\Comment",
+      "many": true,
+      "location": {
+        "path": "/project/app/Models/Post.php",
+        "range": {
+          "start": {
+            "line": 34,
+            "col": 20
+          },
+          "end": {
+            "line": 34,
+            "col": 28
+          }
+        }
+      }
+    },
+    {
+      "name": "tags",
+      "kind": "BelongsToMany",
+      "related": "App\\Models\\Tag",
+      "many": true,
+      "location": {
+        "path": "/project/app/Models/Post.php",
+        "range": {
+          "start": {
+            "line": 39,
+            "col": 20
+          },
+          "end": {
+            "line": 39,
+            "col": 24
+          }
+        }
+      }
+    }
+  ],
   "scopes": [
     {
       "name": "published",
@@ -318,7 +376,26 @@
       }
     }
   ],
-  "accessors": [],
+  "accessors": [
+    {
+      "name": "excerpt",
+      "method": "excerpt",
+      "ty": "string",
+      "location": {
+        "path": "/project/app/Models/Post.php",
+        "range": {
+          "start": {
+            "line": 55,
+            "col": 23
+          },
+          "end": {
+            "line": 55,
+            "col": 30
+          }
+        }
+      }
+    }
+  ],
   "related": [
     {
       "kind": "factory",

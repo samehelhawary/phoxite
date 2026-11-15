@@ -7,7 +7,8 @@
   "models": [
     "App\\Models\\Comment",
     "App\\Models\\Post",
-    "App\\Models\\Tag"
+    "App\\Models\\Tag",
+    "App\\Models\\User"
   ],
   "generators": [
     {
