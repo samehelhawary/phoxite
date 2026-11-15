@@ -97,7 +97,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "openidea-plugin"
 version = "0.1.0"
-source = "git+https://github.com/samehelhawary/openidea?branch=feat%2Fplugin-lsp-requests#309a83ab274b69f6889bcbcadd4afc9dacfdf9b8"
+source = "git+https://github.com/l0ng-ai/openidea?rev=feb261d17#feb261d172735a45201fd55a70160b496ffce74d"
 dependencies = [
  "serde",
  "serde_json",

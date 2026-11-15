@@ -12,9 +12,9 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# The `language-servers` interface (plugin API 1.9) is not released yet: the SDK comes
-# from the branch that adds it.
-openidea-plugin = { git = "https://github.com/samehelhawary/openidea", branch = "feat/plugin-lsp-requests" }
+# Plugin API 1.9 (the `language-servers` interface) is not released yet: the SDK is pinned
+# to the OpenIDEA commit that added it.
+openidea-plugin = { git = "https://github.com/l0ng-ai/openidea", rev = "feb261d17" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

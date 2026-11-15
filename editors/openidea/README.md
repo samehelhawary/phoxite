@@ -14,8 +14,9 @@ So far:
 
 It needs Phoxite chosen as the PHP server (**Settings › Languages & Frameworks › Language
 Servers**) and the `lsp:phoxite` permission, which lets the plugin send the running
-server its own requests and lets it run the commands the server's lenses carry. That is plugin API 1.9, which is not released yet: the SDK comes
-from the branch that adds it (`Cargo.toml`).
+server its own requests and run the commands the server's lenses carry. That is plugin
+API 1.9, which is not released yet: the SDK is pinned to the OpenIDEA commit that added
+it (`Cargo.toml`).
 
 ## Building
 
