@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-11-15
 
 - Change Signature: a form to rename a function or method, change its visibility and
   return type, and add, remove, reorder and retype its parameters, updating the calls,
