@@ -1,0 +1,26 @@
+[package]
+name = "phoxite-openidea"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# A plugin builds on its own (target wasm32-wasip2), outside the Phoxite workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The `language-servers` interface (plugin API 1.9) is not released yet: the SDK comes
+# from the branch that adds it.
+openidea-plugin = { git = "https://github.com/samehelhawary/openidea", branch = "feat/plugin-lsp-requests" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

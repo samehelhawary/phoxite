@@ -1,0 +1,27 @@
+id = "phoxite.laravel"
+name = "Laravel (Phoxite)"
+version = "0.1.0"
+description = "Laravel tools for projects served by the Phoxite language server."
+authors = ["Phoxite contributors"]
+license = "Apache-2.0"
+engines.openidea = "^1.9"
+wasm = "dist/plugin.wasm"
+activation = ["on-command:*"]
+
+[capabilities]
+# The routes come from phoxite-lsp's own `phoxite/laravel/*` requests.
+required = ["lsp:phoxite"]
+
+[[contributes.commands]]
+id = "go-to-route"
+title = "Laravel: Go to Route…"
+
+[[contributes.commands]]
+id = "refresh-routes"
+title = "Laravel: Refresh Routes"
+
+[[contributes.views]]
+id = "routes"
+title = "Laravel Routes"
+icon = "server"
+location = "left"
