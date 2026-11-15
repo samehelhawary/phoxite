@@ -12,6 +12,16 @@ fn answer(mock: &MockHost, name: &str, json: &str) {
     mock.set_language_server_response(server::SERVER, &format!("phoxite/laravel/{name}"), json);
 }
 
+/// A tree's keys must differ, or the IDE mixes its rows up: the fixture has columns that
+/// share a declaration (`$table->timestamps()`), which hand-written answers did not.
+fn assert_keys_differ(items: &[openidea_plugin::views::TreeItem]) {
+    let mut keys: Vec<&str> = items.iter().map(|i| i.key.as_str()).collect();
+    keys.sort_unstable();
+    let before = keys.len();
+    keys.dedup();
+    assert_eq!(keys.len(), before, "two items of the tree have the same key");
+}
+
 fn project(mock: &MockHost) -> Project {
     mock.invocation().project().unwrap()
 }
@@ -24,6 +34,7 @@ fn the_routes_view_shows_the_fixtures_routes() {
     let Body::Tree(items) = view.body else { panic!("a tree") };
     let labels: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
     assert_eq!(&labels[..3], ["routes/web.php", "GET /", "GET /about"]);
+    assert_keys_differ(&items);
     Laravel.handle(routes::VIEW, ViewEvent::Activate(items[1].key.clone()), &mock.invocation()).unwrap();
     assert_eq!(mock.opened_locations(), [("/project/routes/web.php".to_owned(), 6, 7)]);
 }
@@ -36,6 +47,8 @@ fn the_model_view_shows_the_fixtures_post_model() {
     let view = Laravel.render(model::VIEW, None, &mock.invocation()).unwrap();
     assert_eq!(view.status.as_deref(), Some("Post · table posts · key id (int)"));
     let Body::Tree(items) = view.body else { panic!("a tree") };
+    assert_keys_differ(&items);
+    assert!(items.iter().any(|i| i.label == "PostFactory" && i.detail.as_deref() == Some("factory")));
     let groups: Vec<_> = items.iter().filter(|i| i.parent.is_none()).map(|i| i.label.as_str()).collect();
     assert_eq!(groups, ["Columns (12)", "Relations (3)", "Scopes (1)", "Accessors (1)", "Related classes (4)"]);
     assert!(items.iter().any(|i| i.label == "author" && i.detail.as_deref() == Some("BelongsTo User")));

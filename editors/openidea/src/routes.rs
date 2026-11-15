@@ -86,13 +86,15 @@ pub fn render(ctx: &Invocation) -> Result<View, Error> {
     let root = ctx.project().and_then(|p| p.root().ok());
     let mut items: Vec<TreeItem> = Vec::new();
     let mut files: Vec<&str> = Vec::new();
-    for route in &routes {
+    for (index, route) in routes.iter().enumerate() {
         let file = format!("file:{}", route.path);
         if !files.contains(&route.path.as_str()) {
             files.push(&route.path);
-            items.push(TreeItem::new(&file, server::relative(&route.path, root.as_deref())).expandable(true));
+            items.push(TreeItem::new(&file, &server::relative(&route.path, root.as_deref())).expandable(true));
         }
-        items.push(TreeItem::new(&route.key(), &route.label()).parent(&file).detail(&route.detail()));
+        // The routes of one `Route::resource` are at one place: the index keeps the keys apart.
+        let key = Target::nth(&route.path, route.range.start, index);
+        items.push(TreeItem::new(&key, &route.label()).parent(&file).detail(&route.detail()));
     }
     let status = format!("{} routes in {} files", routes.len(), files.len());
     Ok(View { toolbar: vec![], body: Body::Tree(items), status: Some(status) })

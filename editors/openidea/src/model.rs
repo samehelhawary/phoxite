@@ -185,8 +185,12 @@ fn group(items: &mut Vec<TreeItem>, id: &str, title: &str, members: Vec<(String,
     let key = format!("group:{id}");
     items.push(TreeItem::new(&key, &format!("{title} ({})", members.len())).expandable(true));
     for (index, (label, detail, place)) in members.into_iter().enumerate() {
-        // A member without a declaration (a column only the database has) still needs a key.
-        let item_key = place.map(Target::of).unwrap_or_else(|| format!("{id}:{index}"));
+        // Members can share a place (`$table->timestamps()` declares two columns), and one
+        // without a declaration (a column only the database has) still needs a key.
+        let item_key = match place {
+            Some(place) => format!("{}:{id}", Target::nth(&place.path, place.range.start, index)),
+            None => format!("{id}:{index}"),
+        };
         let mut item = TreeItem::new(&item_key, &label).parent(&key);
         if !detail.is_empty() {
             item = item.detail(&detail);
@@ -236,7 +240,11 @@ pub fn render(ctx: &Invocation) -> Result<View, Error> {
     }
     group(&mut items, "scopes", "Scopes", members(&model.scopes));
     group(&mut items, "accessors", "Accessors", members(&model.accessors));
-    let related = model.related.iter().map(|r| (r.name.clone(), r.kind.clone(), Some(&r.location))).collect();
+    let related = model
+        .related
+        .iter()
+        .map(|r| (server::short_name(&r.name).to_owned(), r.kind.clone(), Some(&r.location)))
+        .collect();
     group(&mut items, "related", "Related classes", related);
 
     let mut status = format!(
