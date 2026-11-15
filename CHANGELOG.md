@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — 2026-11-15
+
+- Each release has a `<binary>.sha256` file beside every `phoxite-lsp` binary.
+- The server says in its capabilities (`experimental.phoxite`) that it answers the
+  `phoxite/laravel/*` and `phoxite/refactor/*` requests.
+
 ## 0.2.0 — 2026-11-15
 
 - Change Signature: a form to rename a function or method, change its visibility and

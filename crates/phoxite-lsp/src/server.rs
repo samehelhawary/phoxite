@@ -121,6 +121,9 @@ pub fn capabilities() -> Value {
     let mut caps = serde_json::to_value(caps).expect("capabilities serialize");
     // lsp-types 0.95 has no field for it.
     caps["typeHierarchyProvider"] = Value::Bool(true);
+    // What a client can look for instead of the server's name: the `phoxite/laravel/*`
+    // and `phoxite/refactor/*` requests.
+    caps["experimental"] = serde_json::json!({ "phoxite": { "laravel": true, "refactor": true } });
     caps
 }
 

@@ -49,6 +49,7 @@ impl Client {
             "initializationOptions": { "cacheDir": c._cache.path(), "settings": { "phoxite": {} } }
         }));
         assert_eq!(init["serverInfo"]["name"], "phoxite-lsp");
+        assert_eq!(init["capabilities"]["experimental"]["phoxite"]["refactor"], true);
         c.notify::<n::Initialized>(json!({}));
         c
     }
@@ -260,7 +261,8 @@ fn laravel_routes_views_and_blade() {
     assert!(hints.to_string().contains("laravel.routeActions"), "{hints}");
 
     // A template: its outline.
-    let blade = c.open(&root.join("resources/views/about.blade.php"), "blade");
+    // A client without a Blade language sends the template as PHP: the file name decides.
+    let blade = c.open(&root.join("resources/views/about.blade.php"), "php");
     let outline = c.request::<r::DocumentSymbolRequest>(json!({ "textDocument": { "uri": blade } }));
     assert!(outline.is_array(), "{outline}");
     c.shutdown();

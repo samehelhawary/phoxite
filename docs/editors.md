@@ -2,6 +2,9 @@
 
 `phoxite-lsp` talks LSP over stdin/stdout. Download the binary for your platform from
 the GitHub releases (or `cargo install --path crates/phoxite-lsp`) and put it on `PATH`.
+Each binary has a `.sha256` file beside it.
+
+A file named `*.blade.php` is a Blade template whatever language id the client sends.
 
 Turn off other PHP language servers (Intelephense, Phpactor) for the same files; otherwise
 completions and problems show twice.
@@ -107,6 +110,9 @@ Everything is plain LSP except the client commands the server's results carry:
 
 and one server command, `phoxite.server.rescan` (`workspace/executeCommand`), which indexes the
 workspace folders again.
+
+The server's capabilities carry `experimental.phoxite` with `laravel: true` and
+`refactor: true`: a client can check them before sending the requests below.
 
 ## Refactorings that ask first
 

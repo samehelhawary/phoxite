@@ -66,6 +66,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Checksums of the server binaries
+        # One `<binary>.sha256` beside each binary, for installers that verify the download.
+        run: |
+          cd dist
+          for binary in phoxite-lsp-*; do sha256sum "$binary" > "$binary.sha256"; done
       - name: Licences of the Rust dependencies
         run: |
           cargo install --locked cargo-about --features cli
