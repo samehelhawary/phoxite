@@ -111,15 +111,17 @@ impl Client {
         }
     }
 
-    /// Asks custom request `method` until `done` accepts the answer.
+    /// Asks custom request `method` until `done` accepts the answer. A refusal is retried
+    /// too: until the index has caught up the server may not know the classes asked about.
     fn call_until(&mut self, method: &str, params: Value, done: impl Fn(&Value) -> bool) -> Value {
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
-            let found = self.call(method, params.clone()).unwrap_or_else(|message| panic!("{method}: {message}"));
-            if done(&found) || Instant::now() > deadline {
-                return found;
+            let late = Instant::now() > deadline;
+            match self.call(method, params.clone()) {
+                Ok(found) if late || done(&found) => return found,
+                Err(message) if late => panic!("{method}: {message}"),
+                _ => std::thread::sleep(Duration::from_millis(200)),
             }
-            std::thread::sleep(Duration::from_millis(200));
         }
     }
 
