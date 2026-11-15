@@ -19,18 +19,27 @@ Nothing is copied any more.
 - `.blade.php` files open with the language id `php` there; the server treats a file as
   Blade by its name, so they get code insight (without Blade highlighting).
 
+- **Pull Members Up / Push Members Down** through OpenIDEA's own dialogs
+  ([#3603](https://github.com/l0ng-ai/openidea/pull/3603)): a small adapter there sends
+  `phoxite/refactor/hierarchyMembers` and `phoxite/refactor/hierarchy` to a server that
+  advertises `experimental.phoxite.refactor`.
+- **What a plugin needs to talk to the server** (plugin API 1.9, agreed in
+  [#3542](https://github.com/l0ng-ai/openidea/issues/3542)): requests from a plugin to a
+  running language server behind the grant `lsp:phoxite`
+  ([#3588](https://github.com/l0ng-ai/openidea/pull/3588)), and
+  `[[contributes.serverCommands]]`, which routes a command the server leaves to the
+  client to the plugin ([#3597](https://github.com/l0ng-ai/openidea/pull/3597)).
+
+The last two are merged into OpenIDEA's `main` and come with the release after 0.1.45.
+
 ## What is on the way
 
-- **The Laravel tools as a plugin** (the routes view, the Eloquent model view, the code
-  generators, Run Artisan Command, "Create translation key…"), in `editors/openidea`. It
-  talks to the server through the `phoxite/laravel/*` requests, which needs two additions
-  to OpenIDEA's plugin API 1.9 agreed in
-  [l0ng-ai/openidea#3542](https://github.com/l0ng-ai/openidea/issues/3542): requests from a
-  plugin to a running language server (grant `lsp:phoxite`), and commands a server hands
-  to the client routed to the plugin.
-- **Pull Members Up / Push Members Down** through OpenIDEA's own dialogs, by a small
-  adapter in OpenIDEA that sends `phoxite/refactor/*` to a server advertising
-  `experimental.phoxite.refactor`.
+- **The Laravel tools as a plugin**, in `editors/openidea`, on top of that plugin API. The
+  routes view, Go to Route and the route lenses are there; the Eloquent model view, the
+  code generators, Run Artisan Command and "Create translation key…" are not yet, and
+  the plugin is not published in OpenIDEA's plugin registry.
+- Change Signature, the Extract Method options and the Generate member choosers have no
+  dialog in OpenIDEA: it gets the plain actions (`docs/editors.md`).
 
 ## What a release must keep for OpenIDEA
 
