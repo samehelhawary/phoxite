@@ -1,0 +1,128 @@
+{
+  "edit": {
+    "documentChanges": [
+      {
+        "kind": "create",
+        "uri": "file:///project/app/Models/CapturedThing.php",
+        "options": {
+          "overwrite": false,
+          "ignoreIfExists": true
+        }
+      },
+      {
+        "textDocument": {
+          "uri": "file:///project/app/Models/CapturedThing.php",
+          "version": null
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 0
+              },
+              "end": {
+                "line": 0,
+                "character": 0
+              }
+            },
+            "newText": "<?php\n\nnamespace App\\Models;\n\nuse Database\\Factories\\CapturedThingFactory;\nuse Illuminate\\Database\\Eloquent\\Factories\\HasFactory;\nuse Illuminate\\Database\\Eloquent\\Model;\n\nclass CapturedThing extends Model\n{\n    /** @use HasFactory<CapturedThingFactory> */\n    use HasFactory;\n\n    /**\n     * The attributes that are mass assignable.\n     *\n     * @var list<string>\n     */\n    protected $fillable = [\n        'title',\n    ];\n}\n"
+          }
+        ]
+      },
+      {
+        "kind": "create",
+        "uri": "file:///project/database/migrations/2024_05_01_120000_create_captured_things_table.php",
+        "options": {
+          "overwrite": false,
+          "ignoreIfExists": true
+        }
+      },
+      {
+        "textDocument": {
+          "uri": "file:///project/database/migrations/2024_05_01_120000_create_captured_things_table.php",
+          "version": null
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 0
+              },
+              "end": {
+                "line": 0,
+                "character": 0
+              }
+            },
+            "newText": "<?php\n\nuse Illuminate\\Database\\Migrations\\Migration;\nuse Illuminate\\Database\\Schema\\Blueprint;\nuse Illuminate\\Support\\Facades\\Schema;\n\nreturn new class extends Migration\n{\n    /**\n     * Run the migrations.\n     */\n    public function up(): void\n    {\n        Schema::create('captured_things', function (Blueprint $table) {\n            $table->id();\n            $table->string('title');\n            $table->timestamps();\n        });\n    }\n\n    /**\n     * Reverse the migrations.\n     */\n    public function down(): void\n    {\n        Schema::dropIfExists('captured_things');\n    }\n};\n"
+          }
+        ]
+      },
+      {
+        "kind": "create",
+        "uri": "file:///project/database/factories/CapturedThingFactory.php",
+        "options": {
+          "overwrite": false,
+          "ignoreIfExists": true
+        }
+      },
+      {
+        "textDocument": {
+          "uri": "file:///project/database/factories/CapturedThingFactory.php",
+          "version": null
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 0
+              },
+              "end": {
+                "line": 0,
+                "character": 0
+              }
+            },
+            "newText": "<?php\n\nnamespace Database\\Factories;\n\nuse App\\Models\\CapturedThing;\nuse Illuminate\\Database\\Eloquent\\Factories\\Factory;\n\n/**\n * @extends Factory<CapturedThing>\n */\nclass CapturedThingFactory extends Factory\n{\n    /**\n     * Define the model's default state.\n     *\n     * @return array<string, mixed>\n     */\n    public function definition(): array\n    {\n        return [\n            'title' => fake()->sentence(),\n        ];\n    }\n}\n"
+          }
+        ]
+      },
+      {
+        "kind": "create",
+        "uri": "file:///project/app/Http/Controllers/CapturedThingController.php",
+        "options": {
+          "overwrite": false,
+          "ignoreIfExists": true
+        }
+      },
+      {
+        "textDocument": {
+          "uri": "file:///project/app/Http/Controllers/CapturedThingController.php",
+          "version": null
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 0
+              },
+              "end": {
+                "line": 0,
+                "character": 0
+              }
+            },
+            "newText": "<?php\n\nnamespace App\\Http\\Controllers;\n\nuse App\\Models\\CapturedThing;\nuse Illuminate\\Http\\Request;\n\nclass CapturedThingController extends Controller\n{\n    /**\n     * Display a listing of the resource.\n     */\n    public function index()\n    {\n        //\n    }\n\n    /**\n     * Show the form for creating a new resource.\n     */\n    public function create()\n    {\n        //\n    }\n\n    /**\n     * Store a newly created resource in storage.\n     */\n    public function store(Request $request)\n    {\n        //\n    }\n\n    /**\n     * Display the specified resource.\n     */\n    public function show(CapturedThing $capturedThing)\n    {\n        //\n    }\n\n    /**\n     * Show the form for editing the specified resource.\n     */\n    public function edit(CapturedThing $capturedThing)\n    {\n        //\n    }\n\n    /**\n     * Update the specified resource in storage.\n     */\n    public function update(Request $request, CapturedThing $capturedThing)\n    {\n        //\n    }\n\n    /**\n     * Remove the specified resource from storage.\n     */\n    public function destroy(CapturedThing $capturedThing)\n    {\n        //\n    }\n}\n"
+          }
+        ]
+      }
+    ]
+  },
+  "created": [
+    "file:///project/app/Models/CapturedThing.php",
+    "file:///project/database/migrations/2024_05_01_120000_create_captured_things_table.php",
+    "file:///project/database/factories/CapturedThingFactory.php",
+    "file:///project/app/Http/Controllers/CapturedThingController.php"
+  ]
+}

@@ -33,7 +33,7 @@ language servers. What it does:
 | `crates/phoxite` | The engine: parsing (Mago), indexes (redb), types, inspections, refactorings, Laravel. |
 | `crates/phoxite-lsp` | The language server over stdio. |
 | `editors/vscode` | The VS Code extension (also Cursor, VSCodium, Windsurf through Open VSX). |
-| `editors/openidea` | The Laravel tools as an OpenIDEA plugin (started: the routes view and Go to Route). |
+| `editors/openidea` | The Laravel tools as an OpenIDEA plugin. |
 | `docs/editors.md` | Setting the server up in OpenIDEA, Neovim, Helix, Zed and Sublime Text. |
 | `docs/engine` | The engine's design notes and roadmap. |
 | `docs/openidea.md` | How OpenIDEA uses Phoxite, and what a release must keep for it. |

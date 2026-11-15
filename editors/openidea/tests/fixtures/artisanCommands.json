@@ -1,0 +1,173 @@
+[
+  {
+    "name": "inspire",
+    "description": "Display an inspiring quote",
+    "synopsis": "inspire",
+    "arguments": [],
+    "options": [],
+    "source": "closure",
+    "class": null,
+    "location": {
+      "path": "/project/routes/console.php",
+      "range": {
+        "start": {
+          "line": 6,
+          "col": 18
+        },
+        "end": {
+          "line": 6,
+          "col": 25
+        }
+      }
+    }
+  },
+  {
+    "name": "posts:prune-drafts",
+    "description": "Delete the drafts nobody touched for a while",
+    "synopsis": "posts:prune-drafts [--force] [<days>]",
+    "arguments": [
+      {
+        "name": "days",
+        "description": "Age of the drafts in days",
+        "required": false,
+        "array": false,
+        "default": "30"
+      }
+    ],
+    "options": [
+      {
+        "name": "force",
+        "shortcut": null,
+        "description": "Delete without asking",
+        "acceptsValue": false,
+        "array": false,
+        "default": null
+      }
+    ],
+    "source": "class",
+    "class": "App\\Console\\Commands\\PruneDrafts",
+    "location": {
+      "path": "/project/app/Console/Commands/PruneDrafts.php",
+      "range": {
+        "start": {
+          "line": 10,
+          "col": 28
+        },
+        "end": {
+          "line": 10,
+          "col": 46
+        }
+      }
+    }
+  },
+  {
+    "name": "posts:publish",
+    "description": "Publish the scheduled posts whose time has come",
+    "synopsis": "posts:publish [--dry-run]",
+    "arguments": [],
+    "options": [
+      {
+        "name": "dry-run",
+        "shortcut": null,
+        "description": "List the posts without publishing them",
+        "acceptsValue": false,
+        "array": false,
+        "default": null
+      }
+    ],
+    "source": "class",
+    "class": "App\\Console\\Commands\\PublishScheduledPosts",
+    "location": {
+      "path": "/project/app/Console/Commands/PublishScheduledPosts.php",
+      "range": {
+        "start": {
+          "line": 15,
+          "col": 28
+        },
+        "end": {
+          "line": 15,
+          "col": 41
+        }
+      }
+    }
+  },
+  {
+    "name": "about",
+    "description": "Display basic information about your application",
+    "synopsis": "about [--only=ONLY] [--json]",
+    "arguments": [],
+    "options": [
+      {
+        "name": "only",
+        "shortcut": null,
+        "description": "The section to display",
+        "acceptsValue": true,
+        "array": false,
+        "default": null
+      },
+      {
+        "name": "json",
+        "shortcut": null,
+        "description": "Output the information as JSON",
+        "acceptsValue": false,
+        "array": false,
+        "default": null
+      }
+    ],
+    "source": "framework",
+    "class": null,
+    "location": null
+  },
+  {
+    "name": "cache:clear",
+    "description": "Flush the application cache",
+    "synopsis": "cache:clear [--tags=TAGS] [<store>]",
+    "arguments": [
+      {
+        "name": "store",
+        "description": "The name of the store to clear",
+        "required": false,
+        "array": false,
+        "default": null
+      }
+    ],
+    "options": [
+      {
+        "name": "tags",
+        "shortcut": null,
+        "description": "The cache tags to clear",
+        "acceptsValue": true,
+        "array": false,
+        "default": null
+      }
+    ],
+    "source": "framework",
+    "class": null,
+    "location": null
+  },
+  {
+    "name": "cache:forget",
+    "description": "Remove an item from the cache",
+    "synopsis": "cache:forget <key> [<store>]",
+    "arguments": [
+      {
+        "name": "key",
+        "description": "The key to remove",
+        "required": true,
+        "array": false,
+        "default": null
+      },
+      {
+        "name": "store",
+        "description": "The store to remove the key from",
+        "required": false,
+        "array": false,
+        "default": null
+      }
+    ],
+    "options": [],
+    "source": "framework",
+    "class": null,
+    "location": null
+  }
+]

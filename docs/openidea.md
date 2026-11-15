@@ -34,10 +34,12 @@ The last two are merged into OpenIDEA's `main` and come with the release after 0
 
 ## What is on the way
 
-- **The Laravel tools as a plugin**, in `editors/openidea`, on top of that plugin API. The
-  routes view, Go to Route and the route lenses are there; the Eloquent model view, the
-  code generators, Run Artisan Command and "Create translation key…" are not yet, and
-  the plugin is not published in OpenIDEA's plugin registry.
+- **The Laravel tools as a plugin**, in `editors/openidea`, on top of that plugin API: the
+  routes view and lenses, the Eloquent model view with Add Columns, the generators, New
+  Eloquent Model, Run Artisan Command and "Create translation key…". Its README lists
+  what it lacks next to the VS Code extension. It is not yet published in OpenIDEA's
+  plugin registry, and it has been tested against the SDK's mock host and the server's
+  real answers, not yet inside a running OpenIDEA.
 - Change Signature, the Extract Method options and the Generate member choosers have no
   dialog in OpenIDEA: it gets the plain actions (`docs/editors.md`).
 

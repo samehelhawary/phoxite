@@ -6,9 +6,9 @@
   which offers Phoxite as a selectable PHP language server (`docs/openidea.md`).
 - In OpenIDEA (after 0.1.45), Pull Members Up and Push Members Down work for PHP with
   Phoxite as the server.
-- An OpenIDEA plugin is started in `editors/openidea`: the Laravel Routes view and Go to
-  Route, from the server's `phoxite/laravel/routes` request, and the route lenses
-  (`laravel.routeActions`).
+- An OpenIDEA plugin in `editors/openidea` with the Laravel tools: the routes view and
+  lenses, the Eloquent model view with Add Columns, the generators, New Eloquent Model,
+  Run Artisan Command and "Create translation key…".
 
 ## 0.2.1 — 2026-11-15
 

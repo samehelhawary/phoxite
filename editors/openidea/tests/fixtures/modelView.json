@@ -1,0 +1,392 @@
+{
+  "class": "App\\Models\\Post",
+  "name": "Post",
+  "location": {
+    "path": "/project/app/Models/Post.php",
+    "range": {
+      "start": {
+        "line": 15,
+        "col": 6
+      },
+      "end": {
+        "line": 15,
+        "col": 10
+      }
+    }
+  },
+  "table": "posts",
+  "primaryKey": "id",
+  "keyType": "int",
+  "incrementing": true,
+  "schemaCertain": true,
+  "columns": [
+    {
+      "name": "id",
+      "ty": "int",
+      "nullable": false,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": false,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 11,
+            "col": 20
+          },
+          "end": {
+            "line": 11,
+            "col": 22
+          }
+        }
+      }
+    },
+    {
+      "name": "author_id",
+      "ty": "int",
+      "nullable": false,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": false,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 12,
+            "col": 30
+          },
+          "end": {
+            "line": 12,
+            "col": 41
+          }
+        }
+      }
+    },
+    {
+      "name": "title",
+      "ty": "string",
+      "nullable": false,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": true,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 13,
+            "col": 27
+          },
+          "end": {
+            "line": 13,
+            "col": 34
+          }
+        }
+      }
+    },
+    {
+      "name": "slug",
+      "ty": "string",
+      "nullable": false,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": true,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 14,
+            "col": 27
+          },
+          "end": {
+            "line": 14,
+            "col": 33
+          }
+        }
+      }
+    },
+    {
+      "name": "body",
+      "ty": "string",
+      "nullable": false,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": true,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 15,
+            "col": 25
+          },
+          "end": {
+            "line": 15,
+            "col": 31
+          }
+        }
+      }
+    },
+    {
+      "name": "status",
+      "ty": "string",
+      "nullable": false,
+      "cast": "\\App\\Enums\\PostStatus",
+      "source": "migration",
+      "database": null,
+      "fillable": true,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 16,
+            "col": 27
+          },
+          "end": {
+            "line": 16,
+            "col": 35
+          }
+        }
+      }
+    },
+    {
+      "name": "published_at",
+      "ty": "string",
+      "nullable": true,
+      "cast": "datetime",
+      "source": "migration",
+      "database": null,
+      "fillable": true,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 17,
+            "col": 30
+          },
+          "end": {
+            "line": 17,
+            "col": 44
+          }
+        }
+      }
+    },
+    {
+      "name": "options",
+      "ty": "string",
+      "nullable": true,
+      "cast": "array",
+      "source": "migration",
+      "database": null,
+      "fillable": false,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 18,
+            "col": 25
+          },
+          "end": {
+            "line": 18,
+            "col": 34
+          }
+        }
+      }
+    },
+    {
+      "name": "created_at",
+      "ty": "Illuminate\\Support\\Carbon",
+      "nullable": true,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": false,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 19,
+            "col": 20
+          },
+          "end": {
+            "line": 19,
+            "col": 30
+          }
+        }
+      }
+    },
+    {
+      "name": "updated_at",
+      "ty": "Illuminate\\Support\\Carbon",
+      "nullable": true,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": false,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 19,
+            "col": 20
+          },
+          "end": {
+            "line": 19,
+            "col": 30
+          }
+        }
+      }
+    },
+    {
+      "name": "deleted_at",
+      "ty": "Illuminate\\Support\\Carbon",
+      "nullable": true,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": false,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 20,
+            "col": 20
+          },
+          "end": {
+            "line": 20,
+            "col": 31
+          }
+        }
+      }
+    },
+    {
+      "name": "comments_count",
+      "ty": "int",
+      "nullable": false,
+      "cast": null,
+      "source": "migration",
+      "database": null,
+      "fillable": false,
+      "hidden": false,
+      "location": {
+        "path": "/project/database/migrations/2024_05_02_100000_create_comments_table.php",
+        "range": {
+          "start": {
+            "line": 19,
+            "col": 36
+          },
+          "end": {
+            "line": 19,
+            "col": 52
+          }
+        }
+      }
+    }
+  ],
+  "relations": [],
+  "scopes": [
+    {
+      "name": "published",
+      "method": "scopePublished",
+      "ty": null,
+      "location": {
+        "path": "/project/app/Models/Post.php",
+        "range": {
+          "start": {
+            "line": 45,
+            "col": 20
+          },
+          "end": {
+            "line": 45,
+            "col": 34
+          }
+        }
+      }
+    }
+  ],
+  "accessors": [],
+  "related": [
+    {
+      "kind": "factory",
+      "name": "Database\\Factories\\PostFactory",
+      "location": {
+        "path": "/project/database/factories/PostFactory.php",
+        "range": {
+          "start": {
+            "line": 10,
+            "col": 6
+          },
+          "end": {
+            "line": 10,
+            "col": 17
+          }
+        }
+      }
+    },
+    {
+      "kind": "policy",
+      "name": "App\\Policies\\PostPolicy",
+      "location": {
+        "path": "/project/app/Policies/PostPolicy.php",
+        "range": {
+          "start": {
+            "line": 7,
+            "col": 6
+          },
+          "end": {
+            "line": 7,
+            "col": 16
+          }
+        }
+      }
+    },
+    {
+      "kind": "migration",
+      "name": "2024_05_01_100000_create_posts_table",
+      "location": {
+        "path": "/project/database/migrations/2024_05_01_100000_create_posts_table.php",
+        "range": {
+          "start": {
+            "line": 11,
+            "col": 20
+          },
+          "end": {
+            "line": 11,
+            "col": 22
+          }
+        }
+      }
+    },
+    {
+      "kind": "migration",
+      "name": "2024_05_02_100000_create_comments_table",
+      "location": {
+        "path": "/project/database/migrations/2024_05_02_100000_create_comments_table.php",
+        "range": {
+          "start": {
+            "line": 19,
+            "col": 36
+          },
+          "end": {
+            "line": 19,
+            "col": 52
+          }
+        }
+      }
+    }
+  ]
+}

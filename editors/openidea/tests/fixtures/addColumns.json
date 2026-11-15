@@ -1,0 +1,59 @@
+{
+  "edit": {
+    "documentChanges": [
+      {
+        "kind": "create",
+        "uri": "file:///project/database/migrations/2024_05_01_120000_add_captured_votes_to_posts_table.php",
+        "options": {
+          "overwrite": false,
+          "ignoreIfExists": true
+        }
+      },
+      {
+        "textDocument": {
+          "uri": "file:///project/database/migrations/2024_05_01_120000_add_captured_votes_to_posts_table.php",
+          "version": null
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 0
+              },
+              "end": {
+                "line": 0,
+                "character": 0
+              }
+            },
+            "newText": "<?php\n\nuse Illuminate\\Database\\Migrations\\Migration;\nuse Illuminate\\Database\\Schema\\Blueprint;\nuse Illuminate\\Support\\Facades\\Schema;\n\nreturn new class extends Migration\n{\n    public function up(): void\n    {\n        Schema::table('posts', function (Blueprint $table) {\n            $table->integer('captured_votes')->nullable();\n        });\n    }\n\n    public function down(): void\n    {\n        Schema::table('posts', function (Blueprint $table) {\n            $table->dropColumn(['captured_votes']);\n        });\n    }\n};\n"
+          }
+        ]
+      },
+      {
+        "textDocument": {
+          "uri": "file:///project/app/Models/Post.php",
+          "version": null
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 21,
+                "character": 76
+              },
+              "end": {
+                "line": 21,
+                "character": 76
+              }
+            },
+            "newText": ", 'captured_votes'"
+          }
+        ]
+      }
+    ]
+  },
+  "created": [
+    "file:///project/database/migrations/2024_05_01_120000_add_captured_votes_to_posts_table.php"
+  ]
+}

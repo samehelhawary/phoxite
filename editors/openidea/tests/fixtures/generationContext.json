@@ -1,0 +1,415 @@
+{
+  "namespace": "App\\",
+  "modules": [
+    "Billing"
+  ],
+  "defaultModule": null,
+  "models": [
+    "App\\Models\\Comment",
+    "App\\Models\\Post",
+    "App\\Models\\Tag"
+  ],
+  "generators": [
+    {
+      "id": "model",
+      "title": "Model",
+      "description": "An Eloquent model with its fields and relations, and optionally its migration, factory, seeder, controller, Form Requests, JSON resource and policy",
+      "templates": [
+        "Laravel Model",
+        "Laravel Migration",
+        "Laravel Factory",
+        "Laravel Seeder",
+        "Laravel Controller",
+        "Laravel Resource Controller",
+        "Laravel API Controller",
+        "Laravel Form Request",
+        "Laravel JSON Resource",
+        "Laravel Policy"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "controller",
+      "title": "Controller",
+      "description": "An empty controller",
+      "templates": [
+        "Laravel Controller"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "resource-controller",
+      "title": "Resource Controller",
+      "description": "A controller with the resource actions, for a model",
+      "templates": [
+        "Laravel Resource Controller",
+        "Laravel API Controller"
+      ],
+      "options": [
+        "model",
+        "api"
+      ],
+      "fields": []
+    },
+    {
+      "id": "middleware",
+      "title": "Middleware",
+      "description": "An HTTP middleware",
+      "templates": [
+        "Laravel Middleware"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "request",
+      "title": "Form Request",
+      "description": "A Form Request validating a request",
+      "templates": [
+        "Laravel Form Request"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "resource",
+      "title": "JSON Resource",
+      "description": "A JSON resource, with the fields of a model",
+      "templates": [
+        "Laravel JSON Resource"
+      ],
+      "options": [
+        "model"
+      ],
+      "fields": []
+    },
+    {
+      "id": "resource-collection",
+      "title": "Resource Collection",
+      "description": "A JSON resource collection",
+      "templates": [
+        "Laravel Resource Collection"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "factory",
+      "title": "Factory",
+      "description": "A model factory, with fake values for its fields",
+      "templates": [
+        "Laravel Factory"
+      ],
+      "options": [
+        "model"
+      ],
+      "fields": []
+    },
+    {
+      "id": "seeder",
+      "title": "Seeder",
+      "description": "A database seeder",
+      "templates": [
+        "Laravel Seeder"
+      ],
+      "options": [
+        "model"
+      ],
+      "fields": []
+    },
+    {
+      "id": "migration",
+      "title": "Migration",
+      "description": "A migration creating or updating a table",
+      "templates": [
+        "Laravel Migration",
+        "Laravel Update Migration"
+      ],
+      "options": [
+        "table",
+        "create"
+      ],
+      "fields": []
+    },
+    {
+      "id": "pivot-migration",
+      "title": "Pivot Table Migration",
+      "description": "A migration creating the pivot table of two models",
+      "templates": [
+        "Laravel Migration"
+      ],
+      "options": [
+        "model",
+        "related"
+      ],
+      "fields": []
+    },
+    {
+      "id": "event",
+      "title": "Event",
+      "description": "An event",
+      "templates": [
+        "Laravel Event"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "listener",
+      "title": "Listener",
+      "description": "An event listener",
+      "templates": [
+        "Laravel Listener"
+      ],
+      "options": [
+        "event",
+        "queued"
+      ],
+      "fields": []
+    },
+    {
+      "id": "job",
+      "title": "Job",
+      "description": "A job",
+      "templates": [
+        "Laravel Job"
+      ],
+      "options": [
+        "queued"
+      ],
+      "fields": []
+    },
+    {
+      "id": "mail",
+      "title": "Mail",
+      "description": "A mailable",
+      "templates": [
+        "Laravel Mail"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "notification",
+      "title": "Notification",
+      "description": "A notification",
+      "templates": [
+        "Laravel Notification"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "observer",
+      "title": "Observer",
+      "description": "A model observer",
+      "templates": [
+        "Laravel Observer"
+      ],
+      "options": [
+        "model"
+      ],
+      "fields": []
+    },
+    {
+      "id": "policy",
+      "title": "Policy",
+      "description": "An authorization policy",
+      "templates": [
+        "Laravel Policy",
+        "Laravel Plain Policy"
+      ],
+      "options": [
+        "model"
+      ],
+      "fields": []
+    },
+    {
+      "id": "rule",
+      "title": "Validation Rule",
+      "description": "A validation rule object",
+      "templates": [
+        "Laravel Rule"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "exception",
+      "title": "Exception",
+      "description": "An exception with report and render methods",
+      "templates": [
+        "Laravel Exception"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "http-exception",
+      "title": "HTTP Exception",
+      "description": "An exception with an HTTP status",
+      "templates": [
+        "Laravel HTTP Exception"
+      ],
+      "options": [
+        "status"
+      ],
+      "fields": []
+    },
+    {
+      "id": "provider",
+      "title": "Service Provider",
+      "description": "A service provider, registered in bootstrap/providers.php",
+      "templates": [
+        "Laravel Service Provider"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "command",
+      "title": "Console Command",
+      "description": "An Artisan command",
+      "templates": [
+        "Laravel Console Command"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "component",
+      "title": "Blade Component",
+      "description": "A Blade component class and its view",
+      "templates": [
+        "Laravel Component",
+        "Laravel Component View"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "anonymous-component",
+      "title": "Anonymous Blade Component",
+      "description": "A Blade component view without a class",
+      "templates": [
+        "Laravel Component View"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "view",
+      "title": "View",
+      "description": "A Blade view",
+      "templates": [
+        "Laravel View"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "view-composer",
+      "title": "View Composer",
+      "description": "A view composer",
+      "templates": [
+        "Laravel View Composer"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "channel",
+      "title": "Broadcasting Channel",
+      "description": "A broadcasting channel class",
+      "templates": [
+        "Laravel Channel"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "enum",
+      "title": "Enum",
+      "description": "An enum, backed or pure",
+      "templates": [
+        "Laravel Enum"
+      ],
+      "options": [
+        "backing"
+      ],
+      "fields": []
+    },
+    {
+      "id": "feature-test",
+      "title": "Feature Test",
+      "description": "A feature test (PHPUnit or Pest)",
+      "templates": [
+        "Laravel Test",
+        "Laravel Pest Test"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "unit-test",
+      "title": "Unit Test",
+      "description": "A unit test (PHPUnit or Pest)",
+      "templates": [
+        "Laravel Test",
+        "Laravel Pest Test"
+      ],
+      "options": [],
+      "fields": []
+    },
+    {
+      "id": "ide-json:acme.dto",
+      "title": "Data Transfer Object",
+      "description": "From /project/ide.json",
+      "templates": [
+        "/project/stubs/dto.stub",
+        "/project/stubs/missing.stub"
+      ],
+      "options": [],
+      "fields": [
+        {
+          "id": "readonly",
+          "title": "Read-only",
+          "kind": "checkbox",
+          "variable": "READONLY",
+          "optional": true,
+          "default": "true",
+          "options": []
+        },
+        {
+          "id": "source",
+          "title": "Source",
+          "kind": "select",
+          "variable": "SOURCE",
+          "optional": false,
+          "default": "request",
+          "options": [
+            {
+              "value": "request",
+              "label": "Request"
+            },
+            {
+              "value": "model",
+              "label": "Model"
+            }
+          ]
+        },
+        {
+          "id": "summary",
+          "title": "Summary",
+          "kind": "text",
+          "variable": "SUMMARY",
+          "optional": true,
+          "default": "",
+          "options": []
+        }
+      ]
+    }
+  ]
+}

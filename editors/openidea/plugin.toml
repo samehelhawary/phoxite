@@ -9,8 +9,13 @@ wasm = "dist/plugin.wasm"
 activation = ["on-command:*"]
 
 [capabilities]
-# The routes come from phoxite-lsp's own `phoxite/laravel/*` requests.
-required = ["lsp:phoxite"]
+# Everything comes from phoxite-lsp's own `phoxite/laravel/*` requests. The view names
+# files relative to the project, and remembers which model it shows.
+required = ["lsp:phoxite", "project.read", "storage"]
+# project.write: the generators, Add Columns and Create translation key write files.
+# editor.read / editor.write: a file with unsaved changes is edited in its editor.
+# process:php: Run Artisan Command.
+optional = ["project.write", "editor.read", "editor.write", "process:php"]
 
 [[contributes.commands]]
 id = "go-to-route"
@@ -20,20 +25,69 @@ title = "Laravel: Go to Route…"
 id = "refresh-routes"
 title = "Laravel: Refresh Routes"
 
+[[contributes.commands]]
+id = "run-artisan"
+title = "Laravel: Run Artisan Command…"
+
+[[contributes.commands]]
+id = "show-model"
+title = "Laravel: Show Eloquent Model…"
+
+[[contributes.commands]]
+id = "generate"
+title = "Laravel: Generate…"
+
+[[contributes.commands]]
+id = "new-model"
+title = "Laravel: New Eloquent Model…"
+
+# The four below run when a lens or an action of the server is clicked.
+[[contributes.commands]]
+id = "route-actions"
+title = "Laravel: Go to the Routes of This Method"
+
+[[contributes.commands]]
+id = "model-view"
+title = "Laravel: Show This Eloquent Model"
+
+[[contributes.commands]]
+id = "run-artisan-lens"
+title = "Laravel: Run This Artisan Command"
+
+[[contributes.commands]]
+id = "create-translation"
+title = "Laravel: Create Translation Key…"
+
 [[contributes.views]]
 id = "routes"
 title = "Laravel Routes"
 icon = "server"
 location = "left"
 
-# Runs when a route lens is clicked.
-[[contributes.commands]]
-id = "route-actions"
-title = "Laravel: Go to the Routes of This Method"
+[[contributes.views]]
+id = "model"
+title = "Eloquent Model"
+icon = "server"
+location = "right"
 
-# phoxite-lsp's route lenses and URI hints carry `laravel.routeActions` (the routes as
-# a JSON string) and leave running it to the client.
+# phoxite-lsp's lenses, hints and actions carry these commands and leave running them
+# to the client (`docs/editors.md`).
 [[contributes.serverCommands]]
 server = "phoxite"
 command = "laravel.routeActions"
 run = "route-actions"
+
+[[contributes.serverCommands]]
+server = "phoxite"
+command = "laravel.modelView"
+run = "model-view"
+
+[[contributes.serverCommands]]
+server = "phoxite"
+command = "laravel.runArtisan"
+run = "run-artisan-lens"
+
+[[contributes.serverCommands]]
+server = "phoxite"
+command = "laravel.createTranslation"
+run = "create-translation"

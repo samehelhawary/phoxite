@@ -1,0 +1,38 @@
+{
+  "edit": {
+    "documentChanges": [
+      {
+        "kind": "create",
+        "uri": "file:///project/lang/fr/captured.php",
+        "options": {
+          "overwrite": false,
+          "ignoreIfExists": true
+        }
+      },
+      {
+        "textDocument": {
+          "uri": "file:///project/lang/fr/captured.php",
+          "version": null
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 0
+              },
+              "end": {
+                "line": 0,
+                "character": 0
+              }
+            },
+            "newText": "<?php\n\nreturn [\n    'greeting' => 'Bonjour',\n];\n"
+          }
+        ]
+      }
+    ]
+  },
+  "created": [
+    "file:///project/lang/fr/captured.php"
+  ]
+}

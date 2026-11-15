@@ -1,0 +1,150 @@
+[
+  {
+    "name": "home",
+    "methods": [
+      "GET"
+    ],
+    "uri": "/",
+    "action": "App\\Http\\Controllers\\HomeController@__invoke",
+    "middleware": [
+      "web"
+    ],
+    "path": "/project/routes/web.php",
+    "range": {
+      "start": {
+        "line": 6,
+        "col": 7
+      },
+      "end": {
+        "line": 6,
+        "col": 10
+      }
+    },
+    "url": "http://localhost:8000/",
+    "request": "### home\nGET http://localhost:8000/\n"
+  },
+  {
+    "name": "about",
+    "methods": [
+      "GET"
+    ],
+    "uri": "/about",
+    "action": "view about",
+    "middleware": [
+      "web"
+    ],
+    "path": "/project/routes/web.php",
+    "range": {
+      "start": {
+        "line": 8,
+        "col": 7
+      },
+      "end": {
+        "line": 8,
+        "col": 11
+      }
+    },
+    "url": "http://localhost:8000/about",
+    "request": "### about\nGET http://localhost:8000/about\n"
+  },
+  {
+    "name": "posts.index",
+    "methods": [
+      "GET"
+    ],
+    "uri": "/posts",
+    "action": "App\\Http\\Controllers\\PostController@index",
+    "middleware": [
+      "web"
+    ],
+    "path": "/project/routes/web.php",
+    "range": {
+      "start": {
+        "line": 10,
+        "col": 7
+      },
+      "end": {
+        "line": 10,
+        "col": 15
+      }
+    },
+    "url": "http://localhost:8000/posts",
+    "request": "### posts.index\nGET http://localhost:8000/posts\n"
+  },
+  {
+    "name": "posts.show",
+    "methods": [
+      "GET"
+    ],
+    "uri": "/posts/{post}",
+    "action": "App\\Http\\Controllers\\PostController@show",
+    "middleware": [
+      "web"
+    ],
+    "path": "/project/routes/web.php",
+    "range": {
+      "start": {
+        "line": 10,
+        "col": 7
+      },
+      "end": {
+        "line": 10,
+        "col": 15
+      }
+    },
+    "url": "http://localhost:8000/posts/{post}",
+    "request": "### posts.show\nGET http://localhost:8000/posts/{{post}}\n"
+  },
+  {
+    "name": "dashboard.posts.create",
+    "methods": [
+      "GET"
+    ],
+    "uri": "/dashboard/posts/create",
+    "action": "App\\Http\\Controllers\\PostController@create",
+    "middleware": [
+      "web",
+      "auth",
+      "author"
+    ],
+    "path": "/project/routes/web.php",
+    "range": {
+      "start": {
+        "line": 13,
+        "col": 11
+      },
+      "end": {
+        "line": 13,
+        "col": 14
+      }
+    },
+    "url": "http://localhost:8000/dashboard/posts/create",
+    "request": "### dashboard.posts.create\nGET http://localhost:8000/dashboard/posts/create\n"
+  },
+  {
+    "name": "dashboard.posts.store",
+    "methods": [
+      "POST"
+    ],
+    "uri": "/dashboard/posts",
+    "action": "App\\Http\\Controllers\\PostController@store",
+    "middleware": [
+      "web",
+      "auth",
+      "author"
+    ],
+    "path": "/project/routes/web.php",
+    "range": {
+      "start": {
+        "line": 14,
+        "col": 11
+      },
+      "end": {
+        "line": 14,
+        "col": 15
+      }
+    },
+    "url": "http://localhost:8000/dashboard/posts",
+    "request": "### dashboard.posts.store\nPOST http://localhost:8000/dashboard/posts\nContent-Type: application/json\n\n{}\n"
+  }
+]
