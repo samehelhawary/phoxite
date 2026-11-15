@@ -478,7 +478,15 @@ pub fn code_actions(state: &State, p: lsp::CodeActionParams) -> Result<Option<ls
         }
         _ => return Ok(None),
     }
+    // The refactorings with a dialog, for a client that has the dialogs.
+    let dialogs = match (doc.kind, &doc.engine) {
+        (Kind::Php, Some(engine)) if state.support.dialogs => {
+            crate::refactor::dialog_actions(engine, &p.text_document.uri, doc.id, at, &only, &mut actions)
+        }
+        _ => Vec::new(),
+    };
     let mut actions: Vec<_> = actions.into_iter().map(|action| code_action(state, action)).collect();
+    actions.extend(dialogs);
     // Laravel: "Create translation key…" on a key some locale lacks.
     if wants(phoxite::imports::REWRITE)
         && let Some(engine) = &doc.engine

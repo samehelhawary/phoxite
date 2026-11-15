@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Change Signature: a form to rename a function or method, change its visibility and
+  return type, and add, remove, reorder and retype its parameters, updating the calls,
+  overrides and implementations.
+- Extract method and Extract function ask for the name, the visibility, what to pass,
+  `static`, and whether to replace the duplicates.
+- The Generate actions (getters, setters, constructor, Override methods…) let you tick the
+  members.
+- Pull Members Up and Push Members Down.
+- PHPStan and Psalm on save, when the project installs them (`phoxite.analyzers.onSave`).
+- Columns from the project's SQLite database along with the migrations
+  (`phoxite.laravel.database`).
+- The extension stores take a release's packages when the GitHub release is published.
+
 ## 0.1.0 — 2026-11-14
 
 The first release: the engine of [OpenIDEA](https://github.com/l0ng-ai/openidea) as a

@@ -588,6 +588,21 @@ export interface Applied {
   created: string[];
 }
 
+/** The database the server read (`phoxite.laravel.database`). */
+export interface SchemaStatus {
+  path: string;
+  tables: number;
+  columns: number;
+}
+
+/** What "Read the Database Schema Again" reports. */
+export function schemaMessage(status: SchemaStatus | null): string {
+  if (!status) return "No database is set: `phoxite.laravel.database` is empty, or the project's `.env` doesn't use SQLite.";
+  const name = status.path.slice(Math.max(status.path.lastIndexOf("/"), status.path.lastIndexOf("\\")) + 1);
+  const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+  return `Read ${plural(status.tables, "table")} and ${plural(status.columns, "column")} from ${name}.`;
+}
+
 /** A generator template. */
 export interface Template {
   /** `Laravel Model`. */

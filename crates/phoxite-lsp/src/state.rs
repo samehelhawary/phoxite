@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use crossbeam_channel::Sender;
 use lsp_server::{Message, Notification};
@@ -96,6 +96,9 @@ pub struct ClientSupport {
     pub snippets: bool,
     pub work_done_progress: bool,
     pub markdown: bool,
+    /// The client has the dialogs of the refactorings that ask something first
+    /// (`experimental.phoxite.dialogs`).
+    pub dialogs: bool,
 }
 
 pub struct State {
@@ -109,6 +112,10 @@ pub struct State {
     pub events: Sender<e::IdeEvent>,
     /// Problems by file and source (`php`, `blade`), published together.
     pub problems: Mutex<HashMap<PathBuf, BTreeMap<String, Vec<e::Diagnostic>>>>,
+    /// The PHPStan and Psalm runs (`analyzers.rs`).
+    pub analyzers: Mutex<crate::analyzers::Analyzers>,
+    /// The user trusts the workspace: programs of the project may run.
+    trusted: AtomicBool,
     next_doc: AtomicU32,
 }
 
@@ -129,6 +136,8 @@ impl State {
             docs: RwLock::new(HashMap::new()),
             events,
             problems: Mutex::new(HashMap::new()),
+            analyzers: Mutex::default(),
+            trusted: AtomicBool::new(true),
             next_doc: AtomicU32::new(1),
         }
     }
@@ -160,6 +169,7 @@ impl State {
                 engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
                 engine.set_laravel_settings(php.laravel.clone());
                 crate::laravel::load_templates(self, &root, &engine);
+                crate::schema::refresh_quietly(self, &root, &engine);
                 tracing::info!("indexing {}", root.display());
                 self.workspaces.write().push(Workspace { root, engine });
             }
@@ -178,13 +188,30 @@ impl State {
     /// Passes changed settings to every engine.
     pub fn apply_settings(&self, settings: Settings) {
         let php = settings.engine_config();
+        let analyzers = settings.analyzers.on_save;
         *self.settings.write() = settings;
+        if !analyzers {
+            crate::analyzers::clear_all(self);
+        }
         for w in self.workspaces.read().iter() {
             w.engine.set_layout_config(LayoutConfig::from_config(&w.root, &php));
             w.engine.set_stub_filter(StubFilter::from_config(&w.root, &php));
             w.engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
             w.engine.set_laravel_settings(php.laravel.clone());
             crate::laravel::load_templates(self, &w.root, &w.engine);
+            crate::schema::refresh_quietly(self, &w.root, &w.engine);
+        }
+    }
+
+    pub fn is_trusted(&self) -> bool {
+        self.trusted.load(Ordering::Acquire)
+    }
+
+    /// The client said whether the workspace is trusted.
+    pub fn set_trusted(&self, trusted: bool) {
+        self.trusted.store(trusted, Ordering::Release);
+        if !trusted {
+            crate::analyzers::clear_all(self);
         }
     }
 
@@ -274,6 +301,7 @@ impl State {
             // Also drops a template's embedded PHP.
             engine.document_closed(doc.id);
         }
+        self.analyzers.lock().closed(&doc.path);
         self.problems.lock().remove(&doc.path);
         self.notify::<lsp::notification::PublishDiagnostics>(lsp::PublishDiagnosticsParams {
             uri: doc.uri,

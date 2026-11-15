@@ -14,6 +14,7 @@
 //! | `generateClass` | `spec` | an edit |
 //! | `createTranslation` | `key`, `texts` | an edit |
 //! | `templates` | | the generators' templates |
+//! | `refreshSchema` | | the database read again: `{ path, tables, columns }`, or `null` |
 //!
 //! Every request takes an optional `folder`: the URI of a workspace folder (or
 //! of a file in one) choosing the project when several are open; without it
@@ -50,6 +51,7 @@ pub const NEW_MODEL: &str = "phoxite/laravel/newModel";
 pub const GENERATE_CLASS: &str = "phoxite/laravel/generateClass";
 pub const CREATE_TRANSLATION: &str = "phoxite/laravel/createTranslation";
 pub const TEMPLATES: &str = "phoxite/laravel/templates";
+pub const REFRESH_SCHEMA: &str = "phoxite/laravel/refreshSchema";
 
 /// Every request of this module.
 pub const METHODS: &[&str] = &[
@@ -63,6 +65,7 @@ pub const METHODS: &[&str] = &[
     GENERATE_CLASS,
     CREATE_TRANSLATION,
     TEMPLATES,
+    REFRESH_SCHEMA,
 ];
 
 /// The extension of an edited template's file: `Laravel Model.ft`.
@@ -305,6 +308,7 @@ pub fn request(state: &State, method: &str, params: Value) -> Result<Value> {
         _ => {
             let (root, engine) = found.ok_or(NOT_LARAVEL)?;
             match method {
+                REFRESH_SCHEMA => json(crate::schema::refresh(state, &root, &engine)?),
                 MODEL_VIEW => {
                     let view: ModelView = engine
                         .laravel_model_view(&p.class)

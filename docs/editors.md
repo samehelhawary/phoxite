@@ -108,6 +108,60 @@ Everything is plain LSP except the client commands the server's results carry:
 and one server command, `phoxite.server.rescan` (`workspace/executeCommand`), which indexes the
 workspace folders again.
 
+## Refactorings that ask first
+
+Change Signature, the Extract Method dialog and the Generate actions with a member chooser
+need a dialog, so the server offers them only to a client that declares
+`experimental.phoxite.dialogs: true` in its capabilities. Other clients get the plain
+actions (Extract method with a default name, Generate getters for every property). Each of
+these code actions carries a client command and no edit:
+
+| Command | Arguments | Request to send back |
+| --- | --- | --- |
+| `phoxite.changeSignature` | the document's URI, the data (`position`, `signature`) | `phoxite/refactor/changeSignature` with the wanted signature in `data.change` |
+| `phoxite.extractMethod` | the URI, the data (`defaults`, `duplicates`, `staticRequired`, `usesThis`…) | `phoxite/refactor/extractMethod` with the choice in `data.change` |
+| `phoxite.generateMembers` | the URI, the data (`title`, `members`) | `phoxite/refactor/generate` with the member ids in `data.chosen` |
+
+The client shows its dialog, puts the answer in the data and sends `{ uri, data }`; the
+answer is `{ edit }`, an LSP `WorkspaceEdit` to apply.
+
+Pull Members Up and Push Members Down are two requests any client can send, with `kind`
+`pullUp` or `pushDown`:
+
+| Request | Params | Result |
+| --- | --- | --- |
+| `phoxite/refactor/hierarchyMembers` | `uri`, `position`, `kind` | `{ className, targets, members }`: where the members can go and which can move |
+| `phoxite/refactor/hierarchy` | `uri`, `position`, `kind`, `target` (a target's `id`, for pull up), `choices` (`{ id, makeAbstract }`) | `{ problems, edit }` |
+
+A problem has a `severity` (`info`, `warning`, `error`, `fatal`) and a `message`. With a
+fatal one there is no `edit`; the client confirms the others before applying it.
+
+## The database schema
+
+The setting `laravel.database` has the server read the tables and columns of a SQLite
+database, read-only, and use them along with the migrations (the database wins on a
+column's type and nullability): `auto` for the database the project's `.env` names
+(`DB_CONNECTION=sqlite`, with `DB_DATABASE` or `database/database.sqlite`), or the path of a
+SQLite file relative to the project. Empty, the default, uses the migrations alone.
+
+The server reads the database when the project opens and when the setting changes. To
+follow later changes, the client reports the database file and `.env` in
+`workspace/didChangeWatchedFiles`, or sends `phoxite/laravel/refreshSchema`. MySQL and
+PostgreSQL are not read.
+
+## PHPStan and Psalm
+
+With the setting `analyzers.onSave` on, the server runs the analysers the project installs
+(`vendor/bin/phpstan`; `vendor/bin/psalm` with a `psalm.xml`) on each PHP file the client
+reports as saved (`textDocument/didSave`), using the interpreter of `analyzers.phpPath`
+(`php` when empty). Their problems are published with the file's other diagnostics under
+the sources `phpstan` and `psalm`, without those the engine already reports.
+
+These tools run code of the project. A client with a notion of workspace trust sends
+`trusted: false` in `initializationOptions` for a workspace the user doesn't trust, and the
+notification `phoxite/workspaceTrust` with `{ trusted }` when that changes; nothing runs
+while it is false.
+
 ## Laravel requests
 
 The data behind the Laravel tools of the VS Code extension is there for any client, as
@@ -125,6 +179,7 @@ The data behind the Laravel tools of the VS Code extension is there for any clie
 | `phoxite/laravel/newModel` | `spec` (`{ name, fields, relations, indexes, migration, factory, … }`) | an edit |
 | `phoxite/laravel/createTranslation` | `key`, `texts` (`{ locale, text }`) | an edit |
 | `phoxite/laravel/templates` | | the generators' templates: `{ name, path, body, edited }` |
+| `phoxite/laravel/refreshSchema` | | the database read again: `{ path, tables, columns }`, or `null` when the setting names none |
 
 - Every request takes an optional `folder`: the URI of a workspace folder (or of a file in
   one), choosing the project when several are open. Without it the first Laravel project

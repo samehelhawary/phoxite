@@ -24,6 +24,11 @@ fn fixture(name: &str) -> PathBuf {
 
 impl Client {
     fn start(root: &Path) -> Self {
+        Self::start_with(root, Value::Null)
+    }
+
+    /// Starts the server for a client declaring `experimental` capabilities.
+    fn start_with(root: &Path, experimental: Value) -> Self {
         let (client, server) = Connection::memory();
         let handle = std::thread::spawn(move || crate::server::run(server).unwrap());
         let cache = tempfile::tempdir().unwrap();
@@ -33,7 +38,8 @@ impl Client {
             "textDocument": {
                 "completion": { "completionItem": { "snippetSupport": true, "insertReplaceSupport": true } },
                 "hover": { "contentFormat": ["markdown"] }
-            }
+            },
+            "experimental": experimental
         });
         let init = c.request::<r::Initialize>(json!({
             "processId": null,
@@ -78,6 +84,10 @@ impl Client {
 
     fn notify<N: n::Notification>(&self, params: Value) {
         self.conn.sender.send(Message::Notification(Notification::new(N::METHOD.to_owned(), params))).unwrap();
+    }
+
+    fn notify_custom(&self, method: &str, params: Value) {
+        self.conn.sender.send(Message::Notification(Notification::new(method.to_owned(), params))).unwrap();
     }
 
     fn open(&self, path: &Path, language: &str) -> Url {
@@ -501,6 +511,276 @@ fn laravel_requests_outside_laravel_projects() {
     assert!(c.call(l::GENERATION_CONTEXT, json!({})).unwrap().is_null());
     let error = c.call(l::GENERATE_CLASS, json!({ "spec": { "generator": "enum", "name": "A" } })).unwrap_err();
     assert!(error.contains("Not a Laravel project"), "{error}");
+    c.shutdown();
+}
+
+/// A project with a small class hierarchy, for the refactorings.
+fn shop_project() -> (tempfile::TempDir, PathBuf) {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(tmp.path()).unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(root.join("composer.json"), r#"{ "autoload": { "psr-4": { "App\\": "src/" } } }"#).unwrap();
+    std::fs::write(root.join("src/Base.php"), "<?php\n\nnamespace App;\n\nclass Base\n{\n}\n").unwrap();
+    std::fs::write(
+        root.join("src/Shop.php"),
+        "<?php\n\nnamespace App;\n\nclass Shop extends Base\n{\n    private int $count = 0;\n    private string $label = '';\n\n    public function total(int $a, int $b): int\n    {\n        $sum = $a + $b;\n        return $sum * 2;\n    }\n\n    public function run(): int\n    {\n        return $this->total(1, 2);\n    }\n}\n",
+    )
+    .unwrap();
+    (tmp, root)
+}
+
+fn actions_at(c: &mut Client, uri: &Url, start: (u32, u32), end: (u32, u32), title: &str) -> Vec<Value> {
+    let params = json!({
+        "textDocument": { "uri": uri },
+        "range": { "start": { "line": start.0, "character": start.1 }, "end": { "line": end.0, "character": end.1 } },
+        "context": { "diagnostics": [] }
+    });
+    let found = c.request_until::<r::CodeActionRequest>(params, |v| {
+        v.as_array().is_some_and(|a| a.iter().any(|x| x["title"].as_str().is_some_and(|t| t.contains(title))))
+    });
+    found.as_array().cloned().unwrap_or_default()
+}
+
+fn titled<'a>(actions: &'a [Value], title: &str) -> &'a Value {
+    actions.iter().find(|a| a["title"].as_str().is_some_and(|t| t.contains(title))).unwrap_or_else(|| {
+        panic!("no action {title:?} in {:?}", actions.iter().map(|a| &a["title"]).collect::<Vec<_>>())
+    })
+}
+
+#[test]
+fn refactorings_with_a_dialog() {
+    let (_tmp, root) = shop_project();
+    let shop = root.join("src/Shop.php");
+    let mut c = Client::start_with(&root, json!({ "phoxite": { "dialogs": true } }));
+    let uri = c.open(&shop, "php");
+
+    // Change Signature: the action carries the signature; the dialog's answer comes back.
+    let name = find(&shop, "total(int", 0);
+    let actions = actions_at(&mut c, &uri, name, name, "Change signature");
+    let action = titled(&actions, "Change signature of 'Shop::total'…");
+    assert_eq!(action["command"]["command"], "phoxite.changeSignature");
+    assert_eq!(action["command"]["arguments"][0], uri.as_str());
+    let mut data = action["command"]["arguments"][1].clone();
+    let mut change = data["signature"].clone();
+    assert_eq!(change["parameters"].as_array().unwrap().len(), 2);
+    change["functionName"] = json!("sum");
+    change["parameters"].as_array_mut().unwrap().reverse();
+    data["change"] = change;
+    let changed = c.call("phoxite/refactor/changeSignature", json!({ "uri": uri, "data": data })).unwrap();
+    let text = changed["edit"].to_string();
+    for part in [r#""newText":"sum""#, r#""newText":"int $b, int $a""#, r#""newText":"2, 1""#] {
+        assert!(text.contains(part), "{part} not in {text}");
+    }
+    let unanswered = action["command"]["arguments"][1].clone();
+    let refused = c.call("phoxite/refactor/changeSignature", json!({ "uri": uri, "data": unanswered }));
+    assert_eq!(refused.unwrap_err(), "Choose the new signature first");
+
+    // A member chooser replaces the action generating every member.
+    let property = find(&shop, "$count", 1);
+    let actions = actions_at(&mut c, &uri, property, property, "Generate getters…");
+    titled(&actions, "Generate constructor…");
+    assert!(!actions.iter().any(|a| a["title"] == "Generate constructor"), "the plain action stays");
+    let action = titled(&actions, "Generate getters…");
+    assert_eq!(action["command"]["command"], "phoxite.generateMembers");
+    let mut data = action["command"]["arguments"][1].clone();
+    let members: Vec<&str> = data["members"].as_array().unwrap().iter().filter_map(|m| m["id"].as_str()).collect();
+    assert_eq!(members, ["count", "label"]);
+    data["chosen"] = json!(["count"]);
+    let generated = c.call("phoxite/refactor/generate", json!({ "uri": uri, "data": data })).unwrap();
+    let text = generated["edit"].to_string();
+    assert!(text.contains("getCount") && !text.contains("getLabel"), "{text}");
+
+    // Extract Method: the defaults, then the chosen name.
+    let start = find(&shop, "$sum = $a + $b;", 0);
+    let end = (start.0, start.1 + "$sum = $a + $b;".len() as u32);
+    let actions = actions_at(&mut c, &uri, start, end, "Extract method…");
+    let action = titled(&actions, "Extract method…");
+    assert_eq!(action["command"]["command"], "phoxite.extractMethod");
+    let mut data = action["command"]["arguments"][1].clone();
+    assert_eq!(data["className"], "Shop");
+    let mut change = data["defaults"].clone();
+    change["name"] = json!("add");
+    data["change"] = change;
+    let extracted = c.call("phoxite/refactor/extractMethod", json!({ "uri": uri, "data": data })).unwrap();
+    let text = extracted["edit"].to_string();
+    assert!(text.contains("function add(int $a, int $b)"), "{text}");
+
+    // Pull Members Up: the class, where its members can go, and the checked move.
+    let position = json!({ "line": name.0, "character": name.1 });
+    let ask = json!({ "uri": uri, "position": position, "kind": "pullUp" });
+    let info = c.call_until("phoxite/refactor/hierarchyMembers", ask, |v| !v["targets"].as_array().unwrap().is_empty());
+    assert_eq!(info["className"], "Shop");
+    assert_eq!(info["targets"][0]["qualifiedName"], "App\\Base");
+    let total = info["members"].as_array().unwrap().iter().find(|m| m["id"] == "method:total").unwrap();
+    assert_eq!(total["selected"], true);
+    let moved = c
+        .call(
+            "phoxite/refactor/hierarchy",
+            json!({
+                "uri": uri, "position": position, "kind": "pullUp",
+                "target": info["targets"][0]["id"],
+                "choices": [{ "id": "method:total", "makeAbstract": false }]
+            }),
+        )
+        .unwrap();
+    assert!(moved["problems"].as_array().unwrap().iter().all(|p| p["severity"] != "fatal"), "{moved}");
+    assert!(moved["edit"].to_string().contains("Base.php"), "{moved}");
+    // Nothing to push down: Shop has no subclasses.
+    let down = json!({ "uri": uri, "position": position, "kind": "pushDown" });
+    assert!(c.call("phoxite/refactor/hierarchyMembers", down).is_err());
+    c.shutdown();
+
+    // A client without the dialogs gets the plain actions only.
+    let mut c = Client::start(&root);
+    let uri = c.open(&shop, "php");
+    let actions = actions_at(&mut c, &uri, property, property, "Generate constructor");
+    let titles: Vec<&Value> = actions.iter().map(|a| &a["title"]).collect();
+    assert!(actions.iter().any(|a| a["title"] == "Generate constructor"), "{titles:?}");
+    assert!(!actions.iter().any(|a| a["command"]["command"].as_str().is_some_and(|c| c.starts_with("phoxite."))));
+    c.shutdown();
+}
+
+/// A stand-in for the PHP interpreter: whatever it is asked to run, it prints
+/// the report next to it. Answers its path.
+fn fake_php(dir: &Path, report: &str) -> PathBuf {
+    std::fs::write(dir.join("report.json"), report).unwrap();
+    if cfg!(windows) {
+        let php = dir.join("php.cmd");
+        std::fs::write(&php, "@echo off\r\ntype \"%~dp0report.json\"\r\n").unwrap();
+        php
+    } else {
+        let php = dir.join("php");
+        std::fs::write(&php, "#!/bin/sh\ncat \"$(dirname \"$0\")/report.json\"\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&php, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        php
+    }
+}
+
+#[test]
+fn analysers_run_on_save() {
+    let (_tmp, root) = shop_project();
+    let shop = root.join("src/Shop.php");
+    std::fs::create_dir_all(root.join("vendor/bin")).unwrap();
+    std::fs::write(root.join("vendor/bin/phpstan"), "<?php\n").unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    let report = json!({
+        "totals": { "errors": 0, "file_errors": 1 },
+        "files": { shop.to_string_lossy(): { "errors": 1, "messages": [
+            { "message": "Method App\\Shop::run() is too clever.", "line": 16, "ignorable": true, "identifier": "shop.clever" }
+        ] } },
+        "errors": []
+    });
+    let php = fake_php(tools.path(), &report.to_string());
+    let settings = |on: bool| json!({ "settings": { "phoxite": { "analyzers": { "onSave": on, "phpPath": php } } } });
+    let from_phpstan = |items: &[Value]| items.iter().filter(|d| d["source"] == "phpstan").cloned().collect::<Vec<_>>();
+    let save = |c: &Client, uri: &Url| c.notify::<n::DidSaveTextDocument>(json!({ "textDocument": { "uri": uri } }));
+
+    let mut c = Client::start(&root);
+    let uri = c.open(&shop, "php");
+    // Off by default: a save runs nothing.
+    save(&c, &uri);
+    c.notify::<n::DidChangeConfiguration>(settings(true));
+    // An untrusted workspace runs nothing either.
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": false }));
+    save(&c, &uri);
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": true }));
+    assert!(from_phpstan(&c.diagnostics(&uri, |_| true)).is_empty());
+
+    save(&c, &uri);
+    let found = from_phpstan(&c.diagnostics(&uri, |items| items.iter().any(|d| d["source"] == "phpstan")));
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0]["message"], "Method App\\Shop::run() is too clever.");
+    assert_eq!(found[0]["range"]["start"]["line"], 15);
+
+    // Turning the setting off clears what was published.
+    c.notify::<n::DidChangeConfiguration>(settings(false));
+    let left = c.diagnostics(&uri, |items| !items.iter().any(|d| d["source"] == "phpstan"));
+    assert!(from_phpstan(&left).is_empty(), "{left:?}");
+    c.shutdown();
+}
+
+#[test]
+fn the_database_schema_joins_the_migrations() {
+    let (_tmp, root) = laravel_project();
+    std::fs::write(root.join(".env"), "APP_NAME=Fixture\nDB_CONNECTION=sqlite\n").unwrap();
+    let file = root.join("database/database.sqlite");
+    {
+        let db = rusqlite::Connection::open(&file).unwrap();
+        db.execute_batch(
+            "CREATE TABLE posts (id INTEGER PRIMARY KEY, title VARCHAR(120) NOT NULL, rating REAL, views INTEGER NOT NULL);
+             CREATE TABLE audits (id INTEGER PRIMARY KEY, note TEXT);",
+        )
+        .unwrap();
+    }
+    // The file itself: tables in order, types as SQLite names them, a key is never null.
+    let schema = crate::schema::read(&file).unwrap();
+    assert_eq!(schema.source, "database.sqlite");
+    assert_eq!(schema.tables.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["audits", "posts"]);
+    let posts: Vec<_> =
+        schema.tables[1].columns.iter().map(|c| (c.name.as_str(), c.data_type.as_str(), c.nullable)).collect();
+    assert_eq!(
+        posts,
+        [
+            ("id", "INTEGER", false),
+            ("title", "VARCHAR(120)", false),
+            ("rating", "REAL", true),
+            ("views", "INTEGER", false)
+        ]
+    );
+    assert!(crate::schema::read(&root.join("database/none.sqlite")).is_err());
+    // Which file the setting names.
+    assert_eq!(crate::schema::database_path(&root, ""), None);
+    assert_eq!(crate::schema::database_path(&root, "auto"), Some(file.clone()));
+    assert_eq!(crate::schema::database_path(&root, "storage/app.db"), Some(root.join("storage/app.db")));
+    std::fs::write(root.join(".env"), "DB_CONNECTION=mysql\nDB_DATABASE=shop\n").unwrap();
+    assert_eq!(crate::schema::database_path(&root, "auto"), None);
+    std::fs::write(root.join(".env"), "DB_CONNECTION=sqlite\nDB_DATABASE=:memory:\n").unwrap();
+    assert_eq!(crate::schema::database_path(&root, "auto"), Some(file.clone()));
+    std::fs::write(root.join(".env"), "DB_CONNECTION=sqlite\n").unwrap();
+
+    let mut c = Client::start(&root);
+    let model = json!({ "class": "App\\Models\\Post" });
+    let column = |view: &Value, name: &str| {
+        view["columns"].as_array().and_then(|columns| columns.iter().find(|c| c["name"] == name).cloned())
+    };
+    // The models need the index.
+    c.call_until("phoxite/laravel/generationContext", json!({}), |v| {
+        v["models"].as_array().is_some_and(|m| m.iter().any(|m| m == "App\\Models\\Post"))
+    });
+    let before = c.call_until("phoxite/laravel/modelView", model.clone(), |v| column(v, "title").is_some());
+    assert!(column(&before, "rating").is_none(), "{before}");
+    assert_eq!(c.call("phoxite/laravel/refreshSchema", json!({})).unwrap(), Value::Null);
+
+    // The setting on: the database's columns join the migrations'.
+    let settings = |database: &str| json!({ "settings": { "phoxite": { "laravel": { "database": database } } } });
+    c.notify::<n::DidChangeConfiguration>(settings("auto"));
+    let with = c.call_until("phoxite/laravel/modelView", model.clone(), |v| column(v, "rating").is_some());
+    let rating = column(&with, "rating").unwrap();
+    assert_eq!(rating["source"], "database", "{rating}");
+    assert_eq!(rating["database"], "database.sqlite");
+    assert_eq!(rating["nullable"], true);
+    assert!(column(&with, "body").is_some(), "the migrations' columns stay: {with}");
+
+    // The database changes: the client reports the file, or the user asks.
+    rusqlite::Connection::open(&file).unwrap().execute_batch("ALTER TABLE posts ADD COLUMN stars INTEGER").unwrap();
+    c.notify::<n::DidChangeWatchedFiles>(
+        json!({ "changes": [{ "uri": Url::from_file_path(&file).unwrap(), "type": 2 }] }),
+    );
+    c.call_until("phoxite/laravel/modelView", model.clone(), |v| column(v, "stars").is_some());
+    let status = c.call("phoxite/laravel/refreshSchema", json!({})).unwrap();
+    assert_eq!(status["tables"], 2);
+    assert_eq!(status["columns"], 7);
+
+    // A database that can't be read says so, and the migrations are all there is.
+    c.notify::<n::DidChangeConfiguration>(settings("database/none.sqlite"));
+    let refused = c.call("phoxite/laravel/refreshSchema", json!({})).unwrap_err();
+    assert!(refused.contains("doesn't exist"), "{refused}");
+    let without = c.call_until("phoxite/laravel/modelView", model, |v| column(v, "rating").is_none());
+    assert!(column(&without, "title").is_some());
     c.shutdown();
 }
 

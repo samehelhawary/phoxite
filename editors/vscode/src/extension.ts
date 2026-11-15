@@ -14,12 +14,15 @@ import { Laravel } from "./laravel/api";
 import { registerCommands } from "./laravel/commands";
 import { registerPages } from "./laravel/pages";
 import { registerRoutes } from "./laravel/routesView";
+import { Refactorings, registerRefactorings } from "./refactor/commands";
 import { openable, parseRoutes, routePicks } from "./routes";
 
 let client: LanguageClient | undefined;
 let output: vscode.OutputChannel | undefined;
 /** The Laravel requests of the server, and whether the workspace is a Laravel project. */
 const laravel = new Laravel(() => client);
+/** The refactorings that ask something first. */
+const refactorings = new Refactorings(() => client);
 
 /** Other PHP language servers that would answer the same requests. */
 const OTHER_SERVERS = ["bmewburn.vscode-intelephense-client", "zobo.php-intellisense", "phpactor.vscode-phpactor"];
@@ -27,6 +30,7 @@ const OTHER_SERVERS = ["bmewburn.vscode-intelephense-client", "zobo.php-intellis
 /** What other extensions (and the end-to-end tests) get from this one. */
 export interface PhoxiteApi {
   laravel: Laravel;
+  refactorings: Refactorings;
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<PhoxiteApi> {
@@ -45,6 +49,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (/[\\/]composer\.(json|lock)$/.test(doc.fileName)) void laravel.refreshStatus();
     }),
+    vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      if (client?.isRunning()) void client.sendNotification("phoxite/workspaceTrust", { trusted: true });
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("phoxite.laravel.detection")) void laravel.refreshStatus();
     }),
@@ -52,9 +59,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
   registerRoutes(context, laravel);
   registerPages(context, laravel);
   registerCommands(context, laravel);
+  registerRefactorings(context, refactorings);
   warnAboutOtherServers();
   await start(context);
-  return { laravel };
+  return { laravel, refactorings };
 }
 
 export async function deactivate(): Promise<void> {
@@ -103,6 +111,8 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
         vscode.workspace.createFileSystemWatcher("**/composer.{json,lock}"),
         vscode.workspace.createFileSystemWatcher("**/vendor/composer/installed.json"),
         vscode.workspace.createFileSystemWatcher("**/.env*"),
+        // The database of `phoxite.laravel.database`.
+        vscode.workspace.createFileSystemWatcher("**/*.{sqlite,sqlite3,db}"),
         vscode.workspace.createFileSystemWatcher("**/lang/**/*.json"),
         vscode.workspace.createFileSystemWatcher("**/ide.json"),
         vscode.workspace.createFileSystemWatcher("**/.phpstorm.meta.php"),
@@ -111,11 +121,24 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     initializationOptions: {
       cacheDir: path.join(context.globalStorageUri.fsPath, "index"),
       settings: settings(),
+      // PHPStan and Psalm run code of the project: only in a trusted workspace.
+      trusted: vscode.workspace.isTrusted,
     },
     outputChannel: output,
     revealOutputChannelOn: RevealOutputChannelOn.Never,
   };
   client = new LanguageClient("phoxite", "Phoxite", serverOptions, clientOptions);
+  // This client has the dialogs of the refactorings that ask something first, so
+  // the server offers them (`refactor/commands.ts`).
+  client.registerFeature({
+    fillClientCapabilities(capabilities) {
+      const experimental = (capabilities.experimental ?? {}) as Record<string, unknown>;
+      capabilities.experimental = { ...experimental, phoxite: { dialogs: true } };
+    },
+    initialize() {},
+    getState: () => ({ kind: "static" }),
+    clear() {},
+  });
   try {
     await client.start();
   } catch (e) {

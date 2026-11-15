@@ -20,6 +20,7 @@ import {
   needsArguments,
   newModelError,
   newModelSpec,
+  schemaMessage,
   statusError,
   translationRequestOf,
 } from "../src/laravel/model.ts";
@@ -238,4 +239,16 @@ test("page data can't close its script element", () => {
   const data = JSON.parse(/<script type="application\/json" id="data">(.*?)<\/script>/s.exec(html)![1]!);
   assert.deepEqual(data.models, ["App\\Models\\</script>"]);
   assert.equal(data.form.fields.length, 1);
+});
+
+test("what reading the database schema reports", () => {
+  assert.match(schemaMessage(null), /No database is set/);
+  assert.equal(
+    schemaMessage({ path: "/app/database/database.sqlite", tables: 1, columns: 12 }),
+    "Read 1 table and 12 columns from database.sqlite.",
+  );
+  assert.equal(
+    schemaMessage({ path: "C:\\app\\shop.db", tables: 3, columns: 1 }),
+    "Read 3 tables and 1 column from shop.db.",
+  );
 });

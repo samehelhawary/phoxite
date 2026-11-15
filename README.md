@@ -11,7 +11,10 @@ replaced Intelephense, and keeps its feature set:
   it), document highlights, inlay hints, semantic highlighting, call and type hierarchies,
   quick-fixes and intentions, Optimize Imports, Format Document (PSR-12 via Mago), and
   inspections with per-inspection settings. Moving PHP files updates their namespaces and
-  every reference.
+  every reference. Change Signature, Extract Method with its options, the Generate member
+  choosers and Pull Members Up / Push Members Down ask the user first: the VS Code
+  extension has their dialogs, and `docs/editors.md` says what another client needs.
+  PHPStan and Psalm can run on save when the project installs them.
 - **Laravel:** routes, views and Blade components, config, env, translations, validation
   rules, Eloquent (columns from migrations, relations, scopes, factories), gates and
   policies, Artisan commands, Livewire, Inertia, macros and modules; route code lenses and
@@ -66,11 +69,12 @@ The server reads its settings from `initializationOptions.settings` and from
   "exclude": ["node_modules", "/storage"],
   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true } },
   "laravel": {
-    "routeHints": true, "modules": "auto", "detection": "auto",
+    "routeHints": true, "modules": "auto", "detection": "auto", "database": "",
     "generation": { "module": "", "controllerSuffix": "Controller", "typeHints": true }
   },
   "format": { "lineWidth": 120 },
-  "templates": { "path": ".phoxite/templates" }
+  "templates": { "path": ".phoxite/templates" },
+  "analyzers": { "onSave": false, "phpPath": "" }
 }
 ```
 

@@ -34,6 +34,12 @@ The PHP and Twig parsers and the formatter are the [Mago](https://github.com/car
 crates (`mago-syntax`, `mago-formatter`, `mago-twig-syntax` and others), dual-licensed under
 the MIT License and the Apache License 2.0.
 
+## SQLite
+
+The language server reads a project's SQLite database with [SQLite](https://www.sqlite.org),
+compiled in through the `rusqlite` crate (MIT License). SQLite itself is in the
+[public domain](https://www.sqlite.org/copyright.html).
+
 ## The Blade grammar of the VS Code extension
 
 `editors/vscode/syntaxes/blade.tmLanguage.json` is written for this project and contains no

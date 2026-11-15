@@ -3,11 +3,14 @@
 //! It speaks LSP over stdin/stdout. Logs go to stderr (`PHOXITE_LOG`
 //! sets the filter, `info` by default).
 
+mod analyzers;
 mod commands;
 mod config;
 mod convert;
 mod handlers;
 mod laravel;
+mod refactor;
+mod schema;
 mod server;
 mod state;
 

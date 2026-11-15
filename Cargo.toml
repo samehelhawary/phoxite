@@ -34,6 +34,7 @@ lsp-server = "0.7"
 lsp-types = "0.95.1"
 crossbeam-channel = "0.5"
 url = "2"
+rusqlite = { version = "0.42", features = ["bundled"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "std"] }
 
 [profile.dev]

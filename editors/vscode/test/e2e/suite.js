@@ -37,6 +37,17 @@ function at(doc, needle, offset = 0) {
 /** The extension's Laravel requests (what `activate` answers). */
 const laravel = () => vscode.extensions.getExtension("phoxite.phoxite").exports.laravel;
 
+/** The refactorings that ask something first (what `activate` answers). */
+const refactorings = () => vscode.extensions.getExtension("phoxite.phoxite").exports.refactorings;
+
+/** The code action at `range` running client command `command` (and titled `title`). */
+async function dialogAction(doc, range, command, title) {
+  const wanted = (a) => a.command?.command === command && (!title || a.title === title);
+  const actions = await until(command, () => vscode.commands.executeCommand("vscode.executeCodeActionProvider", doc.uri, range),
+    (found) => (found ?? []).some(wanted));
+  return actions.find(wanted);
+}
+
 const hoverText = (hovers) =>
   (hovers ?? []).flatMap((h) => h.contents.map((c) => (typeof c === "string" ? c : c.value))).join("\n");
 
@@ -294,6 +305,76 @@ const checks = [
     const text = Buffer.from(await vscode.workspace.fs.readFile(created[0])).toString();
     assert.ok(text.includes("// from my template"), text);
     return `${templates.length} templates; ${path.relative(project, template.path)}`;
+  }],
+  ["Laravel: no database is read unless the setting names one", async () => {
+    assert.equal(await laravel().refreshSchema(), null);
+    const commands = await vscode.commands.getCommands(true);
+    assert.ok(commands.includes("phoxite.laravel.refreshSchema"));
+  }],
+  ["Refactorings: the actions with a dialog are offered", async () => {
+    await vscode.workspace.fs.writeFile(file("app/Shop/Base.php"), Buffer.from("<?php\n\nnamespace App\\Shop;\n\nclass Base\n{\n}\n"));
+    await vscode.workspace.fs.writeFile(file("app/Shop/Shop.php"), Buffer.from(
+      "<?php\n\nnamespace App\\Shop;\n\nclass Shop extends Base\n{\n    private int $count = 0;\n    private string $label = '';\n\n"
+      + "    public function total(int $a, int $b): int\n    {\n        $sum = $a + $b;\n        return $sum * 2;\n    }\n\n"
+      + "    public function run(): int\n    {\n        return $this->total(1, 2);\n    }\n}\n"));
+    const doc = await open("app/Shop/Shop.php");
+    const name = at(doc, "total(int");
+    const signature = await dialogAction(doc, new vscode.Range(name, name), "phoxite.changeSignature");
+    assert.equal(signature.command.arguments[0], doc.uri.toString());
+    assert.equal(signature.command.arguments[1].signature.name, "Shop::total");
+    const property = at(doc, "$count", 1);
+    const getters = await dialogAction(doc, new vscode.Range(property, property), "phoxite.generateMembers", "Generate getters…");
+    const statement = at(doc, "$sum = $a + $b;");
+    const extract = await dialogAction(doc, new vscode.Range(statement, statement.translate(0, "$sum = $a + $b;".length)), "phoxite.extractMethod");
+    return [signature, getters, extract].map((a) => a.title).join(" | ");
+  }],
+  ["Refactorings: the Change Signature form opens from the command", async () => {
+    const doc = await open("app/Shop/Shop.php");
+    const name = at(doc, "total(int");
+    vscode.window.activeTextEditor.selection = new vscode.Selection(name, name);
+    await vscode.commands.executeCommand("phoxite.refactor.changeSignature");
+    const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputWebview);
+    const form = await until("the form", async () => tabs().find((t) => t.input.viewType.includes("phoxite.changeSignature")), Boolean, 20_000);
+    const label = form.label;
+    await vscode.window.tabGroups.close(form);
+    return `tab: ${label}`;
+  }],
+  ["Refactorings: the answers are applied", async () => {
+    const doc = await open("app/Shop/Shop.php");
+    // Generate getters for one of the two properties.
+    const property = at(doc, "$count", 1);
+    const getters = await dialogAction(doc, new vscode.Range(property, property), "phoxite.generateMembers", "Generate getters…");
+    const chooser = getters.command.arguments[1];
+    assert.deepEqual(chooser.members.map((m) => m.id), ["count", "label"]);
+    await refactorings().resolve("generate", doc.uri.toString(), { ...chooser, chosen: ["count"] });
+    assert.ok(doc.getText().includes("function getCount()") && !doc.getText().includes("getLabel"), doc.getText());
+    // Extract the sum as `add`.
+    const statement = at(doc, "$sum = $a + $b;");
+    const selected = new vscode.Range(statement, statement.translate(0, "$sum = $a + $b;".length));
+    const extract = (await dialogAction(doc, selected, "phoxite.extractMethod")).command.arguments[1];
+    await refactorings().resolve("extractMethod", doc.uri.toString(), { ...extract, change: { ...extract.defaults, name: "add" } });
+    assert.ok(/function add\(int \$a, int \$b\)/.test(doc.getText()), doc.getText());
+    // Change the signature: swap the parameters and rename the method.
+    const name = at(doc, "total(int");
+    const data = (await dialogAction(doc, new vscode.Range(name, name), "phoxite.changeSignature")).command.arguments[1];
+    const change = { ...data.signature, functionName: "sum", parameters: [...data.signature.parameters].reverse() };
+    await refactorings().resolve("changeSignature", doc.uri.toString(), { ...data, change });
+    assert.ok(doc.getText().includes("function sum(int $b, int $a): int"), doc.getText());
+    assert.ok(doc.getText().includes("$this->sum(2, 1)"), doc.getText());
+    // Pull the method up to the parent class.
+    const moved = at(doc, "sum(int");
+    const position = { line: moved.line, character: moved.character };
+    const ask = { uri: doc.uri.toString(), position, kind: "pullUp" };
+    const info = await until("the parent", () => refactorings().request("hierarchyMembers", ask).catch(() => null), (i) => i?.targets.length);
+    assert.equal(info.targets[0].qualifiedName, "App\\Shop\\Base", JSON.stringify(info));
+    const result = await refactorings().request("hierarchy", { ...ask, target: info.targets[0].id, choices: [{ id: "method:sum", makeAbstract: false }] });
+    assert.ok(result.edit, JSON.stringify(result.problems));
+    await refactorings().apply(result.edit);
+    const base = await vscode.workspace.openTextDocument(file("app/Shop/Base.php"));
+    assert.ok(base.getText().includes("function sum(int $b, int $a): int"), base.getText());
+    assert.ok(!doc.getText().includes("function sum("), doc.getText());
+    await vscode.workspace.saveAll();
+    return `getCount, add, sum(int $b, int $a) moved to Base; ${result.problems.length} problems`;
   }],
 ];
 

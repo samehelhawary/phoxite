@@ -26,6 +26,7 @@ import {
   statusError,
   translationRequestOf,
   truthy,
+  schemaMessage,
 } from "./model";
 import { openNewModel } from "./pages";
 
@@ -447,6 +448,10 @@ export function registerCommands(context: vscode.ExtensionContext, laravel: Lara
     vscode.commands.registerCommand(
       "phoxite.laravel.editTemplate",
       guarded(() => editTemplate(laravel)),
+    ),
+    vscode.commands.registerCommand(
+      "phoxite.laravel.refreshSchema",
+      guarded(async () => void vscode.window.showInformationMessage(schemaMessage(await laravel.refreshSchema()))),
     ),
   );
 }

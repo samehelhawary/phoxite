@@ -13,13 +13,31 @@ licence needed for any feature.
 - Quick-fixes and refactorings, Organize Imports, Format Document (PSR-12)
 - Inspections: undefined classes, functions, methods and properties, type mismatches, unused
   imports and more, each one configurable (`phoxite.inspections`)
+- PHPStan and Psalm on save, when the project installs them (`phoxite.analyzers.onSave`)
+
+### Refactorings that ask first
+
+- **Change Signature…** (the lightbulb on a function or method, the Command Palette, or
+  **PHP Refactorings** in the editor's context menu) opens a form: rename it, change its
+  visibility and return type, and add, remove, reorder and retype its parameters. Calls,
+  overrides and implementations are updated; a new parameter can name the value existing
+  calls pass.
+- **Extract method…** / **Extract function…** on a selection asks for the name, the
+  visibility, which variables to pass, whether it is static, and whether to replace the
+  duplicates of the code.
+- **Generate getters…**, **setters…**, **constructor…**, **Override methods…** and the other
+  Source Actions ending in `…` let you tick the members first.
+- **Pull Members Up…** and **Push Members Down…** move methods, properties and constants
+  between a class and its parents or subclasses, list what would break and ask before
+  going on.
 
 ## Laravel
 
 - Routes, views, Blade components, config, env, translations, validation rules, gates and
   policies, Artisan commands, Livewire, Inertia, macros and modules: completion, go to
   definition, hover, usages and rename for the strings that name them
-- Eloquent: columns from the migrations, relations, scopes, factories
+- Eloquent: columns from the migrations, relations, scopes, factories; with
+  `phoxite.laravel.database`, also the columns the project's SQLite database really has
 - Code lenses on controller methods with their routes, the full URI after each route
 - Laravel inspections with quick-fixes (create a missing view, translation key…)
 
@@ -64,10 +82,13 @@ directive, section, stack and component names; the template's own problems; form
 | `phoxite.exclude` | Globs left out of the index. |
 | `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`. |
 | `phoxite.laravel.*` | Detection, route hints, modules, Inertia page folders. |
+| `phoxite.laravel.database` | A SQLite database to read columns from: `auto` (the one in `.env`) or a path. Empty: the migrations alone. |
 | `phoxite.laravel.artisanCommand` | How Artisan runs: `php artisan`, `./vendor/bin/sail artisan`… |
 | `phoxite.laravel.generation.*` | What the generators write: namespace, module, class suffixes, constructor promotion, return types. |
 | `phoxite.templates.path` | The folder of edited generator templates. |
 | `phoxite.format.lineWidth` | The line length for Format Document. |
+| `phoxite.analyzers.onSave` | Run the project's PHPStan and Psalm on each saved PHP file. |
+| `phoxite.analyzers.phpPath` | The PHP interpreter that runs them; empty: `php` on `PATH`. |
 | `phoxite.server.path` | Use another `phoxite-lsp` binary. |
 
 Disable Intelephense or other PHP language servers in the workspaces where you use this

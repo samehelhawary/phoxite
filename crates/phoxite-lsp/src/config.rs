@@ -11,7 +11,8 @@
 //!   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true, "severity": "error" } },
 //!   "laravel": { "routeHints": true, "modules": "auto", "generation": { "module": "Blog" } },
 //!   "format": { "lineWidth": 120 },
-//!   "templates": { "path": ".phoxite/templates" }
+//!   "templates": { "path": ".phoxite/templates" },
+//!   "analyzers": { "onSave": true, "phpPath": "php" }
 //! }
 //! ```
 //!
@@ -42,6 +43,7 @@ pub struct Settings {
     pub laravel: LaravelSettings,
     pub format: FormatSettings,
     pub templates: TemplateSettings,
+    pub analyzers: AnalyzerSettings,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -67,6 +69,16 @@ pub struct TemplateSettings {
     /// Their folder, relative to the project (or absolute); empty:
     /// [`DEFAULT_TEMPLATES_PATH`].
     pub path: String,
+}
+
+/// PHPStan and Psalm on save (`analyzers.rs`).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AnalyzerSettings {
+    /// Run the analysers the project installs on each saved PHP file.
+    pub on_save: bool,
+    /// The PHP interpreter that runs them; empty: `php` on `PATH`.
+    pub php_path: String,
 }
 
 /// Where the edited templates of a project are unless the settings say.
@@ -138,6 +150,9 @@ pub struct InitOptions {
     /// Where the indexes are kept; default: the user's cache folder.
     pub cache_dir: Option<PathBuf>,
     pub settings: Option<Value>,
+    /// Whether the user trusts the workspace (programs of the project may
+    /// run); default: yes.
+    pub trusted: Option<bool>,
 }
 
 /// The default cache folder: `%LOCALAPPDATA%\phoxite`,

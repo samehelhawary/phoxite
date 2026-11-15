@@ -16,11 +16,13 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::analyzers;
 use crate::commands;
 use crate::config::{InitOptions, Settings, default_cache_dir};
 use crate::convert::{self, EditSupport};
 use crate::handlers::{self as h, Goto};
 use crate::laravel;
+use crate::refactor;
 use crate::state::{ClientSupport, State};
 
 const INDEXING_TOKEN: &str = "phoxite/indexing";
@@ -48,7 +50,13 @@ pub fn capabilities() -> Value {
     };
     let caps = lsp::ServerCapabilities {
         position_encoding: Some(lsp::PositionEncodingKind::UTF16),
-        text_document_sync: Some(lsp::TextDocumentSyncCapability::Kind(lsp::TextDocumentSyncKind::INCREMENTAL)),
+        text_document_sync: Some(lsp::TextDocumentSyncCapability::Options(lsp::TextDocumentSyncOptions {
+            open_close: Some(true),
+            change: Some(lsp::TextDocumentSyncKind::INCREMENTAL),
+            // PHPStan and Psalm run on the saved file.
+            save: Some(lsp::TextDocumentSyncSaveOptions::Supported(true)),
+            ..lsp::TextDocumentSyncOptions::default()
+        })),
         completion_provider: Some(lsp::CompletionOptions {
             resolve_provider: Some(true),
             trigger_characters: Some(
@@ -139,6 +147,12 @@ fn client_support(caps: &lsp::ClientCapabilities) -> ClientSupport {
         snippets: completion.and_then(|c| c.snippet_support).unwrap_or(false),
         work_done_progress: caps.window.as_ref().and_then(|w| w.work_done_progress).unwrap_or(false),
         markdown: hover_markdown,
+        dialogs: caps
+            .experimental
+            .as_ref()
+            .and_then(|x| x.pointer("/phoxite/dialogs"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     }
 }
 
@@ -163,6 +177,7 @@ pub fn run(connection: Connection) -> Result<(), String> {
         settings,
         events_tx,
     ));
+    state.set_trusted(options.trusted.unwrap_or(true));
     #[allow(deprecated)]
     let folders: Vec<Url> = match (&params.workspace_folders, &params.root_uri) {
         (Some(folders), _) if !folders.is_empty() => folders.iter().map(|f| f.uri.clone()).collect(),
@@ -286,6 +301,16 @@ impl Server {
                     state.change(&p.text_document.uri, p.text_document.version, p.content_changes);
                 }
             }
+            n::DidSaveTextDocument::METHOD => {
+                if let Some(p) = params::<lsp::DidSaveTextDocumentParams>(notification.params) {
+                    analyzers::saved(state, &p.text_document.uri);
+                }
+            }
+            analyzers::WORKSPACE_TRUST => {
+                if let Some(p) = params::<analyzers::TrustParams>(notification.params) {
+                    state.set_trusted(p.trusted);
+                }
+            }
             n::DidCloseTextDocument::METHOD => {
                 if let Some(p) = params::<lsp::DidCloseTextDocumentParams>(notification.params) {
                     state.close(&p.text_document.uri);
@@ -345,6 +370,10 @@ impl Server {
             let (c, r) = (mine(&changed), mine(&removed));
             if !c.is_empty() || !r.is_empty() {
                 w.engine.files_changed(&c, &r);
+            }
+            // The database file or the `.env` naming it: the live schema.
+            if changed.iter().chain(&removed).any(|path| crate::schema::concerns(&self.state, &w.root, path)) {
+                crate::schema::refresh_quietly(&self.state, &w.root, &w.engine);
             }
         }
     }
@@ -454,6 +483,7 @@ fn dispatch(state: &State, request: Request, cancel: &CancellationToken) -> Resp
         )),
         r::ExecuteCommand::METHOD => on!(r::ExecuteCommand, |p| execute_command(state, p)),
         custom if laravel::METHODS.contains(&custom) => respond(id, laravel::request(state, custom, params)),
+        custom if refactor::METHODS.contains(&custom) => respond(id, refactor::request(state, custom, params, cancel)),
         _ => Response::new_err(id, ErrorCode::MethodNotFound as i32, format!("unknown request {method}")),
     }));
     run.unwrap_or_else(|panic| {

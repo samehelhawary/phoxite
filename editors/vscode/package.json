@@ -78,6 +78,21 @@
         "category": "Phoxite"
       },
       {
+        "command": "phoxite.refactor.changeSignature",
+        "title": "Change Signature…",
+        "category": "Phoxite"
+      },
+      {
+        "command": "phoxite.refactor.pullMembersUp",
+        "title": "Pull Members Up…",
+        "category": "Phoxite"
+      },
+      {
+        "command": "phoxite.refactor.pushMembersDown",
+        "title": "Push Members Down…",
+        "category": "Phoxite"
+      },
+      {
         "command": "phoxite.laravel.generate",
         "title": "Generate…",
         "category": "Laravel"
@@ -111,6 +126,11 @@
       {
         "command": "phoxite.laravel.editTemplate",
         "title": "Edit Generator Template…",
+        "category": "Laravel"
+      },
+      {
+        "command": "phoxite.laravel.refreshSchema",
+        "title": "Read the Database Schema Again",
         "category": "Laravel"
       },
       {
@@ -247,6 +267,12 @@
           "default": [],
           "markdownDescription": "Folders of Inertia pages, relative to the project. Empty: the `ide.json` page paths, else `resources/js/Pages`."
         },
+        "phoxite.laravel.database": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "A SQLite database whose tables and columns Phoxite reads, read-only, along with the migrations (the database wins): `auto` for the one the project's `.env` names (`DB_CONNECTION=sqlite`), or the file's path relative to the project. Empty: the migrations alone."
+        },
         "phoxite.laravel.artisanCommand": {
           "type": "string",
           "default": "php artisan",
@@ -304,6 +330,17 @@
           "minimum": 40,
           "markdownDescription": "The line length Format Document tries to stay within."
         },
+        "phoxite.analyzers.onSave": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Run PHPStan and Psalm on each PHP file you save, when the project installs them (`vendor/bin/phpstan`, `vendor/bin/psalm` with a `psalm.xml`). Their problems show next to Phoxite's own, without those Phoxite already reports."
+        },
+        "phoxite.analyzers.phpPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "The PHP interpreter that runs PHPStan and Psalm. Empty: `php` on your `PATH`."
+        },
         "phoxite.templates.path": {
           "type": "string",
           "default": "",
@@ -334,8 +371,26 @@
         "contents": "No routes were found yet. They show once the project is indexed.\n[Refresh](command:phoxite.laravel.routes.refresh)"
       }
     ],
+    "submenus": [
+      {
+        "id": "phoxite.refactor",
+        "label": "PHP Refactorings"
+      }
+    ],
     "menus": {
       "commandPalette": [
+        {
+          "command": "phoxite.refactor.changeSignature",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phoxite.refactor.pullMembersUp",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phoxite.refactor.pushMembersDown",
+          "when": "editorLangId == php"
+        },
         {
           "command": "phoxite.laravel.generate",
           "when": "phoxite.laravel"
@@ -365,6 +420,10 @@
           "when": "phoxite.laravel"
         },
         {
+          "command": "phoxite.laravel.refreshSchema",
+          "when": "phoxite.laravel"
+        },
+        {
           "command": "phoxite.laravel.route.goto",
           "when": "false"
         },
@@ -387,6 +446,27 @@
         {
           "command": "phoxite.laravel.modelView.rename",
           "when": "false"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "phoxite.refactor",
+          "when": "editorLangId == php",
+          "group": "1_modification@90"
+        }
+      ],
+      "phoxite.refactor": [
+        {
+          "command": "phoxite.refactor.changeSignature",
+          "group": "1_refactor@1"
+        },
+        {
+          "command": "phoxite.refactor.pullMembersUp",
+          "group": "1_refactor@2"
+        },
+        {
+          "command": "phoxite.refactor.pushMembersDown",
+          "group": "1_refactor@3"
         }
       ],
       "explorer/context": [

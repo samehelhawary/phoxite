@@ -12,6 +12,7 @@ import {
   type NewColumn,
   type NewModelSpec,
   type Place,
+  type SchemaStatus,
   type Template,
   migrationTimestamp,
 } from "./model";
@@ -118,6 +119,11 @@ export class Laravel {
 
   templates(): Promise<Template[]> {
     return this.request("templates");
+  }
+
+  /** Has the server read the database of `phoxite.laravel.database` again. */
+  refreshSchema(): Promise<SchemaStatus | null> {
+    return this.request("refreshSchema");
   }
 
   /**
