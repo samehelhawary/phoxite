@@ -89,10 +89,34 @@ directive, section, stack and component names; the template's own problems; form
 | `phoxite.format.lineWidth` | The line length for Format Document. |
 | `phoxite.analyzers.onSave` | Run the project's PHPStan and Psalm on each saved PHP file. |
 | `phoxite.analyzers.phpPath` | The PHP interpreter that runs them; empty: `php` on `PATH`. |
-| `phoxite.server.path` | Use another `phoxite-lsp` binary. |
+| `phoxite.server.path` | Use another `phoxite-lsp` binary (`~` and a path relative to the workspace folder work). |
+| `phoxite.server.logLevel` | How much the server writes to its log. |
+| `phoxite.trace.server` | Log what the extension and the server say to each other. |
+| `phoxite.warnAboutOtherServers` | Warn about extensions that answer the same requests. |
+
+## When something is wrong
+
+The **Phoxite** entry in the language status (the `{}` in the status bar of a PHP or
+Blade file) says what the server is doing: starting, indexing, ready, or not running,
+and whether the project is a Laravel one. Click it for **Restart the Language Server**,
+**Show the Server Log** and **Index the Project Again**; the same commands are in the
+Command Palette under **Phoxite**.
+
+## Other PHP extensions
 
 Disable Intelephense or other PHP language servers in the workspaces where you use this
-extension; the extension offers to when it finds one.
+extension: both would answer every request, so completions and problems show twice. The
+extension says so when it finds one (also for Laravel extensions that complete the same
+names, and for ones that define the Blade language too), once per workspace.
+
+## Restricted Mode
+
+In a workspace you haven't trusted, Phoxite still gives code intelligence, from the
+files it reads. It runs nothing of the project there: Artisan, PHPStan and Psalm stay
+off, and the settings that name a program or a file outside the project
+(`phoxite.server.path`, `phoxite.analyzers.phpPath`, `phoxite.laravel.artisanCommand`,
+`phoxite.laravel.database`, `phoxite.includePaths`) are read from your own settings
+only, not from the workspace's.
 
 ## Licence
 

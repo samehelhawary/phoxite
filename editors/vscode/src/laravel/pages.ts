@@ -2,7 +2,7 @@
 // a model class) and the New Eloquent Model form.
 
 import * as vscode from "vscode";
-import { FAILED, guarded, shown } from "../errors";
+import { FAILED, guarded, registerServerCommand, shown } from "../errors";
 import { type Laravel, baseName, count, message, reveal } from "./api";
 import { type ItemContext, type PageResources, modelDetails, modelErrorPage, modelViewPage, newModelPage } from "./html";
 import {
@@ -185,13 +185,10 @@ export async function openNewModel(context: vscode.ExtensionContext, laravel: La
 export function registerPages(context: vscode.ExtensionContext, laravel: Laravel): void {
   context.subscriptions.push(
     // The lens on a model class: its argument is the class.
-    vscode.commands.registerCommand(
-      "laravel.modelView",
-      guarded((cls: unknown) => {
-        if (typeof cls === "string" && cls.trim()) return openModelView(context, laravel, cls.trim());
-        return pickModel(context, laravel);
-      }),
-    ),
+    registerServerCommand("laravel.modelView", (cls: unknown) => {
+      if (typeof cls === "string" && cls.trim()) return openModelView(context, laravel, cls.trim());
+      return pickModel(context, laravel);
+    }),
     vscode.commands.registerCommand(
       "phoxite.laravel.modelView",
       guarded(() => pickModel(context, laravel)),

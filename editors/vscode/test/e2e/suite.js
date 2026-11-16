@@ -57,7 +57,8 @@ const checks = [
     assert.ok(ext, "phoxite.phoxite is not installed");
     await ext.activate();
     const commands = await vscode.commands.getCommands(true);
-    for (const id of ["phoxite.restart", "phoxite.rescan", "laravel.routeActions", "phoxite.openLocation"]) {
+    for (const id of ["phoxite.restart", "phoxite.rescan", "laravel.routeActions", "phoxite.openLocation", "phoxite.status",
+      "phoxite.server.laravel.routeActions", "phoxite.server.laravel.modelView"]) {
       assert.ok(commands.includes(id), `${id} is not registered`);
     }
   }],
@@ -88,7 +89,7 @@ const checks = [
   ["route code lenses on a controller", async () => {
     const doc = await open("app/Http/Controllers/PostController.php");
     const lenses = await until("code lens", () => vscode.commands.executeCommand("vscode.executeCodeLensProvider", doc.uri, 20),
-      (l) => (l ?? []).some((x) => x.command?.command === "laravel.routeActions"));
+      (l) => (l ?? []).some((x) => x.command?.command === "phoxite.server.laravel.routeActions"));
     return lenses.map((l) => l.command?.title).filter(Boolean).slice(0, 3).join(" | ");
   }],
   ["route name completion", async () => {
@@ -269,8 +270,8 @@ const checks = [
     assert.ok(commands.some((c) => c.name === "posts:publish" && c.source === "class"), "no posts:publish");
     const doc = await open("app/Console/Commands/PublishScheduledPosts.php");
     const lenses = await until("the lens", () => vscode.commands.executeCommand("vscode.executeCodeLensProvider", doc.uri, 20),
-      (l) => (l ?? []).some((x) => x.command?.command === "laravel.runArtisan"));
-    const lens = lenses.find((l) => l.command?.command === "laravel.runArtisan");
+      (l) => (l ?? []).some((x) => x.command?.command === "phoxite.server.laravel.runArtisan"));
+    const lens = lenses.find((l) => l.command?.command === "phoxite.server.laravel.runArtisan");
     assert.deepEqual(lens.command.arguments, ["posts:publish"]);
     const tasks = await vscode.tasks.fetchTasks({ type: "artisan" });
     const task = tasks.find((t) => t.definition.command === "posts:publish");
@@ -284,8 +285,8 @@ const checks = [
     const doc = await open("app/Translated.php");
     const pos = at(doc, "messages.from_the_test", 3);
     const actions = await until("the action", () => vscode.commands.executeCommand("vscode.executeCodeActionProvider", doc.uri, new vscode.Range(pos, pos)),
-      (a) => (a ?? []).some((x) => x.command?.command === "laravel.createTranslation"));
-    const action = actions.find((a) => a.command?.command === "laravel.createTranslation");
+      (a) => (a ?? []).some((x) => x.command?.command === "phoxite.server.laravel.createTranslation"));
+    const action = actions.find((a) => a.command?.command === "phoxite.server.laravel.createTranslation");
     const request = JSON.parse(action.command.arguments[0]);
     assert.deepEqual(request.locales.map((l) => `${l.locale}:${l.exists}`), ["en:false", "fr:false"]);
     await laravel().apply(await laravel().createTranslation(request.key, [{ locale: "fr", text: "Depuis le test" }]));

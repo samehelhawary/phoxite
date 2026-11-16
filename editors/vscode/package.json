@@ -30,6 +30,24 @@
     "onLanguage:blade",
     "workspaceContains:composer.json"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode Phoxite gives code intelligence from the files it reads. It runs nothing of the project: Artisan, PHPStan and Psalm stay off, and the settings that name a program or a file outside the project are taken from your own settings only.",
+      "restrictedConfigurations": [
+        "phoxite.server.path",
+        "phoxite.analyzers.phpPath",
+        "phoxite.analyzers.onSave",
+        "phoxite.laravel.artisanCommand",
+        "phoxite.laravel.database",
+        "phoxite.includePaths"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The language server reads the project's PHP files from disk."
+    }
+  },
   "main": "./dist/extension.js",
   "contributes": {
     "configurationDefaults": {
@@ -76,6 +94,11 @@
       {
         "command": "phoxite.showOutput",
         "title": "Show the Server Log",
+        "category": "Phoxite"
+      },
+      {
+        "command": "phoxite.status",
+        "title": "Server Status and Actions",
         "category": "Phoxite"
       },
       {
@@ -176,6 +199,35 @@
           "scope": "machine-overridable",
           "markdownDescription": "The `phoxite-lsp` executable. Empty: the one bundled with the extension."
         },
+        "phoxite.server.logLevel": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
+          "default": "info",
+          "scope": "machine-overridable",
+          "markdownDescription": "How much the language server writes to its log (**Phoxite: Show the Server Log**). Takes effect when the server is restarted."
+        },
+        "phoxite.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "enumDescriptions": [
+            "Nothing.",
+            "The name of each request and notification.",
+            "Each request and notification with its content."
+          ],
+          "default": "off",
+          "scope": "window",
+          "markdownDescription": "Writes what the extension and the language server say to each other to the log. For reporting a problem."
+        },
         "phoxite.phpVersion": {
           "type": "string",
           "default": "",
@@ -242,7 +294,12 @@
             "disabled"
           ],
           "default": "auto",
-          "markdownDescription": "Laravel support: `auto` when `composer.json` requires `laravel/framework`, the lock file lists it, or `artisan` exists."
+          "markdownDescription": "Laravel support: `auto` when `composer.json` requires `laravel/framework`, the lock file lists it, or `artisan` exists.",
+          "markdownEnumDescriptions": [
+            "A project is a Laravel one when `composer.json` requires `laravel/framework`, the lock file lists it, or `artisan` exists.",
+            "Every project is treated as a Laravel one.",
+            "No Laravel support."
+          ]
         },
         "phoxite.laravel.routeHints": {
           "type": "boolean",
@@ -258,7 +315,13 @@
             "none"
           ],
           "default": "auto",
-          "markdownDescription": "Which modules of a modular application are read: `nwidart/laravel-modules`, module folders (`modules/`, `app-modules/`…), both (`auto`), or none."
+          "markdownDescription": "Which modules of a modular application are read: `nwidart/laravel-modules`, module folders (`modules/`, `app-modules/`…), both (`auto`), or none.",
+          "markdownEnumDescriptions": [
+            "`nwidart/laravel-modules` and module folders.",
+            "Only the modules of `nwidart/laravel-modules`.",
+            "Only module folders (`modules/`, `app-modules/`…).",
+            "No modules."
+          ]
         },
         "phoxite.laravel.inertiaPages": {
           "type": "array",
@@ -326,7 +389,7 @@
           "markdownDescription": "Generated methods declare their return types."
         },
         "phoxite.format.lineWidth": {
-          "type": "number",
+          "type": "integer",
           "default": 120,
           "minimum": 40,
           "markdownDescription": "The line length Format Document tries to stay within."
@@ -350,7 +413,7 @@
         "phoxite.warnAboutOtherServers": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Warn when another PHP language server (Intelephense, PHP Intelephense, Phpactor) is active too: both would answer every request."
+          "markdownDescription": "Warn when another extension answers the same requests: a PHP language server (Intelephense, PHP IntelliSense, Phpactor, DEVSENSE PHP), a Laravel extension that completes the same names, or one that defines the Blade language too."
         }
       }
     },

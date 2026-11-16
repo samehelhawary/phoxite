@@ -5,7 +5,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { FAILED, shown } from "../errors";
+import { FAILED, registerServerCommand, shown } from "../errors";
 import { type Laravel, baseName, count, message } from "./api";
 import {
   type ArtisanCommand,
@@ -273,7 +273,7 @@ function artisanTasks(laravel: Laravel): vscode.TaskProvider {
   return {
     async provideTasks() {
       const folder = projectFolder();
-      if (!laravel.isActive || !folder) return [];
+      if (!laravel.isActive || !folder || !vscode.workspace.isTrusted) return [];
       const commands = (await laravel.artisanCommands().catch(() => null)) ?? [];
       return commands
         .filter((c) => (c.source === "class" || c.source === "closure") && !needsArguments(c))
@@ -315,6 +315,16 @@ const SOURCES: Record<ArtisanCommand["source"], string> = {
  * it has required arguments.
  */
 async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
+  // Artisan runs the project's code.
+  if (!vscode.workspace.isTrusted) {
+    void vscode.window
+      .showWarningMessage(
+        "Phoxite: Artisan runs code of the project, so it is off until you trust this workspace.",
+        "Manage Workspace Trust",
+      )
+      .then((choice) => choice && vscode.commands.executeCommand("workbench.trust.manage"));
+    return;
+  }
   const commands = await shown(laravel.artisanCommands());
   if (commands === FAILED) return;
   if (!commands) {
@@ -440,15 +450,9 @@ export function registerCommands(context: vscode.ExtensionContext, laravel: Lara
       guarded(() => artisan(laravel)),
     ),
     // The lens on a console command class: its argument is the command's name.
-    vscode.commands.registerCommand(
-      "laravel.runArtisan",
-      guarded((name?: unknown) => artisan(laravel, name)),
-    ),
+    registerServerCommand("laravel.runArtisan", (name?: unknown) => artisan(laravel, name)),
     // The action on a translation key: its argument is the request's JSON.
-    vscode.commands.registerCommand(
-      "laravel.createTranslation",
-      guarded((arg?: unknown) => createTranslation(laravel, arg)),
-    ),
+    registerServerCommand("laravel.createTranslation", (arg?: unknown) => createTranslation(laravel, arg)),
     vscode.commands.registerCommand(
       "phoxite.laravel.editTemplate",
       guarded(() => editTemplate(laravel)),

@@ -9,6 +9,17 @@
 - VS Code: the Laravel tools follow the server: they go when it stops and come back when
   it runs again. A request that fails says so instead of "not a Laravel project" or an
   empty routes view.
+- VS Code: works in **Restricted Mode**. Code intelligence is on in a workspace you
+  haven't trusted; Artisan, PHPStan and Psalm stay off, and the settings that name a
+  program or a file outside the project are not read from the workspace.
+- VS Code: a **Phoxite** entry in the language status shows what the server is doing and
+  offers Restart, Show Log and Index Again. New settings `phoxite.server.logLevel` and
+  `phoxite.trace.server`.
+- VS Code: the warning about other extensions names more of them (DEVSENSE PHP, the
+  Laravel extensions, the ones defining Blade), says what each doubles, and is shown
+  once per workspace.
+- VS Code: the commands of the server's lenses run under the extension's own names, so
+  another extension registering `laravel.modelView` can't break them.
 - The server tells the client when a folder is (or stops being) a Laravel project
   (`phoxite/laravel/statusChanged`), so clients no longer ask repeatedly at start.
 

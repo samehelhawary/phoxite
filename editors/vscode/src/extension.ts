@@ -12,14 +12,17 @@ import {
   type ServerOptions,
   State,
 } from "vscode-languageclient/node";
-import { guarded, message, running } from "./errors";
+import { type Other, OTHERS, conflictMessage, seenKey } from "./conflicts";
+import { guarded, message, registerServerCommand, running } from "./errors";
 import { Laravel } from "./laravel/api";
 import { registerCommands } from "./laravel/commands";
 import { registerPages } from "./laravel/pages";
 import { registerRoutes } from "./laravel/routesView";
 import { Refactorings, registerRefactorings } from "./refactor/commands";
 import { openable, parseRoutes, routePicks } from "./routes";
+import { withOwnCommand } from "./serverCommands";
 import { bundledName, configuredServer, serverProblem } from "./serverPath";
+import { type ServerStatus, statusView } from "./status";
 
 let client: LanguageClient | undefined;
 let output: vscode.LogOutputChannel | undefined;
@@ -32,8 +35,39 @@ const laravel = new Laravel(() => client);
 /** The refactorings that ask something first. */
 const refactorings = new Refactorings(() => client);
 
-/** Other PHP language servers that would answer the same requests. */
-const OTHER_SERVERS = ["bmewburn.vscode-intelephense-client", "zobo.php-intellisense", "phpactor.vscode-phpactor"];
+/** The token of the server's indexing progress. */
+const INDEXING = "phoxite/indexing";
+
+/** What is known about the server, and the item (on PHP and Blade files) that shows it. */
+const status: ServerStatus = { server: "starting", indexing: false, laravel: false };
+let statusItem: vscode.LanguageStatusItem | undefined;
+
+function show(change: Partial<ServerStatus>): void {
+  Object.assign(status, change);
+  if (!statusItem) return;
+  const view = statusView(status);
+  statusItem.text = view.text;
+  statusItem.detail = view.detail;
+  statusItem.busy = view.busy;
+  statusItem.severity =
+    view.severity === "error" ? vscode.LanguageStatusSeverity.Error : vscode.LanguageStatusSeverity.Information;
+}
+
+/** What the status item offers. */
+async function statusActions(context: vscode.ExtensionContext): Promise<void> {
+  const view = statusView(status);
+  const actions: Array<vscode.QuickPickItem & { run: () => unknown }> = [
+    { label: "$(debug-restart) Restart the Language Server", run: () => restart(context) },
+    { label: "$(output) Show the Server Log", run: () => output?.show() },
+    { label: "$(sync) Index the Project Again", run: () => vscode.commands.executeCommand("phoxite.rescan") },
+    {
+      label: "$(gear) Open the Settings",
+      run: () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:phoxite.phoxite"),
+    },
+  ];
+  const picked = await vscode.window.showQuickPick(actions, { title: view.text, placeHolder: view.detail });
+  await picked?.run();
+}
 
 /** What other extensions (and the end-to-end tests) get from this one. */
 export interface PhoxiteApi {
@@ -43,8 +77,18 @@ export interface PhoxiteApi {
 
 export async function activate(context: vscode.ExtensionContext): Promise<PhoxiteApi> {
   output = vscode.window.createOutputChannel("Phoxite", { log: true });
+  statusItem = vscode.languages.createLanguageStatusItem("phoxite.status", [{ language: "php" }, { language: "blade" }]);
+  statusItem.name = "Phoxite";
+  statusItem.command = { title: "Actions", command: "phoxite.status" };
+  show({});
   context.subscriptions.push(
     output,
+    statusItem,
+    laravel.onDidChange((active) => show({ laravel: active })),
+    vscode.commands.registerCommand(
+      "phoxite.status",
+      guarded(() => statusActions(context)),
+    ),
     vscode.commands.registerCommand("phoxite.restart", () => restart(context)),
     vscode.commands.registerCommand("phoxite.showOutput", () => output?.show()),
     vscode.commands.registerCommand(
@@ -55,7 +99,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
       }),
     ),
     vscode.commands.registerCommand("phoxite.openLocation", openLocation),
-    vscode.commands.registerCommand("laravel.routeActions", routeActions),
+    registerServerCommand("laravel.routeActions", routeActions),
     // A project becomes a Laravel one (or stops being one) with its Composer files.
     vscode.workspace.onDidChangeWorkspaceFolders(() => void laravel.refreshStatus()),
     vscode.workspace.onDidSaveTextDocument((doc) => {
@@ -66,10 +110,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("phoxite.laravel.detection")) void laravel.refreshStatus();
-      // Another executable is used from the next start on.
-      if (e.affectsConfiguration("phoxite.server.path")) {
+      // Another executable, or another log level, is used from the next start on.
+      const setting = ["phoxite.server.path", "phoxite.server.logLevel"].find((s) => e.affectsConfiguration(s));
+      if (setting) {
         void vscode.window
-          .showInformationMessage("Phoxite: restart the language server to use the new `phoxite.server.path`.", "Restart")
+          .showInformationMessage(`Phoxite: restart the language server to use the new \`${setting}\`.`, "Restart")
           .then((choice) => choice && restart(context));
       }
     }),
@@ -79,7 +124,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
   registerPages(context, laravel);
   registerCommands(context, laravel);
   registerRefactorings(context, refactorings);
-  warnAboutOtherServers();
+  warnAboutOtherExtensions(context);
   await start(context);
   return { laravel, refactorings };
 }
@@ -116,6 +161,7 @@ function server(context: vscode.ExtensionContext): { command: string; problem: s
 /** Says the server isn't there, with what helps; doesn't wait for the answer. */
 function notStarted(context: vscode.ExtensionContext, why: string): void {
   output?.error(why);
+  show({ server: "failed", problem: why, indexing: false });
   void vscode.window.showErrorMessage(`Phoxite: ${why}`, "Show Log", "Open Settings", "Restart").then((choice) => {
     if (choice === "Show Log") output?.show();
     else if (choice === "Open Settings") void vscode.commands.executeCommand("workbench.action.openSettings", "phoxite.server.path");
@@ -128,12 +174,14 @@ function settings(): unknown {
 }
 
 async function start(context: vscode.ExtensionContext): Promise<void> {
+  show({ server: "starting", problem: undefined, indexing: false, indexed: undefined });
   const { command, problem } = server(context);
   if (problem) {
     notStarted(context, problem);
     return;
   }
-  const run: Executable = { command, args: ["--stdio"], options: { env: { ...process.env } } };
+  const level = vscode.workspace.getConfiguration("phoxite").get<string>("server.logLevel", "info");
+  const run: Executable = { command, args: ["--stdio"], options: { env: { ...process.env, PHOXITE_LOG: level } } };
   const serverOptions: ServerOptions = { run, debug: { ...run, options: { env: { ...process.env, PHOXITE_LOG: "debug" } } } };
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
@@ -154,6 +202,44 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     },
     outputChannel: output,
     revealOutputChannelOn: RevealOutputChannelOn.Never,
+    middleware: {
+      // The status item follows the server's indexing.
+      handleWorkDoneProgress(token, params, next) {
+        if (token === INDEXING) {
+          if (params.kind === "begin") show({ indexing: true });
+          else if (params.kind === "end") show({ indexing: false, indexed: params.message });
+        }
+        next(token, params);
+      },
+      // The commands the server's lenses, hints and actions carry run under this
+      // extension's own names (`serverCommands.ts`).
+      async provideCodeLenses(document, token, next) {
+        return (await next(document, token))?.map(withOwnCommand);
+      },
+      async resolveCodeLens(lens, token, next) {
+        const resolved = await next(lens, token);
+        return resolved ? withOwnCommand(resolved) : resolved;
+      },
+      async provideCodeActions(document, range, context, token, next) {
+        const actions = await next(document, range, context, token);
+        // A bare command names itself in `command` as a string: only its own field is one.
+        return actions?.map((action) =>
+          action instanceof vscode.CodeAction ? withOwnCommand(action) : { ...action, command: rewrittenCommand(action.command) },
+        );
+      },
+      async provideInlayHints(document, range, token, next) {
+        const hints = await next(document, range, token);
+        for (const hint of hints ?? []) {
+          if (Array.isArray(hint.label)) hint.label.forEach(withOwnCommand);
+        }
+        return hints;
+      },
+      async resolveInlayHint(hint, token, next) {
+        const resolved = await next(hint, token);
+        if (resolved && Array.isArray(resolved.label)) resolved.label.forEach(withOwnCommand);
+        return resolved;
+      },
+    },
   };
   const starting = new LanguageClient("phoxite", "Phoxite", serverOptions, clientOptions);
   client = starting;
@@ -162,8 +248,16 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     starting.onDidChangeState((e) => {
       // The server stopped (or crashed): nothing is known about the project until it
       // runs again. The client restarts a crashed server itself; then it is asked anew.
-      if (e.newState === State.Stopped) void laravel.reset();
-      else if (e.newState === State.Running && attached) void laravel.refreshStatus();
+      if (e.newState === State.Stopped) {
+        void laravel.reset();
+        // A start that failed says why; this is a server that ran and went away.
+        if (status.server !== "failed") show({ server: "stopped", indexing: false });
+      } else if (e.newState === State.Starting) {
+        show({ server: "starting", problem: undefined });
+      } else if (e.newState === State.Running) {
+        show({ server: "running", version: starting.initializeResult?.serverInfo?.version });
+        if (attached) void laravel.refreshStatus();
+      }
     }),
   );
   // This client has the dialogs of the refactorings that ask something first, so
@@ -202,24 +296,43 @@ function restart(context: vscode.ExtensionContext): Promise<void> {
   return restarting;
 }
 
-function warnAboutOtherServers(): void {
+/** The other extensions that are installed and enabled, among those that double this one. */
+function othersEnabled(): Other[] {
+  return OTHERS.filter((other) => vscode.extensions.getExtension(other.id) !== undefined);
+}
+
+/**
+ * Says which other extensions answer the same requests, once per workspace for each
+ * set of them. Disabling an extension for a workspace is the user's to do, on its page.
+ */
+function warnAboutOtherExtensions(context: vscode.ExtensionContext): void {
   if (!vscode.workspace.getConfiguration("phoxite").get<boolean>("warnAboutOtherServers", true)) return;
-  const others = OTHER_SERVERS.map((id) => vscode.extensions.getExtension(id)).filter((e) => e !== undefined);
-  if (others.length === 0) return;
-  const names = others.map((e) => e.packageJSON.displayName ?? e.id).join(", ");
-  void vscode.window
-    .showWarningMessage(
-      `Phoxite: ${names} is enabled too, so completions and problems show twice. Disable it for this workspace?`,
-      "Show Extension",
-      "Don't Ask Again",
-    )
-    .then((choice) => {
-      if (choice === "Show Extension") {
-        void vscode.commands.executeCommand("workbench.extensions.search", `@id:${others[0].id}`);
-      } else if (choice === "Don't Ask Again") {
-        void vscode.workspace.getConfiguration("phoxite").update("warnAboutOtherServers", false, true);
-      }
-    });
+  const found = othersEnabled();
+  const text = conflictMessage(found);
+  const seen = "phoxite.otherExtensionsSeen";
+  if (!text || context.workspaceState.get<string>(seen) === seenKey(found)) return;
+  const showOne = found.length === 1 ? `Show ${found[0].name}` : "Show Them";
+  void vscode.window.showWarningMessage(text, showOne, "Not for This Workspace", "Never").then(async (choice) => {
+    if (choice === showOne) {
+      const picked =
+        found.length === 1
+          ? found[0]
+          : (await vscode.window.showQuickPick(
+              found.map((other) => ({ label: other.name, description: other.id, other })),
+              { placeHolder: "Open an extension's page: Disable (Workspace) is under its Disable button" },
+            ))?.other;
+      if (picked) void vscode.commands.executeCommand("extension.open", picked.id);
+    } else if (choice === "Not for This Workspace") {
+      void context.workspaceState.update(seen, seenKey(found));
+    } else if (choice === "Never") {
+      void vscode.workspace.getConfiguration("phoxite").update("warnAboutOtherServers", false, true);
+    }
+  });
+}
+
+/** The command of a bare command (a code action that is only one), under this extension's name. */
+function rewrittenCommand(command: string): string {
+  return withOwnCommand({ command: { command } }).command.command;
 }
 
 /** Opens a location the server names (after a quick-fix that creates a file). */

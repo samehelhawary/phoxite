@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/node";
+import { type ServerCommand, ownName } from "./serverCommands";
 
 /** What went wrong, as the server or the editor put it. */
 export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -39,4 +40,23 @@ export function guarded<A extends unknown[]>(run: (...args: A) => unknown): (...
       void vscode.window.showErrorMessage(`Phoxite: ${message(e)}`);
     }
   };
+}
+
+/**
+ * Registers a command the server's lenses, hints and actions carry: under this
+ * extension's own name (what the client rewrites them to), and under the server's
+ * name when no other extension has taken it (for whatever names it unrewritten).
+ */
+export function registerServerCommand<A extends unknown[]>(
+  command: ServerCommand,
+  run: (...args: A) => unknown,
+): vscode.Disposable {
+  const guard = guarded(run);
+  const registered = [vscode.commands.registerCommand(ownName(command), guard)];
+  try {
+    registered.push(vscode.commands.registerCommand(command, guard));
+  } catch {
+    // Another extension registered the name: this one's lenses use its own.
+  }
+  return vscode.Disposable.from(...registered);
 }
