@@ -2,6 +2,7 @@
 // a model class) and the New Eloquent Model form.
 
 import * as vscode from "vscode";
+import { FAILED, guarded, shown } from "../errors";
 import { type Laravel, baseName, count, message, reveal } from "./api";
 import { type ItemContext, type PageResources, modelDetails, modelErrorPage, modelViewPage, newModelPage } from "./html";
 import {
@@ -133,7 +134,8 @@ async function atItem(item: ItemContext | undefined, command: string): Promise<v
 
 /** "Open Model View…": picks one of the project's models. */
 async function pickModel(context: vscode.ExtensionContext, laravel: Laravel): Promise<void> {
-  const ctx = await laravel.generationContext().catch(() => null);
+  const ctx = await shown(laravel.generationContext());
+  if (ctx === FAILED) return;
   if (!ctx?.models.length) {
     void vscode.window.showInformationMessage("No Eloquent models were found in this workspace.");
     return;
@@ -147,7 +149,8 @@ async function pickModel(context: vscode.ExtensionContext, laravel: Laravel): Pr
 
 /** Opens the New Eloquent Model form. */
 export async function openNewModel(context: vscode.ExtensionContext, laravel: Laravel): Promise<void> {
-  const ctx = await laravel.generationContext().catch(() => null);
+  const ctx = await shown(laravel.generationContext());
+  if (ctx === FAILED) return;
   if (!ctx) {
     void vscode.window.showInformationMessage("Laravel generators need a Laravel project in this workspace.");
     return;
@@ -182,18 +185,27 @@ export async function openNewModel(context: vscode.ExtensionContext, laravel: La
 export function registerPages(context: vscode.ExtensionContext, laravel: Laravel): void {
   context.subscriptions.push(
     // The lens on a model class: its argument is the class.
-    vscode.commands.registerCommand("laravel.modelView", (cls: unknown) => {
-      if (typeof cls === "string" && cls.trim()) return openModelView(context, laravel, cls.trim());
-      return pickModel(context, laravel);
-    }),
-    vscode.commands.registerCommand("phoxite.laravel.modelView", () => pickModel(context, laravel)),
+    vscode.commands.registerCommand(
+      "laravel.modelView",
+      guarded((cls: unknown) => {
+        if (typeof cls === "string" && cls.trim()) return openModelView(context, laravel, cls.trim());
+        return pickModel(context, laravel);
+      }),
+    ),
+    vscode.commands.registerCommand(
+      "phoxite.laravel.modelView",
+      guarded(() => pickModel(context, laravel)),
+    ),
     vscode.commands.registerCommand("phoxite.laravel.modelView.findUsages", (item?: ItemContext) =>
       atItem(item, "references-view.findReferences"),
     ),
     vscode.commands.registerCommand("phoxite.laravel.modelView.rename", (item?: ItemContext) =>
       atItem(item, "editor.action.rename"),
     ),
-    vscode.commands.registerCommand("phoxite.laravel.newModel", () => openNewModel(context, laravel)),
+    vscode.commands.registerCommand(
+      "phoxite.laravel.newModel",
+      guarded(() => openNewModel(context, laravel)),
+    ),
     { dispose: () => [...modelViews.values()].forEach((view) => view.dispose()) },
   );
 }

@@ -29,6 +29,8 @@ class RoutesProvider implements vscode.TreeDataProvider<Node> {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changed.event;
   private files: Array<{ file: string; routes: Route[] }> | undefined;
+  /** Told why the routes couldn't be read, or that they could (`undefined`). */
+  onProblem: (problem: string | undefined) => void = () => {};
 
   constructor(private readonly laravel: Laravel) {}
 
@@ -60,7 +62,15 @@ class RoutesProvider implements vscode.TreeDataProvider<Node> {
     if (node) return "file" in node ? node.routes.map((route) => ({ route })) : [];
     if (!this.laravel.isActive) return [];
     if (!this.files) {
-      const routes = await this.laravel.routes().catch(() => []);
+      // An empty view for a server that is down would read as "this project has no routes".
+      let routes: Route[];
+      try {
+        routes = await this.laravel.routes();
+        this.onProblem(undefined);
+      } catch (e) {
+        this.onProblem(message(e));
+        return [];
+      }
       const byFile = new Map<string, Route[]>();
       for (const route of routes) {
         const key = path.normalize(route.path);
@@ -113,6 +123,9 @@ async function gotoRoute(laravel: Laravel): Promise<void> {
 export function registerRoutes(context: vscode.ExtensionContext, laravel: Laravel): void {
   const provider = new RoutesProvider(laravel);
   const view = vscode.window.createTreeView("phoxite.laravel.routes", { treeDataProvider: provider });
+  provider.onProblem = (problem) => {
+    view.message = problem ? `The routes couldn't be read: ${problem}` : undefined;
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const later = () => {
     clearTimeout(timer);

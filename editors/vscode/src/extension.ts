@@ -1,6 +1,7 @@
 // The VS Code client of phoxite-lsp.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
@@ -9,16 +10,23 @@ import {
   type LanguageClientOptions,
   RevealOutputChannelOn,
   type ServerOptions,
+  State,
 } from "vscode-languageclient/node";
+import { guarded, message, running } from "./errors";
 import { Laravel } from "./laravel/api";
 import { registerCommands } from "./laravel/commands";
 import { registerPages } from "./laravel/pages";
 import { registerRoutes } from "./laravel/routesView";
 import { Refactorings, registerRefactorings } from "./refactor/commands";
 import { openable, parseRoutes, routePicks } from "./routes";
+import { bundledName, configuredServer, serverProblem } from "./serverPath";
 
 let client: LanguageClient | undefined;
-let output: vscode.OutputChannel | undefined;
+let output: vscode.LogOutputChannel | undefined;
+/** What listens to the running client; gone with it. */
+const listening: vscode.Disposable[] = [];
+/** The restart under way: a second request waits for it instead of starting another server. */
+let restarting: Promise<void> | undefined;
 /** The Laravel requests of the server, and whether the workspace is a Laravel project. */
 const laravel = new Laravel(() => client);
 /** The refactorings that ask something first. */
@@ -39,8 +47,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
     output,
     vscode.commands.registerCommand("phoxite.restart", () => restart(context)),
     vscode.commands.registerCommand("phoxite.showOutput", () => output?.show()),
-    vscode.commands.registerCommand("phoxite.rescan", () =>
-      client?.sendRequest("workspace/executeCommand", { command: "phoxite.server.rescan", arguments: [] }),
+    vscode.commands.registerCommand(
+      "phoxite.rescan",
+      guarded(async () => {
+        await running(client).sendRequest("workspace/executeCommand", { command: "phoxite.server.rescan", arguments: [] });
+        vscode.window.setStatusBarMessage("Phoxite: indexing the project again", 3000);
+      }),
     ),
     vscode.commands.registerCommand("phoxite.openLocation", openLocation),
     vscode.commands.registerCommand("laravel.routeActions", routeActions),
@@ -54,7 +66,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("phoxite.laravel.detection")) void laravel.refreshStatus();
+      // Another executable is used from the next start on.
+      if (e.affectsConfiguration("phoxite.server.path")) {
+        void vscode.window
+          .showInformationMessage("Phoxite: restart the language server to use the new `phoxite.server.path`.", "Restart")
+          .then((choice) => choice && restart(context));
+      }
     }),
+    laravel,
   );
   registerRoutes(context, laravel);
   registerPages(context, laravel);
@@ -66,18 +85,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
 }
 
 export async function deactivate(): Promise<void> {
-  await laravel.reset();
-  await client?.stop();
-  client = undefined;
+  await stop();
 }
 
-/** The server executable: the setting, else the one bundled for this platform. */
-function serverPath(context: vscode.ExtensionContext): string | undefined {
-  const configured = vscode.workspace.getConfiguration("phoxite").get<string>("server.path")?.trim();
-  if (configured) return configured;
-  const name = process.platform === "win32" ? "phoxite-lsp.exe" : "phoxite-lsp";
-  const bundled = path.join(context.extensionPath, "server", name);
-  return fs.existsSync(bundled) ? bundled : undefined;
+/** Stops the server, if one runs. A client that never started has nothing to stop. */
+async function stop(): Promise<void> {
+  const stopping = client;
+  client = undefined;
+  for (const listener of listening.splice(0)) listener.dispose();
+  await laravel.reset();
+  if (!stopping) return;
+  try {
+    // `stop` throws on a client whose start failed, and that is when Restart is needed.
+    if (stopping.needsStop()) await stopping.stop();
+  } catch (e) {
+    output?.warn(`stopping the language server: ${message(e)}`);
+  }
+}
+
+/** The server executable (the setting, else the one bundled for this platform), or why there is none. */
+function server(context: vscode.ExtensionContext): { command: string; problem: string | null } {
+  const configured = configuredServer(vscode.workspace.getConfiguration("phoxite").get<string>("server.path"), {
+    home: os.homedir(),
+    folder: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+  });
+  const bundled = path.join(context.extensionPath, "server", bundledName(process.platform));
+  return { command: configured ?? bundled, problem: serverProblem(configured, bundled, fs.existsSync) };
+}
+
+/** Says the server isn't there, with what helps; doesn't wait for the answer. */
+function notStarted(context: vscode.ExtensionContext, why: string): void {
+  output?.error(why);
+  void vscode.window.showErrorMessage(`Phoxite: ${why}`, "Show Log", "Open Settings", "Restart").then((choice) => {
+    if (choice === "Show Log") output?.show();
+    else if (choice === "Open Settings") void vscode.commands.executeCommand("workbench.action.openSettings", "phoxite.server.path");
+    else if (choice === "Restart") void restart(context);
+  });
 }
 
 function settings(): unknown {
@@ -85,13 +128,9 @@ function settings(): unknown {
 }
 
 async function start(context: vscode.ExtensionContext): Promise<void> {
-  const command = serverPath(context);
-  if (!command) {
-    const choice = await vscode.window.showErrorMessage(
-      "Phoxite: no language server for this platform. Set `phoxite.server.path` to a phoxite-lsp executable.",
-      "Open Settings",
-    );
-    if (choice) void vscode.commands.executeCommand("workbench.action.openSettings", "phoxite.server.path");
+  const { command, problem } = server(context);
+  if (problem) {
+    notStarted(context, problem);
     return;
   }
   const run: Executable = { command, args: ["--stdio"], options: { env: { ...process.env } } };
@@ -116,10 +155,20 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     outputChannel: output,
     revealOutputChannelOn: RevealOutputChannelOn.Never,
   };
-  client = new LanguageClient("phoxite", "Phoxite", serverOptions, clientOptions);
+  const starting = new LanguageClient("phoxite", "Phoxite", serverOptions, clientOptions);
+  client = starting;
+  let attached = false;
+  listening.push(
+    starting.onDidChangeState((e) => {
+      // The server stopped (or crashed): nothing is known about the project until it
+      // runs again. The client restarts a crashed server itself; then it is asked anew.
+      if (e.newState === State.Stopped) void laravel.reset();
+      else if (e.newState === State.Running && attached) void laravel.refreshStatus();
+    }),
+  );
   // This client has the dialogs of the refactorings that ask something first, so
   // the server offers them (`refactor/commands.ts`).
-  client.registerFeature({
+  starting.registerFeature({
     fillClientCapabilities(capabilities) {
       const experimental = (capabilities.experimental ?? {}) as Record<string, unknown>;
       capabilities.experimental = { ...experimental, phoxite: { dialogs: true } };
@@ -129,20 +178,28 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     clear() {},
   });
   try {
-    await client.start();
+    await starting.start();
   } catch (e) {
-    void vscode.window.showErrorMessage(`Phoxite: the language server didn't start: ${String(e)}`);
+    notStarted(context, `the language server (${command}) didn't start: ${message(e)}`);
     return;
   }
-  // Not awaited: it asks a few times while the server reads the project.
-  void laravel.refreshStatus();
+  // Another start or a stop came meanwhile: this client is not the one in use.
+  if (client !== starting) return;
+  attached = true;
+  listening.push(laravel.attach(starting));
 }
 
-async function restart(context: vscode.ExtensionContext): Promise<void> {
-  await laravel.reset();
-  await client?.stop();
-  client = undefined;
-  await start(context);
+/** Stops the server and starts it again; requests made while one is under way share it. */
+function restart(context: vscode.ExtensionContext): Promise<void> {
+  restarting ??= (async () => {
+    try {
+      await stop();
+      await start(context);
+    } finally {
+      restarting = undefined;
+    }
+  })();
+  return restarting;
 }
 
 function warnAboutOtherServers(): void {

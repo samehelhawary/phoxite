@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient, WorkspaceEdit as ProtocolEdit } from "vscode-languageclient/node";
+import { guarded, message, running } from "../errors";
 import { changeSignaturePage } from "./html";
 import {
   type ChangeSignatureData,
@@ -32,15 +33,11 @@ const CHANGE_SIGNATURE = "phoxite.changeSignature";
 /** The code action kind the server gives "Change signature". */
 const CHANGE_SIGNATURE_KIND = "refactor.rewrite.changeSignature";
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
 export class Refactorings {
   constructor(private readonly client: () => LanguageClient | undefined) {}
 
   private running(): LanguageClient {
-    const client = this.client();
-    if (!client?.isRunning()) throw new Error("The Phoxite language server isn't running");
-    return client;
+    return running(this.client());
   }
 
   request<T>(method: string, params: Record<string, unknown>): Promise<T> {
@@ -258,7 +255,7 @@ export function registerRefactorings(context: vscode.ExtensionContext, refactori
     vscode.commands.registerCommand(CHANGE_SIGNATURE, (uri: string, data: ChangeSignatureData) =>
       changeSignature(context, refactorings, uri, data),
     ),
-    vscode.commands.registerCommand("phoxite.refactor.changeSignature", changeSignatureAtCaret),
+    vscode.commands.registerCommand("phoxite.refactor.changeSignature", guarded(changeSignatureAtCaret)),
     vscode.commands.registerCommand("phoxite.refactor.pullMembersUp", () => moveMembers(refactorings, "pullUp")),
     vscode.commands.registerCommand("phoxite.refactor.pushMembersDown", () => moveMembers(refactorings, "pushDown")),
   );

@@ -889,3 +889,36 @@ fn the_server_asks_the_client_to_watch_the_files_it_indexes() {
     assert!(c.requests.iter().all(|r| r.method != "client/registerCapability"));
     c.shutdown();
 }
+
+/// A client is told which folders are Laravel projects once the index knows, and again
+/// when that changes: it doesn't have to keep asking.
+#[test]
+fn the_client_is_told_which_folders_are_laravel_projects() {
+    use crate::laravel as l;
+    let status = |c: &Client| -> Vec<Value> {
+        c.notifications.iter().filter(|n| n.method == l::STATUS_CHANGED).map(|n| n.params.clone()).collect()
+    };
+
+    let (_dir, root) = laravel_project();
+    let mut c = Client::start(&root);
+    c.call_until(l::ROUTES, json!({}), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    let told = status(&c);
+    assert_eq!(told.len(), 1, "once, not with every index pass: {told:?}");
+    assert_eq!(told[0]["laravel"], true);
+    assert_eq!(told[0]["folders"], json!([Url::from_file_path(&root).unwrap()]));
+
+    // The folder leaves the workspace: no Laravel project is left.
+    c.notify::<n::DidChangeWorkspaceFolders>(json!({ "event": {
+        "added": [],
+        "removed": [{ "uri": Url::from_file_path(&root).unwrap(), "name": "fixture" }],
+    } }));
+    c.call_until(l::STATUS, json!({}), |v| v["laravel"] == false);
+    assert_eq!(status(&c).last().unwrap(), &json!({ "laravel": false, "folders": [] }));
+    c.shutdown();
+
+    // A project that is not a Laravel one is told so too.
+    let mut c = Client::start(&fixture("php-library"));
+    c.call_until("workspace/symbol", json!({ "query": "Library" }), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    assert_eq!(status(&c), [json!({ "laravel": false, "folders": [] })]);
+    c.shutdown();
+}

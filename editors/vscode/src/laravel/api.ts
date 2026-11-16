@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient, WorkspaceEdit as ProtocolEdit } from "vscode-languageclient/node";
+import { message, running } from "../errors";
 import type { Route } from "../routes";
 import {
   type Applied,
@@ -20,13 +21,21 @@ import {
 /** The context key the Laravel views and menus show on. */
 const CONTEXT_KEY = "phoxite.laravel";
 
-/** How often, and how far apart, a started server is asked whether the project is a Laravel one. */
+/**
+ * How often, and how far apart, a server that doesn't say so itself is asked whether the
+ * project is a Laravel one (servers before 0.3 answer before they have read the project).
+ */
 const STATUS_TRIES = 6;
 const STATUS_DELAY_MS = 1500;
+
+/** The notification of a server that says when a folder is (or stops being) a Laravel project. */
+const STATUS_CHANGED = "phoxite/laravel/statusChanged";
 
 export class Laravel {
   private active = false;
   private check = 0;
+  /** The server tells when the status changes, so asking once is enough. */
+  private told = false;
   private readonly changed = new vscode.EventEmitter<boolean>();
   /** The workspace turned out to be a Laravel project, or stopped being one. */
   readonly onDidChange = this.changed.event;
@@ -46,43 +55,65 @@ export class Laravel {
   }
 
   private async request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-    const client = this.client();
-    if (!client?.isRunning()) throw new Error("The Phoxite language server isn't running");
-    return client.sendRequest<T>(`phoxite/laravel/${method}`, { folder: this.folder(), ...params });
+    return running(this.client()).sendRequest<T>(`phoxite/laravel/${method}`, { folder: this.folder(), ...params });
+  }
+
+  /** Sets the context key the views and menus show on, and tells who listens. */
+  private async set(found: boolean): Promise<void> {
+    if (found === this.active) return;
+    this.active = found;
+    await vscode.commands.executeCommand("setContext", CONTEXT_KEY, found);
+    this.changed.fire(found);
   }
 
   /**
-   * Asks the server whether a Laravel project is open and sets the context key the
-   * views and menus show on. A server that just started is asked a few times: it may
-   * answer before it has read the project.
+   * A server started: listens to what it says about Laravel projects, and asks once
+   * for what it knows now. The answer of the listener stays while the client lives.
+   */
+  attach(client: LanguageClient): vscode.Disposable {
+    const experimental = client.initializeResult?.capabilities.experimental as
+      | { phoxite?: { laravelStatus?: boolean } }
+      | undefined;
+    this.told = experimental?.phoxite?.laravelStatus === true;
+    const listener = client.onNotification(STATUS_CHANGED, (status: { laravel?: boolean }) => {
+      // What the server says now is newer than the answer of a question still on its way.
+      this.check++;
+      void this.set(status?.laravel === true);
+    });
+    void this.refreshStatus();
+    return listener;
+  }
+
+  /**
+   * Asks the server whether a Laravel project is open. A server that tells when that
+   * changes is asked once; an older one a few times, as it may answer before it has
+   * read the project.
    */
   async refreshStatus(): Promise<boolean> {
     const check = ++this.check;
+    const tries = this.told ? 1 : STATUS_TRIES;
     let found = false;
-    for (let attempt = 0; attempt < STATUS_TRIES && check === this.check; attempt++) {
+    for (let attempt = 0; attempt < tries && check === this.check; attempt++) {
       found = await this.request<{ laravel: boolean }>("status").then(
         (status) => status.laravel,
         () => false,
       );
-      if (found) break;
+      if (found || attempt + 1 === tries) break;
       await new Promise((resolve) => setTimeout(resolve, STATUS_DELAY_MS));
     }
     if (check !== this.check) return this.active;
-    if (found !== this.active) {
-      this.active = found;
-      await vscode.commands.executeCommand("setContext", CONTEXT_KEY, found);
-      this.changed.fire(found);
-    }
+    await this.set(found);
     return found;
   }
 
   /** The server stopped: nothing is known until it runs again. */
   async reset(): Promise<void> {
     this.check++;
-    if (!this.active) return;
-    this.active = false;
-    await vscode.commands.executeCommand("setContext", CONTEXT_KEY, false);
-    this.changed.fire(false);
+    await this.set(false);
+  }
+
+  dispose(): void {
+    this.changed.dispose();
   }
 
   routes(query = ""): Promise<Route[]> {
@@ -132,8 +163,7 @@ export class Laravel {
    * the edit created.
    */
   async apply(applied: Applied): Promise<vscode.Uri[]> {
-    const client = this.client();
-    if (!client) throw new Error("The Phoxite language server isn't running");
+    const client = running(this.client());
     const edit = await client.protocol2CodeConverter.asWorkspaceEdit(applied.edit as ProtocolEdit);
     if (!edit) throw new Error("The server answered no edit");
     const touched = edit.entries().map(([uri]) => uri.toString());
@@ -162,8 +192,7 @@ export async function reveal(place: Place, column?: vscode.ViewColumn): Promise<
   });
 }
 
-/** What went wrong, as the server or the editor put it. */
-export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+export { message };
 
 /** `2 files` / `1 file`. */
 export const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;

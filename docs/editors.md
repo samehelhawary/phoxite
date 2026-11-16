@@ -194,6 +194,12 @@ The data behind the Laravel tools of the VS Code extension is there for any clie
 | `phoxite/laravel/templates` | | the generators' templates: `{ name, path, body, edited }` |
 | `phoxite/laravel/refreshSchema` | | the database read again: `{ path, tables, columns }`, or `null` when the setting names none |
 
+- The server tells when a workspace folder turns out to be a Laravel project, or stops
+  being one, with the notification `phoxite/laravel/statusChanged`:
+  `{ laravel, folders }` (the folders' URIs). It is sent once the index knows and again
+  on each change, so a client needs `phoxite/laravel/status` only for what is known
+  now. A server that sends it has `experimental.phoxite.laravelStatus` in its
+  capabilities.
 - Every request takes an optional `folder`: the URI of a workspace folder (or of a file in
   one), choosing the project when several are open. Without it the first Laravel project
   answers.

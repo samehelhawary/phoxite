@@ -5,6 +5,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { FAILED, shown } from "../errors";
 import { type Laravel, baseName, count, message } from "./api";
 import {
   type ArtisanCommand,
@@ -200,7 +201,9 @@ async function generate(context: vscode.ExtensionContext, laravel: Laravel, ctx:
 
 /** "Generate…": the generators of the project; `id` skips the list. */
 async function pickGenerator(context: vscode.ExtensionContext, laravel: Laravel, id?: unknown): Promise<void> {
-  const ctx = await laravel.generationContext().catch(() => null);
+  // A server that is down is not "no Laravel project": the failure is shown as it is.
+  const ctx = await shown(laravel.generationContext());
+  if (ctx === FAILED) return;
   if (!ctx) {
     void vscode.window.showInformationMessage(NOT_LARAVEL);
     return;
@@ -312,7 +315,8 @@ const SOURCES: Record<ArtisanCommand["source"], string> = {
  * it has required arguments.
  */
 async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
-  const commands = await laravel.artisanCommands().catch(() => null);
+  const commands = await shown(laravel.artisanCommands());
+  if (commands === FAILED) return;
   if (!commands) {
     void vscode.window.showInformationMessage("Artisan commands are listed for Laravel projects.");
     return;

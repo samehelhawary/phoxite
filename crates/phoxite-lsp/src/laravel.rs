@@ -52,6 +52,9 @@ pub const GENERATE_CLASS: &str = "phoxite/laravel/generateClass";
 pub const CREATE_TRANSLATION: &str = "phoxite/laravel/createTranslation";
 pub const TEMPLATES: &str = "phoxite/laravel/templates";
 pub const REFRESH_SCHEMA: &str = "phoxite/laravel/refreshSchema";
+/// The notification a client gets when a workspace folder turns out to be a Laravel
+/// project, or stops being one: `{ laravel, folders }`.
+pub const STATUS_CHANGED: &str = "phoxite/laravel/statusChanged";
 
 /// Every request of this module.
 pub const METHODS: &[&str] = &[
@@ -190,6 +193,16 @@ struct TemplateInfo {
     path: PathBuf,
     body: String,
     edited: bool,
+}
+
+/// The workspace folders that are Laravel projects, as URIs.
+pub fn folders(state: &State) -> Vec<Url> {
+    let workspaces = state.workspaces.read();
+    workspaces
+        .iter()
+        .filter(|w| w.engine.laravel().is_some())
+        .filter_map(|w| Url::from_file_path(&w.root).ok())
+        .collect()
 }
 
 /// The engine of the Laravel project `folder` is in, else of the first

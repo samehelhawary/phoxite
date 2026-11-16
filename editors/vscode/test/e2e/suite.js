@@ -376,6 +376,22 @@ const checks = [
     await vscode.workspace.saveAll();
     return `getCount, add, sum(int $b, int $a) moved to Base; ${result.problems.length} problems`;
   }],
+  // Last: it stops and starts the server the other checks use.
+  ["Restart recovers from a server that didn't start", async () => {
+    const config = vscode.workspace.getConfiguration("phoxite");
+    const good = config.inspect("server.path").globalValue;
+    await config.update("server.path", path.join(project, "no-such-server"), vscode.ConfigurationTarget.Global);
+    await vscode.commands.executeCommand("phoxite.restart");
+    assert.equal(laravel().isActive, false, "nothing is known about the project without a server");
+    await assert.rejects(laravel().routes(), /isn't running/);
+    // A second failed start, then the same command with the right path.
+    await vscode.commands.executeCommand("phoxite.restart");
+    await config.update("server.path", good, vscode.ConfigurationTarget.Global);
+    await vscode.commands.executeCommand("phoxite.restart");
+    await until("the Laravel project again", async () => laravel().isActive, (active) => active === true);
+    const routes = await until("routes", () => laravel().routes().catch(() => []), (found) => found.length > 0);
+    return `${routes.length} routes after the restart`;
+  }],
 ];
 
 exports.run = async function run() {

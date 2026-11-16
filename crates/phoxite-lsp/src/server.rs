@@ -123,7 +123,8 @@ pub fn capabilities() -> Value {
     caps["typeHierarchyProvider"] = Value::Bool(true);
     // What a client can look for instead of the server's name: the `phoxite/laravel/*`
     // and `phoxite/refactor/*` requests.
-    caps["experimental"] = serde_json::json!({ "phoxite": { "laravel": true, "refactor": true } });
+    caps["experimental"] =
+        serde_json::json!({ "phoxite": { "laravel": true, "refactor": true, "laravelStatus": true } });
     caps
 }
 
@@ -200,7 +201,8 @@ pub fn run(connection: Connection) -> Result<(), String> {
     }
     // `initialize_finish` returned, so the client's `initialized` has come (it reads the
     // notification itself): the server may ask the client things from here on.
-    let mut server = Server { state, pending: Arc::default(), progress_open: false, shutting_down: false };
+    let mut server =
+        Server { state, pending: Arc::default(), progress_open: false, shutting_down: false, laravel: None };
     server.watch_files();
     server.main_loop(&connection, &events_rx)?;
     server.state.shutdown();
@@ -215,6 +217,8 @@ struct Server {
     progress_open: bool,
     /// `shutdown` came; only `exit` is left.
     shutting_down: bool,
+    /// The Laravel folders the client was last told about; none before the first time.
+    laravel: Option<Vec<Url>>,
 }
 
 impl Server {
@@ -257,12 +261,31 @@ impl Server {
     fn event(&mut self, event: e::IdeEvent) {
         match event {
             e::IdeEvent::Diagnostics { path, source, items } => self.state.problems_changed(&path, source, items),
-            e::IdeEvent::IndexState { indexing, files, symbols } => self.progress(indexing, files, symbols),
+            e::IdeEvent::IndexState { indexing, files, symbols } => {
+                self.progress(indexing, files, symbols);
+                // What makes a folder a Laravel project is read with the index.
+                if !indexing {
+                    self.laravel_status();
+                }
+            }
             e::IdeEvent::LanguageServer { status, message, .. } => {
                 tracing::info!("engine {status:?}{}", message.map(|m| format!(": {m}")).unwrap_or_default());
             }
             e::IdeEvent::LanguageServerRemoved { .. } => {}
         }
+    }
+
+    /// Tells the client which workspace folders are Laravel projects, when that changed
+    /// since it was last told: a client shows its Laravel tools on it without asking again.
+    fn laravel_status(&mut self) {
+        let folders = crate::laravel::folders(&self.state);
+        if self.laravel.as_ref() == Some(&folders) {
+            return;
+        }
+        let params = serde_json::json!({ "laravel": !folders.is_empty(), "folders": folders });
+        self.laravel = Some(folders);
+        let notification = Notification::new(crate::laravel::STATUS_CHANGED.to_owned(), params);
+        let _ = self.state.sender.send(Message::Notification(notification));
     }
 
     /// Indexing as a work-done progress, when the client shows them.
@@ -297,6 +320,9 @@ impl Server {
 
     fn notification(&mut self, notification: Notification) {
         let state = &self.state;
+        // The settings choose how Laravel is detected, and a folder can leave.
+        let laravel_may_change = [n::DidChangeConfiguration::METHOD, n::DidChangeWorkspaceFolders::METHOD]
+            .contains(&notification.method.as_str());
         match notification.method.as_str() {
             // Read by `initialize_finish`; a client that repeats it changes nothing.
             n::Initialized::METHOD => {}
@@ -362,6 +388,9 @@ impl Server {
                 }
             }
             _ => {}
+        }
+        if laravel_may_change {
+            self.laravel_status();
         }
     }
 

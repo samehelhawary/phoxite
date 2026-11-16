@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- VS Code: **Restart the Language Server** works after a server that didn't start, and a
+  second request waits for the first instead of starting another server. A missing
+  `phoxite.server.path` is named before the start, with Show Log, Open Settings and
+  Restart; the setting takes `~` and a path relative to the workspace folder.
+- VS Code: the Laravel tools follow the server: they go when it stops and come back when
+  it runs again. A request that fails says so instead of "not a Laravel project" or an
+  empty routes view.
+- The server tells the client when a folder is (or stops being) a Laravel project
+  (`phoxite/laravel/statusChanged`), so clients no longer ask repeatedly at start.
+
 ## 0.2.2 — 2026-11-16
 
 - The server asks the client to watch the files it indexes
