@@ -46,8 +46,8 @@ pub struct Analyzers {
     next_run: u64,
     /// Files with problems published, by source.
     published: HashSet<(PathBuf, &'static str)>,
-    /// Analysers whose failure was already shown.
-    failed: HashSet<&'static str>,
+    /// Analysers (and the formatter run like them, `pint.rs`) whose failure was already shown.
+    pub(crate) failed: HashSet<&'static str>,
 }
 
 impl Analyzers {
@@ -146,8 +146,17 @@ impl Job {
             if self.token.is_cancelled() {
                 break;
             }
-            let found = execute(&self.interpreter, *tool, &self.root, &self.path, &self.token, TIMEOUT)
-                .and_then(|out| tool.parse(&out, &self.path, &self.root, &self.text));
+            let args = tool.args(&self.path);
+            let found = run_php(
+                &self.interpreter,
+                &tool.script(&self.root),
+                &args,
+                &self.root,
+                &self.token,
+                TIMEOUT,
+                tool.source(),
+            )
+            .and_then(|(out, _)| tool.parse(&out, &self.path, &self.root, &self.text));
             if self.token.is_cancelled() {
                 break;
             }
@@ -195,16 +204,19 @@ fn kill(child: &mut Child) {
     let _ = child.wait();
 }
 
-/// Runs `php vendor/bin/<tool> <args> <file>` in `root` and returns its
-/// stdout. Killed when `cancel` fires or after `timeout`.
-fn execute(
+/// Runs `php <script> <args>` in `root` and returns its stdout, and whether
+/// it ended well (an analyser that found problems does not, and still says
+/// them). Killed when `cancel` fires or after `timeout`; `name` is what the
+/// tool is called in the reason it failed.
+pub(crate) fn run_php(
     interpreter: &Path,
-    tool: Analyzer,
+    script: &Path,
+    args: &[std::ffi::OsString],
     root: &Path,
-    file: &Path,
     cancel: &CancellationToken,
     timeout: Duration,
-) -> Result<String, String> {
+    name: &str,
+) -> Result<(String, bool), String> {
     let mut cmd = Command::new(interpreter);
     #[cfg(windows)]
     {
@@ -212,12 +224,7 @@ fn execute(
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
-    cmd.arg(tool.script(root))
-        .args(tool.args(file))
-        .current_dir(root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.arg(script).args(args).current_dir(root).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("cannot start {}: {e}", interpreter.display()))?;
     let reader = |pipe: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
@@ -231,6 +238,7 @@ fn execute(
     let stdout = reader(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let stderr = reader(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let started = Instant::now();
+    let exit;
     loop {
         if cancel.is_cancelled() {
             kill(&mut child);
@@ -238,10 +246,13 @@ fn execute(
         }
         if started.elapsed() > timeout {
             kill(&mut child);
-            return Err(format!("{} timed out after {} s", tool.source(), timeout.as_secs()));
+            return Err(format!("{name} timed out after {} s", timeout.as_secs()));
         }
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => {
+                exit = status;
+                break;
+            }
             Ok(None) => std::thread::sleep(Duration::from_millis(50)),
             Err(e) => {
                 kill(&mut child);
@@ -255,5 +266,9 @@ fn execute(
         // Nothing to parse: the reason is on stderr (no PHP, a broken config).
         return Err(err.trim().chars().take(2000).collect());
     }
-    Ok(out)
+    if out.trim().is_empty() && !exit.success() {
+        // Nothing was said at all: the exit status is the only reason there is.
+        return Err(format!("{name} ended with {exit}"));
+    }
+    Ok((out, exit.success()))
 }

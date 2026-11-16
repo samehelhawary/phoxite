@@ -444,6 +444,20 @@
           "minimum": 40,
           "markdownDescription": "The line length Format Document tries to stay within."
         },
+        "phoxite.format.tool": {
+          "type": "string",
+          "enum": [
+            "phoxite",
+            "pint"
+          ],
+          "default": "phoxite",
+          "scope": "window",
+          "markdownDescription": "What **Format Document** uses for a PHP file. A selection, and Blade files, are always formatted by Phoxite.",
+          "markdownEnumDescriptions": [
+            "Phoxite's own formatter (PSR-12). Needs nothing installed.",
+            "The project's Laravel Pint (`vendor/bin/pint`, with its `pint.json`), run with the PHP of `phoxite.analyzers.phpPath`. Only in a trusted workspace; when the project doesn't install Pint, or Pint fails, Phoxite's formatter is used."
+          ]
+        },
         "phoxite.analyzers.onSave": {
           "type": "boolean",
           "default": false,

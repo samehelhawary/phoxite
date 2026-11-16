@@ -730,6 +730,76 @@ fn analysers_run_on_save() {
     c.shutdown();
 }
 
+/// A stand-in for the PHP interpreter running Pint: whatever script it is given, it
+/// writes `formatted` over the file that follows it. Answers its path.
+fn fake_pint(dir: &Path, formatted: &str) -> PathBuf {
+    std::fs::write(dir.join("formatted.php"), formatted).unwrap();
+    if cfg!(windows) {
+        let php = dir.join("php.cmd");
+        std::fs::write(&php, "@echo off\r\ncopy /y \"%~dp0formatted.php\" %2 >nul\r\n").unwrap();
+        php
+    } else {
+        let php = dir.join("php");
+        std::fs::write(&php, "#!/bin/sh\ncp \"$(dirname \"$0\")/formatted.php\" \"$2\"\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&php, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        php
+    }
+}
+
+#[test]
+fn pint_formats_the_whole_file_of_a_trusted_project() {
+    let (_tmp, root) = shop_project();
+    let shop = root.join("src/Shop.php");
+    let before = std::fs::read_to_string(&shop).unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    let by_pint = "<?php\n\n// formatted by the stand-in for Pint\n\nnamespace App;\n";
+    let php = fake_pint(tools.path(), by_pint);
+    let settings = |tool: &str| json!({ "settings": { "phoxite": { "format": { "tool": tool }, "analyzers": { "phpPath": php } } } });
+    let options = json!({ "tabSize": 4, "insertSpaces": true });
+
+    let mut c = Client::start(&root);
+    let uri = c.open(&shop, "php");
+    let format =
+        |c: &mut Client| c.request::<r::Formatting>(json!({ "textDocument": { "uri": uri }, "options": options }));
+    let from_pint = |edits: &Value| edits.as_array().is_some_and(|edits| edits.iter().any(|e| e["newText"] == by_pint));
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": true }));
+
+    // The project doesn't install Pint: the built-in formatter answers.
+    c.notify::<n::DidChangeConfiguration>(settings("pint"));
+    assert!(!from_pint(&format(&mut c)));
+
+    std::fs::create_dir_all(root.join("vendor/bin")).unwrap();
+    std::fs::write(root.join("vendor/bin/pint"), "<?php\n").unwrap();
+    // One edit replaces the whole text with what Pint wrote; the project's file is untouched.
+    let edits = format(&mut c);
+    assert_eq!(edits.as_array().map(Vec::len), Some(1), "{edits}");
+    assert_eq!(edits[0]["newText"], by_pint);
+    assert_eq!(edits[0]["range"]["start"], json!({ "line": 0, "character": 0 }));
+    assert_eq!(edits[0]["range"]["end"], json!({ "line": before.matches('\n').count(), "character": 0 }));
+    assert_eq!(std::fs::read_to_string(&shop).unwrap(), before);
+
+    // A range is the built-in formatter's.
+    let range = json!({ "start": { "line": 9, "character": 0 }, "end": { "line": 13, "character": 0 } });
+    let ranged =
+        c.request::<r::RangeFormatting>(json!({ "textDocument": { "uri": uri }, "range": range, "options": options }));
+    assert!(!from_pint(&ranged), "{ranged}");
+
+    // Pint is code of the project: nothing of it runs in a workspace that isn't trusted.
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": false }));
+    assert!(!from_pint(&format(&mut c)));
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": true }));
+    assert!(from_pint(&format(&mut c)));
+
+    // And the setting's default is the built-in formatter.
+    c.notify::<n::DidChangeConfiguration>(settings("phoxite"));
+    assert!(!from_pint(&format(&mut c)));
+    c.shutdown();
+}
+
 #[test]
 fn the_database_schema_joins_the_migrations() {
     let (_tmp, root) = laravel_project();

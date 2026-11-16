@@ -74,7 +74,7 @@ The server reads its settings from `initializationOptions.settings` and from
     "routeHints": true, "modules": "auto", "detection": "auto", "database": "",
     "generation": { "module": "", "controllerSuffix": "Controller", "typeHints": true }
   },
-  "format": { "lineWidth": 120 },
+  "format": { "lineWidth": 120, "tool": "phoxite" },
   "templates": { "path": ".phoxite/templates" },
   "analyzers": { "onSave": false, "phpPath": "" }
 }

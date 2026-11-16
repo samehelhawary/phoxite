@@ -9,6 +9,7 @@ mod config;
 mod convert;
 mod handlers;
 mod laravel;
+mod pint;
 mod refactor;
 mod schema;
 mod server;

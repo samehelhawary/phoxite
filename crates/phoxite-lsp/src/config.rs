@@ -10,7 +10,7 @@
 //!   "exclude": ["storage", "node_modules"],
 //!   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true, "severity": "error" } },
 //!   "laravel": { "routeHints": true, "modules": "auto", "generation": { "module": "Blog" } },
-//!   "format": { "lineWidth": 120 },
+//!   "format": { "lineWidth": 120, "tool": "phoxite" },
 //!   "templates": { "path": ".phoxite/templates" },
 //!   "analyzers": { "onSave": true, "phpPath": "php" }
 //! }
@@ -60,6 +60,9 @@ pub struct InspectionSetting {
 #[serde(default, rename_all = "camelCase")]
 pub struct FormatSettings {
     pub line_width: u32,
+    /// What formats a whole PHP file: `phoxite` (the built-in formatter) or
+    /// `pint` (the project's Laravel Pint, `pint.rs`).
+    pub tool: String,
 }
 
 /// The generators' templates the user edited.
@@ -86,7 +89,7 @@ pub const DEFAULT_TEMPLATES_PATH: &str = ".phoxite/templates";
 
 impl Default for FormatSettings {
     fn default() -> Self {
-        Self { line_width: 120 }
+        Self { line_width: 120, tool: "phoxite".to_owned() }
     }
 }
 

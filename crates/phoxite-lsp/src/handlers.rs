@@ -515,6 +515,19 @@ pub fn format(
     let edits = match doc.kind {
         Kind::Php => {
             let Some(engine) = &doc.engine else { return Ok(None) };
+            // The whole file, by the project's Pint when that is the formatter and it can run.
+            if within.is_none()
+                && let Some(formatted) = crate::pint::format(state, &doc)
+            {
+                if formatted == *doc.text {
+                    return Ok(Some(Vec::new()));
+                }
+                // Pint adds and removes lines as it likes: the whole text is replaced.
+                let last = doc.text.rsplit('\n').next().unwrap_or_default();
+                let end = lsp::Position::new(doc.text.matches('\n').count() as u32, last.encode_utf16().count() as u32);
+                let whole = lsp::Range::new(lsp::Position::new(0, 0), end);
+                return Ok(Some(vec![lsp::TextEdit::new(whole, formatted)]));
+            }
             let options = phoxite::format::FormatOptions {
                 indent: options.tab_size,
                 use_tabs: !options.insert_spaces,

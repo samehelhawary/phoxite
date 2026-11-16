@@ -111,6 +111,7 @@ the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
 | `phoxite.laravel.generation.*` | What the generators write: namespace, module, class suffixes, constructor promotion, return types. |
 | `phoxite.templates.path` | The folder of edited generator templates. |
 | `phoxite.format.lineWidth` | The line length for Format Document. |
+| `phoxite.format.tool` | `phoxite` (the built-in PSR-12 formatter) or `pint`: the project's Laravel Pint formats whole PHP files. |
 | `phoxite.analyzers.onSave` | Run the project's PHPStan and Psalm on each saved PHP file. |
 | `phoxite.analyzers.phpPath` | The PHP interpreter that runs them; empty: `php` on `PATH`. |
 | `phoxite.server.path` | Use another `phoxite-lsp` binary (`~` and a path relative to the workspace folder work). |
@@ -157,7 +158,7 @@ names, and for ones that define the Blade language too), once per workspace.
 ## Restricted Mode
 
 In a workspace you haven't trusted, Phoxite still gives code intelligence, from the
-files it reads. It runs nothing of the project there: Artisan, PHPStan and Psalm stay
+files it reads. It runs nothing of the project there: Artisan, PHPStan, Psalm and Pint stay
 off, and the settings that name a program or a file outside the project
 (`phoxite.server.path`, `phoxite.analyzers.phpPath`, `phoxite.laravel.artisanCommand`,
 `phoxite.laravel.database`, `phoxite.includePaths`) are read from your own settings

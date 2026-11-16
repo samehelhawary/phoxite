@@ -47,6 +47,11 @@
   The VS Code form and the OpenIDEA plugin offer them, and more column types (`char`,
   `longText`, `tinyInteger`, `unsignedInteger`, `time`, `ulid`, `ipAddress`) in New
   Model and Add Columns.
+- Format Document can use the project's **Laravel Pint**: `format.tool` (`phoxite.format.tool`
+  in VS Code) set to `pint` runs `vendor/bin/pint` on the file's text (unsaved changes
+  included, the file on disk untouched) with the PHP of `analyzers.phpPath`, in a trusted
+  workspace only. Without Pint, for a selection, and when Pint fails, the built-in
+  formatter answers. Tested with a stand-in for Pint, not yet against a real one.
 - VS Code, Artisan: **Run Last Artisan Command**; the arguments prompt shows the command
   that really runs (not always `php artisan`); a project set up for Laravel Sail is
   asked once whether Artisan should run through Sail.
