@@ -8,6 +8,9 @@ use openidea_plugin::mock::MockHost;
 use openidea_plugin::views::{Body, ViewEvent, Views};
 use openidea_plugin::{Plugin, Project};
 
+/// The key of the entry for the application (no module) in "Where it goes".
+const APPLICATION: &str = "\u{0}none";
+
 fn answer(mock: &MockHost, name: &str, json: &str) {
     mock.set_language_server_response(server::SERVER, &format!("phoxite/laravel/{name}"), json);
 }
@@ -71,7 +74,8 @@ fn a_generator_of_the_fixture_writes_the_servers_class() {
     answer(&mock, "generateClass", include_str!("../tests/fixtures/generateClass.json"));
     mock.answer_next_prompt(Some(&["controller"]));
     mock.answer_next_prompt(Some(&["CapturedController"]));
-    mock.answer_next_prompt(Some(&["App\\Models\\Post"]));
+    // The fixture has a module: the application is chosen. A plain controller asks no more.
+    mock.answer_next_prompt(Some(&[APPLICATION]));
     Laravel.run_command("generate", &mock.invocation(), None).unwrap();
     let written = project(&mock).read_file("/project/app/Http/Controllers/CapturedController.php").unwrap();
     assert!(written.starts_with("<?php\n\nnamespace App\\Http\\Controllers;"), "{written}");
@@ -101,9 +105,12 @@ fn add_columns_writes_the_migration_and_edits_the_model_in_place() {
 #[test]
 fn a_new_model_writes_every_file_the_server_creates() {
     let mock = mock();
+    answer(&mock, "generationContext", include_str!("../tests/fixtures/generationContext.json"));
     answer(&mock, "newModel", include_str!("../tests/fixtures/newModel.json"));
     mock.answer_next_prompt(Some(&["CapturedThing"]));
+    mock.answer_next_prompt(Some(&[APPLICATION]));
     mock.answer_next_prompt(Some(&["title:string"]));
+    mock.answer_next_prompt(Some(&[""]));
     mock.answer_next_prompt(Some(&["migration", "factory", "controller", "timestamps"]));
     Laravel.run_command("new-model", &mock.invocation(), None).unwrap();
     for (path, content) in [

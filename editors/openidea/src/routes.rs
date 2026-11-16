@@ -19,6 +19,12 @@ pub struct Route {
     action: String,
     path: String,
     range: Range,
+    /// The URL with the application's `APP_URL`.
+    #[serde(default)]
+    url: String,
+    /// An HTTP request for the route, in `.http` file syntax.
+    #[serde(default)]
+    request: String,
 }
 
 impl Route {
@@ -53,6 +59,48 @@ fn pick(routes: &[Route]) -> Result<(), Error> {
         server::open(&key)?;
     }
     Ok(())
+}
+
+/// One of the project's routes, picked by the user; none when they gave up.
+fn pick_one(ctx: &Invocation, title: &str) -> Result<Option<Route>, Error> {
+    let mut routes = routes(ctx, "")?;
+    if routes.is_empty() {
+        return Err("This project has no routes".into());
+    }
+    // By position: several routes can share a place, and a URL.
+    let items: Vec<PickItem> = routes
+        .iter()
+        .enumerate()
+        .map(|(index, r)| PickItem { key: index.to_string(), label: r.label(), description: Some(r.detail()) })
+        .collect();
+    let chosen = host::pick(title, &items)?.and_then(|key| key.parse::<usize>().ok());
+    Ok(chosen.filter(|index| *index < routes.len()).map(|index| routes.swap_remove(index)))
+}
+
+/// Copy Route URL…: the URL of a route, with the application's `APP_URL`.
+pub fn copy_url(ctx: &Invocation) -> Result<(), Error> {
+    match pick_one(ctx, "Copy Route URL")? {
+        Some(route) => host::copy_to_clipboard(&route.url),
+        None => Ok(()),
+    }
+}
+
+/// Copy Route as HTTP Request…: the route as a request of a `.http` file.
+pub fn copy_request(ctx: &Invocation) -> Result<(), Error> {
+    match pick_one(ctx, "Copy Route as HTTP Request")? {
+        Some(route) => host::copy_to_clipboard(&route.request),
+        None => Ok(()),
+    }
+}
+
+/// Open Route in Browser…: a route without parameters opens as it is; one with
+/// parameters (`/posts/{post}`) has nothing to put in them, and says so.
+pub fn open_in_browser(ctx: &Invocation) -> Result<(), Error> {
+    let Some(route) = pick_one(ctx, "Open Route in Browser")? else { return Ok(()) };
+    if route.url.contains('{') {
+        return Err(Error::Invalid(format!("{} has parameters: copy its URL and fill them in", route.label())));
+    }
+    host::open_url(&route.url)
 }
 
 /// Go to Route…: a picker over every route.
@@ -152,6 +200,33 @@ pub(crate) mod tests {
         mock.answer_next_prompt(Some(&[r#"{"path":"/project/routes/web.php","at":{"line":4,"col":0}}"#]));
         go_to_route(&mock.invocation()).unwrap();
         assert_eq!(mock.opened_locations(), [("/project/routes/web.php".to_owned(), 4, 0)]);
+    }
+
+    #[test]
+    fn a_routes_url_is_copied_or_opened_in_the_browser() {
+        let mock = with_routes();
+        mock.answer_next_prompt(Some(&["1"]));
+        copy_url(&mock.invocation()).unwrap();
+        assert_eq!(mock.clipboard().as_deref(), Some("http://localhost/api/posts"));
+        mock.answer_next_prompt(Some(&["0"]));
+        copy_request(&mock.invocation()).unwrap();
+        assert_eq!(mock.clipboard().as_deref(), Some("GET http://localhost/posts"));
+        mock.answer_next_prompt(Some(&["0"]));
+        open_in_browser(&mock.invocation()).unwrap();
+        assert_eq!(mock.opened_urls(), ["http://localhost/posts"]);
+        // Dismissed: nothing more is copied or opened.
+        open_in_browser(&mock.invocation()).unwrap();
+        assert_eq!(mock.opened_urls().len(), 1);
+    }
+
+    #[test]
+    fn a_route_with_parameters_is_not_opened_as_it_is() {
+        let mock = mock();
+        let answer = ANSWER.replace("http://localhost/posts\"", "http://localhost/posts/{post}\"");
+        mock.set_language_server_response(server::SERVER, "phoxite/laravel/routes", &answer);
+        mock.answer_next_prompt(Some(&["0"]));
+        assert!(matches!(open_in_browser(&mock.invocation()), Err(Error::Invalid(m)) if m.contains("parameters")));
+        assert!(mock.opened_urls().is_empty());
     }
 
     #[test]

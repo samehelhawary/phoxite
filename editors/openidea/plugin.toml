@@ -17,8 +17,9 @@ activation = ["on-command:*", "on-event:files-changed"]
 required = ["lsp:phoxite", "project.read", "storage", "events"]
 # project.write: the generators, Add Columns and Create translation key write files.
 # editor.read / editor.write: a file with unsaved changes is edited in its editor.
+# clipboard: Copy Route URL and Copy Route as HTTP Request.
 # process:php: Run Artisan Command.
-optional = ["project.write", "editor.read", "editor.write", "process:php"]
+optional = ["project.write", "editor.read", "editor.write", "clipboard", "process:php"]
 
 [[contributes.commands]]
 id = "go-to-route"
@@ -27,6 +28,18 @@ title = "Laravel: Go to Route…"
 [[contributes.commands]]
 id = "refresh-routes"
 title = "Laravel: Refresh Routes"
+
+[[contributes.commands]]
+id = "copy-route-url"
+title = "Laravel: Copy Route URL…"
+
+[[contributes.commands]]
+id = "copy-route-request"
+title = "Laravel: Copy Route as HTTP Request…"
+
+[[contributes.commands]]
+id = "open-route"
+title = "Laravel: Open Route in Browser…"
 
 [[contributes.commands]]
 id = "run-artisan"

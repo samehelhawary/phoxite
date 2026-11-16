@@ -11,7 +11,8 @@ The commands are in Search Everywhere under **Laravel**.
 - **Laravel Routes**, a tool window listing the routes by route file; open one to go to
   it. **Go to Route…** is a picker over the same routes, and the routes lens on a
   controller method (or the URI after a route) goes to the route, asking which when there
-  are several.
+  are several. **Copy Route URL…**, **Copy Route as HTTP Request…** and **Open Route in
+  Browser…** take a route's URL with the application's `APP_URL`.
 - **Eloquent Model**, a tool window with a model's columns, relations, scopes, accessors
   and related classes (factory, policy, migrations…); each item goes to its declaration.
   The lens on a model class opens it, as does **Show Eloquent Model…**. **Add Columns…**
@@ -19,29 +20,36 @@ The commands are in Search Everywhere under **Laravel**.
   nullable), writes a migration and can add the columns to `$fillable`.
 - **Generate…** creates controllers, Form Requests, migrations, jobs, policies, views and
   the rest of the server's generators, plus the code generations of the project's
-  `ide.json`. It asks for the name, the model where the generator takes one, and the
-  inputs of an `ide.json` generation.
-- **New Eloquent Model…** asks for the name, the fields (as for Add Columns) and what to
-  create with it: migration, factory, seeder, resource controller, Form Requests, JSON
-  resource, policy, timestamps, soft deletes.
+  `ide.json`. It asks one thing at a time: the name, the module when the project has
+  modules, then what the generator takes (its model, table, event, backing type or HTTP
+  status), the inputs of an `ide.json` generation, and its options to tick.
+- **New Eloquent Model…** asks for the name, the fields
+  (`title:string, slug:string unique, votes:integer? index`), the relations
+  (`belongsTo:User, hasMany:Comment as comments`) and what to create with it: migration,
+  factory, seeder, resource controller, Form Requests, JSON resource, policy,
+  timestamps, soft deletes.
 - **Run Artisan Command…** lists the project's commands, Laravel's and the packages',
   asks for the arguments and runs `php artisan …` in a terminal. A console command class
   has a lens that runs it.
 - **Create translation key…** (the quick-fix on a translation key some locale lacks) asks
   which locales get the key and their texts.
 
+Both tool windows are read again when PHP files of the project change.
+
 ## What it doesn't have yet
 
 Compared with the VS Code extension:
 
-- The generators ask only for the name and the model. Their other options (the table of a
-  migration, the event of a listener, API controllers, the module to generate into…)
-  keep their defaults, and files go to the module of the project's settings.
-- New Eloquent Model has no relations, indexes, unique or default values for fields.
+- New Eloquent Model has no composite indexes and no default values for fields, and its
+  controller is a resource controller or none.
+- Artisan always runs as `php artisan`. A plugin may run only the programs its manifest
+  names for approval, so a setting for `sail` or `docker compose exec` would need each
+  of them declared.
 - A migration's file name carries the UTC time, not the local one: a plugin has no local
   clock to send the server.
-- No "copy URL" or "open in browser" on a route, no Find Usages or Rename from the model
-  view, no editing of the generator templates, and Artisan always runs as `php artisan`.
+- No Find Usages or Rename from the model view, and no editing of the generator
+  templates.
+- What a form shows at once in VS Code is asked one question at a time here.
 
 ## Permissions
 
@@ -54,6 +62,7 @@ Compared with the VS Code extension:
   write files.
 - `editor.read`, `editor.write` (optional): a file with unsaved changes is edited in its
   editor instead of on disk.
+- `clipboard` (optional): Copy Route URL and Copy Route as HTTP Request.
 - `process:php` (optional): Run Artisan Command.
 
 It needs Phoxite chosen as the PHP server (**Settings › Languages & Frameworks › Language

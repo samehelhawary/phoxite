@@ -22,6 +22,9 @@ impl Plugin for Laravel {
         match id {
             "go-to-route" => routes::go_to_route(ctx)?,
             "refresh-routes" => host::refresh_view(routes::VIEW),
+            "copy-route-url" => routes::copy_url(ctx)?,
+            "copy-route-request" => routes::copy_request(ctx)?,
+            "open-route" => routes::open_in_browser(ctx)?,
             "run-artisan" => artisan::pick_and_run(ctx)?,
             "show-model" => model::pick(ctx)?,
             "generate" => generate::generate(ctx)?,
@@ -90,6 +93,7 @@ mod tests {
             "editor.write",
             "storage",
             "events",
+            "clipboard",
             "process:php",
         ]);
         mock.set_project_root(Some("/project"));
@@ -141,7 +145,7 @@ mod tests {
                 assert!(!matches!(&result, Err(Error::NotFound(m)) if m == id), "{id} is declared but not handled");
             }
         }
-        assert!(commands >= 14, "only {commands} commands found in plugin.toml");
+        assert!(commands >= 17, "only {commands} commands found in plugin.toml");
         for view in ["routes", "model"] {
             assert!(manifest.contains(&format!("id = \"{view}\"")), "{view}");
             assert!(!matches!(Laravel.render(view, None, &mock.invocation()), Err(Error::NotFound(m)) if m == view));
