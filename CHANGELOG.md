@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 — 2026-11-16
 
 - The server asks the client to watch the files it indexes
   (`workspace/didChangeWatchedFiles`). Editors that report changes only for registered
