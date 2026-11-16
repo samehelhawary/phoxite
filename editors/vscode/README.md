@@ -69,7 +69,9 @@ The commands below are in the Command Palette under **Laravel** once a Laravel p
 - **Generate…** (also in the Explorer's context menu) creates controllers, Form Requests,
   migrations, jobs, mailables, policies, Blade components, tests and more, plus the code
   generations of the project's `ide.json`. **New Eloquent Model…** is a form for a model
-  with its fields, relations and indexes, and optionally its migration, factory, seeder,
+  with its fields (an enum with its values, a foreign key with what deleting does, the
+  columns of a polymorphic relation), relations (through another model and polymorphic
+  ones too) and indexes, and optionally its migration, factory, seeder,
   controller, Form Requests, JSON resource and policy.
 - **Run Artisan Command…** lists the project's commands, Laravel's and the packages', asks
   for arguments and runs the command in the terminal. A console command class has a

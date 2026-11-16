@@ -73,22 +73,48 @@ export interface ModelView {
   related: RelatedClass[];
 }
 
-/** The column types offered (Laravel's `Blueprint` methods). */
+/** The column types offered (Laravel's `Blueprint` methods): those a name is enough for. */
 export const COLUMN_TYPES = [
   "string",
+  "char",
   "text",
+  "longText",
   "integer",
+  "tinyInteger",
   "bigInteger",
+  "unsignedInteger",
   "unsignedBigInteger",
   "foreignId",
+  "foreignUuid",
   "boolean",
   "decimal",
   "float",
   "date",
   "dateTime",
+  "time",
   "timestamp",
   "json",
   "uuid",
+  "ulid",
+  "ipAddress",
+] as const;
+
+/**
+ * The column types of the New Model form: also `enum`, which lists its values, and
+ * `morphs`, the `{name}_type` and `{name}_id` columns of a polymorphic relation.
+ */
+export const MODEL_COLUMN_TYPES = [...COLUMN_TYPES, "enum", "morphs"] as const;
+
+/** The column types that are a foreign key: they can say what deleting the row they point at does. */
+export const FOREIGN_TYPES: readonly string[] = ["foreignId", "foreignUuid"];
+
+/** What a foreign key does when the row it points at is deleted (the server's `ON_DELETE`). */
+export const ON_DELETE = [
+  { value: "", label: "On delete: database default" },
+  { value: "cascade", label: "On delete: cascade" },
+  { value: "restrict", label: "On delete: restrict" },
+  { value: "setNull", label: "On delete: set null" },
+  { value: "noAction", label: "On delete: no action" },
 ] as const;
 
 /** A column the model view's Add Columns form adds. */
@@ -359,7 +385,17 @@ export function statusError(status: string): string | null {
 /** A checkbox field's value counts as ticked. */
 export const truthy = (value: string) => !["", "false", "0"].includes(value.trim());
 
-export const RELATION_KINDS = ["belongsTo", "hasOne", "hasMany", "belongsToMany", "morphMany", "morphTo"] as const;
+export const RELATION_KINDS = [
+  "belongsTo",
+  "hasOne",
+  "hasMany",
+  "belongsToMany",
+  "hasManyThrough",
+  "morphOne",
+  "morphMany",
+  "morphToMany",
+  "morphTo",
+] as const;
 export const CONTROLLER_KINDS = [
   { value: "none", label: "No controller" },
   { value: "plain", label: "Plain controller" },
@@ -376,6 +412,10 @@ export interface NewModelField {
   index: boolean;
   /** The default value as PHP; empty = none. */
   default: string;
+  /** The values of an `enum` column, separated by commas. */
+  values?: string;
+  /** What a foreign key does on delete: a value of `ON_DELETE`. */
+  onDelete?: string;
 }
 
 export interface NewModelRelation {
@@ -384,7 +424,12 @@ export interface NewModelRelation {
   model: string;
   /** The method name; empty = from the related model. */
   name: string;
+  /** The model a `hasManyThrough` relation goes through. */
+  through?: string;
 }
+
+/** A field as the server's generator takes it (`ModelField`). */
+export type NewModelSpecField = Omit<NewModelField, "values" | "onDelete"> & { values: string[]; onDelete: string };
 
 /** The New Model form, as its page posts it. */
 export interface NewModelForm {
@@ -407,7 +452,11 @@ export interface NewModelForm {
 }
 
 /** What the server's New Model generator takes (`NewModel`). */
-export type NewModelSpec = Omit<NewModelForm, "indexes"> & { indexes: Array<{ columns: string[]; unique: boolean }> };
+export type NewModelSpec = Omit<NewModelForm, "indexes" | "fields" | "relations"> & {
+  fields: NewModelSpecField[];
+  relations: Array<Required<NewModelRelation>>;
+  indexes: Array<{ columns: string[]; unique: boolean }>;
+};
 
 export function emptyModelForm(module = ""): NewModelForm {
   return {
@@ -437,17 +486,34 @@ export function newModelSpec(form: NewModelForm): NewModelSpec {
     module: text(form.module),
     fields: (form.fields ?? [])
       .filter((f) => text(f.name))
-      .map((f) => ({
-        name: text(f.name),
-        ty: text(f.ty) || "string",
-        nullable: !!f.nullable,
-        unique: !!f.unique,
-        index: !!f.index,
-        default: text(f.default),
-      })),
+      .map((f) => {
+        const ty = text(f.ty) || "string";
+        return {
+          name: text(f.name),
+          ty,
+          nullable: !!f.nullable,
+          unique: !!f.unique,
+          index: !!f.index,
+          default: text(f.default),
+          // What a type has no use for is not sent, whatever its hidden input holds.
+          values:
+            ty === "enum"
+              ? text(f.values)
+                  .split(",")
+                  .map((value) => value.trim())
+                  .filter(Boolean)
+              : [],
+          onDelete: FOREIGN_TYPES.includes(ty) ? text(f.onDelete) : "",
+        };
+      }),
     relations: (form.relations ?? [])
       .filter((r) => text(r.model) || r.kind === "morphTo")
-      .map((r) => ({ kind: text(r.kind), model: r.kind === "morphTo" ? "" : text(r.model), name: text(r.name) })),
+      .map((r) => ({
+        kind: text(r.kind),
+        model: r.kind === "morphTo" ? "" : text(r.model),
+        name: text(r.name),
+        through: r.kind === "hasManyThrough" ? text(r.through) : "",
+      })),
     indexes: (form.indexes ?? [])
       .map((i) => ({
         columns: text(i.columns)
@@ -479,10 +545,14 @@ export function newModelError(form: NewModelForm): string | null {
     if (!IDENTIFIER.test(f.name)) return `'${f.name}' is not a valid column name`;
     if (seen.has(f.name.toLowerCase())) return `The column '${f.name}' is there twice`;
     seen.add(f.name.toLowerCase());
+    if (f.ty === "enum" && !f.values.length) return `List the values of the enum column '${f.name}' (draft, published)`;
+    if (f.onDelete && !ON_DELETE.some((o) => o.value === f.onDelete)) return `'${f.onDelete}' is not something a foreign key does on delete`;
+    if (f.onDelete === "setNull" && !f.nullable) return `Make '${f.name}' nullable: it is set to null on delete`;
   }
   for (const r of spec.relations) {
     if (!(RELATION_KINDS as readonly string[]).includes(r.kind)) return `'${r.kind}' is not a relation`;
     if (r.kind === "morphTo" && !r.name) return "Name the morphTo relation (commentable)";
+    if (r.kind === "hasManyThrough" && !r.through) return `Choose the model the relation to ${shortName(r.model)} goes through`;
     if (r.name && !IDENTIFIER.test(r.name)) return `'${r.name}' is not a valid relation name`;
   }
   for (const i of spec.indexes) {

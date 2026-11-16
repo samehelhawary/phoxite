@@ -24,8 +24,11 @@ The commands are in Search Everywhere under **Laravel**.
   modules, then what the generator takes (its model, table, event, backing type or HTTP
   status), the inputs of an `ide.json` generation, and its options to tick.
 - **New Eloquent Model…** asks for the name, the fields
-  (`title:string, slug:string unique, votes:integer? index`), the relations
-  (`belongsTo:User, hasMany:Comment as comments`) and what to create with it: migration,
+  (`title:string, slug:string unique, votes:integer? index`; an enum lists its values,
+  `status:enum(draft|published)`; a foreign key can say what deleting does,
+  `user_id:foreignId cascade`; `subject:morphs` is the two columns of a polymorphic
+  relation), the relations (`belongsTo:User, hasMany:Comment as comments,
+  hasManyThrough:Post through User`) and what to create with it: migration,
   factory, seeder, resource controller, Form Requests, JSON resource, policy,
   timestamps, soft deletes.
 - **Run Artisan Command…** lists the project's commands, Laravel's and the packages',

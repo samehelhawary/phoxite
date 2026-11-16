@@ -52,7 +52,21 @@ struct Context {
 
 /// The generator that is New Eloquent Model.
 const MODEL_GENERATOR: &str = "model";
-const RELATION_KINDS: [&str; 6] = ["belongsTo", "hasOne", "hasMany", "belongsToMany", "morphMany", "morphTo"];
+const RELATION_KINDS: [&str; 9] = [
+    "belongsTo",
+    "hasOne",
+    "hasMany",
+    "belongsToMany",
+    "hasManyThrough",
+    "morphOne",
+    "morphMany",
+    "morphToMany",
+    "morphTo",
+];
+
+/// What a foreign key (`foreignId`, `foreignUuid`) can do when the row it points at
+/// is deleted, as the server's generator names it.
+const ON_DELETE: [&str; 4] = ["cascade", "restrict", "setNull", "noAction"];
 
 fn context(ctx: &Invocation) -> Result<Context, Error> {
     let context: Option<Context> = server::request(ctx, "generationContext", json!({}))?;
@@ -245,39 +259,81 @@ pub fn generate(ctx: &Invocation) -> Result<(), Error> {
 }
 
 /// The fields of `title:string, slug:string unique, votes:integer? index`: a column as
-/// Add Columns takes it, then `unique` or `index`.
+/// Add Columns takes it, then `unique` or `index`. Two more types than Add Columns has:
+/// `status:enum(draft|published)` lists its values, and `subject:morphs` is the two
+/// columns of a polymorphic relation. A foreign key can say what deleting does:
+/// `user_id:foreignId cascade` (or `restrict`, `setNull`, `noAction`).
 fn parse_fields(typed: &str) -> Result<Vec<Value>, Error> {
     let mut fields = Vec::new();
     for part in typed.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        // The values of an enum, taken out before the words are told apart.
+        let (part, values) = match (part.find('('), part.rfind(')')) {
+            (Some(open), Some(close)) if open < close => {
+                let values: Vec<&str> =
+                    part[open + 1..close].split('|').map(str::trim).filter(|v| !v.is_empty()).collect();
+                (format!("{}{}", &part[..open], &part[close + 1..]), values)
+            }
+            _ => (part.to_owned(), Vec::new()),
+        };
         let mut words = part.split_whitespace();
         let mut column = words.next().unwrap_or_default().to_owned();
-        let (mut unique, mut index) = (false, false);
+        let (mut unique, mut index, mut on_delete) = (false, false, "");
         for word in words {
             match word {
                 "?" => column.push('?'),
                 "unique" => unique = true,
                 "index" => index = true,
-                other => return Err(Error::Invalid(format!("'{other}' after a field is not `unique` or `index`"))),
+                word if ON_DELETE.contains(&word) => on_delete = word,
+                other => {
+                    return Err(Error::Invalid(format!(
+                        "'{other}' after a field is not `unique`, `index` or what a foreign key does on delete ({})",
+                        ON_DELETE.join(", ")
+                    )));
+                }
             }
         }
-        let parsed = parse_columns(&column)?;
-        let mut field = serde_json::to_value(&parsed[0]).map_err(|e| Error::Failed(e.to_string()))?;
+        let ty = column.split_once(':').map(|(_, ty)| ty.trim_end_matches('?')).unwrap_or_default();
+        let mut field = if matches!(ty, "enum" | "morphs") {
+            let (name, _) = column.split_once(':').unwrap_or_default();
+            json!({ "name": name.trim(), "ty": ty, "nullable": column.ends_with('?') })
+        } else {
+            let parsed = parse_columns(&column)?;
+            serde_json::to_value(&parsed[0]).map_err(|e| Error::Failed(e.to_string()))?
+        };
+        if ty == "enum" && values.is_empty() {
+            return Err(Error::Invalid(format!("List the values of '{column}': status:enum(draft|published)")));
+        }
+        if ty != "enum" && !values.is_empty() {
+            return Err(Error::Invalid(format!("Only an enum lists values, and '{column}' is not one")));
+        }
+        if !on_delete.is_empty() && !ty.starts_with("foreign") {
+            return Err(Error::Invalid(format!(
+                "'{column}' is not a foreign key: `{on_delete}` is for foreignId and foreignUuid"
+            )));
+        }
         field["unique"] = json!(unique);
         field["index"] = json!(index);
         field["default"] = json!("");
+        field["values"] = json!(values);
+        field["onDelete"] = json!(on_delete);
         fields.push(field);
     }
     Ok(fields)
 }
 
 /// The relations of `belongsTo:User, hasMany:Comment as comments`: a kind, the related
-/// model, and the method's name when it isn't the one the model gives.
+/// model, and the method's name when it isn't the one the model gives. A
+/// `hasManyThrough` names the model between: `hasManyThrough:Post through User`.
 fn parse_relations(typed: &str) -> Result<Vec<Value>, Error> {
     let mut relations = Vec::new();
     for part in typed.split(',').map(str::trim).filter(|p| !p.is_empty()) {
         let (relation, name) = match part.split_once(" as ") {
             Some((relation, name)) => (relation.trim(), name.trim()),
             None => (part, ""),
+        };
+        let (relation, through) = match relation.split_once(" through ") {
+            Some((relation, through)) => (relation.trim(), through.trim()),
+            None => (relation, ""),
         };
         let Some((kind, model)) = relation.split_once(':').map(|(kind, model)| (kind.trim(), model.trim())) else {
             return Err(Error::Invalid(format!("'{part}' is not a relation: write it as hasMany:Comment")));
@@ -300,7 +356,13 @@ fn parse_relations(typed: &str) -> Result<Vec<Value>, Error> {
         if !name.is_empty() && !identifier(name) {
             return Err(Error::Invalid(format!("'{name}' is not a method's name")));
         }
-        relations.push(json!({ "kind": kind, "model": model, "name": name }));
+        if (kind == "hasManyThrough") != !through.is_empty() || (!through.is_empty() && !identifier(through)) {
+            return Err(Error::Invalid(format!(
+                "A hasManyThrough relation, and only one, names the model between: hasManyThrough:{} through User",
+                if model.is_empty() { "Post" } else { model }
+            )));
+        }
+        relations.push(json!({ "kind": kind, "model": model, "name": name, "through": through }));
     }
     Ok(relations)
 }
@@ -329,10 +391,10 @@ fn new_model_in(ctx: &Invocation, context: &Context) -> Result<(), Error> {
         return Err(Error::Invalid("Enter a name".into()));
     }
     let Some(module) = pick_module(context)? else { return Ok(()) };
-    let prompt = "Fields, e.g. title:string, slug:string unique, votes:integer? index (empty for none)";
+    let prompt = "Fields, e.g. title:string, slug:string unique, votes:integer? index, status:enum(draft|published), user_id:foreignId cascade (empty for none)";
     let Some(typed) = host::input(prompt, None)? else { return Ok(()) };
     let fields = parse_fields(&typed)?;
-    let prompt = "Relations, e.g. belongsTo:User, hasMany:Comment as comments (empty for none)";
+    let prompt = "Relations, e.g. belongsTo:User, hasMany:Comment as comments, hasManyThrough:Post through User (empty for none)";
     let Some(typed) = host::input(prompt, None)? else { return Ok(()) };
     let relations = parse_relations(&typed)?;
     let items: Vec<PickItem> = EXTRAS.iter().map(|(key, label)| item(key, label, None)).collect();
@@ -497,10 +559,24 @@ mod tests {
         assert_eq!(
             parse_fields("title:string, slug:string unique, votes:integer ? index,").unwrap(),
             [
-                json!({ "name": "title", "ty": "string", "nullable": false, "unique": false, "index": false, "default": "" }),
-                json!({ "name": "slug", "ty": "string", "nullable": false, "unique": true, "index": false, "default": "" }),
-                json!({ "name": "votes", "ty": "integer", "nullable": true, "unique": false, "index": true, "default": "" }),
+                json!({ "name": "title", "ty": "string", "nullable": false, "unique": false, "index": false, "default": "", "values": [], "onDelete": "" }),
+                json!({ "name": "slug", "ty": "string", "nullable": false, "unique": true, "index": false, "default": "", "values": [], "onDelete": "" }),
+                json!({ "name": "votes", "ty": "integer", "nullable": true, "unique": false, "index": true, "default": "", "values": [], "onDelete": "" }),
             ]
+        );
+        // An enum's values, the columns of a polymorphic relation, a foreign key's on delete.
+        assert_eq!(
+            parse_fields("status:enum(draft | published)? index, subject:morphs, team_id:foreignUuid cascade").unwrap(),
+            [
+                json!({ "name": "status", "ty": "enum", "nullable": true, "unique": false, "index": true, "default": "", "values": ["draft", "published"], "onDelete": "" }),
+                json!({ "name": "subject", "ty": "morphs", "nullable": false, "unique": false, "index": false, "default": "", "values": [], "onDelete": "" }),
+                json!({ "name": "team_id", "ty": "foreignUuid", "nullable": false, "unique": false, "index": false, "default": "", "values": [], "onDelete": "cascade" }),
+            ]
+        );
+        assert!(matches!(parse_fields("status:enum"), Err(Error::Invalid(m)) if m.contains("draft|published")));
+        assert!(matches!(parse_fields("title:string(a|b)"), Err(Error::Invalid(m)) if m.contains("Only an enum")));
+        assert!(
+            matches!(parse_fields("title:string cascade"), Err(Error::Invalid(m)) if m.contains("not a foreign key"))
         );
         assert!(parse_fields("").unwrap().is_empty());
         assert!(matches!(parse_fields("title:string primary"), Err(Error::Invalid(m)) if m.contains("unique")));
@@ -508,10 +584,21 @@ mod tests {
         assert_eq!(
             parse_relations("belongsTo:User, hasMany : Comment as comments, morphTo: as owner").unwrap(),
             [
-                json!({ "kind": "belongsTo", "model": "User", "name": "" }),
-                json!({ "kind": "hasMany", "model": "Comment", "name": "comments" }),
-                json!({ "kind": "morphTo", "model": "", "name": "owner" }),
+                json!({ "kind": "belongsTo", "model": "User", "name": "", "through": "" }),
+                json!({ "kind": "hasMany", "model": "Comment", "name": "comments", "through": "" }),
+                json!({ "kind": "morphTo", "model": "", "name": "owner", "through": "" }),
             ]
+        );
+        assert_eq!(
+            parse_relations("hasManyThrough:Post through User as articles, morphToMany:Tag").unwrap(),
+            [
+                json!({ "kind": "hasManyThrough", "model": "Post", "name": "articles", "through": "User" }),
+                json!({ "kind": "morphToMany", "model": "Tag", "name": "", "through": "" }),
+            ]
+        );
+        assert!(matches!(parse_relations("hasManyThrough:Post"), Err(Error::Invalid(m)) if m.contains("through User")));
+        assert!(
+            matches!(parse_relations("hasMany:Post through User"), Err(Error::Invalid(m)) if m.contains("only one"))
         );
         assert!(matches!(parse_relations("owns:User"), Err(Error::Invalid(m)) if m.contains("belongsTo")));
         assert!(matches!(parse_relations("hasMany"), Err(Error::Invalid(m)) if m.contains("hasMany:Comment")));
@@ -540,9 +627,9 @@ mod tests {
         assert_eq!((&spec["name"], &spec["module"]), (&json!("Post"), &json!("")));
         assert_eq!(
             spec["fields"][1],
-            json!({ "name": "body", "ty": "text", "nullable": true, "unique": false, "index": false, "default": "" })
+            json!({ "name": "body", "ty": "text", "nullable": true, "unique": false, "index": false, "default": "", "values": [], "onDelete": "" })
         );
-        assert_eq!(spec["relations"], json!([{ "kind": "belongsTo", "model": "User", "name": "" }]));
+        assert_eq!(spec["relations"], json!([{ "kind": "belongsTo", "model": "User", "name": "", "through": "" }]));
         assert_eq!(
             (&spec["migration"], &spec["factory"], &spec["controller"], &spec["timestamps"], &spec["softDeletes"]),
             (&json!(true), &json!(false), &json!("resource"), &json!(true), &json!(false))

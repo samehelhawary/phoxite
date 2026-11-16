@@ -90,7 +90,7 @@ fn field(name: &str, ty: &str) -> ModelField {
 }
 
 fn relation(kind: &str, model: &str, name: &str) -> ModelRelation {
-    ModelRelation { kind: kind.to_owned(), model: model.to_owned(), name: name.to_owned() }
+    ModelRelation { kind: kind.to_owned(), model: model.to_owned(), name: name.to_owned(), ..ModelRelation::default() }
 }
 
 /// A model with every kind of field modifier, relations, an index and all
@@ -780,4 +780,136 @@ fn ide_json_code_generation() {
     std::fs::create_dir_all(app.root.join("app/Data")).unwrap();
     std::fs::write(app.root.join("app/Data/InvoiceData.php"), "<?php\n").unwrap();
     assert!(app.class(&class_spec("ide-json:acme.dto", "Invoice")).unwrap_err().contains("exists already"));
+}
+
+/// The text of the generated file whose path ends with `suffix`.
+fn text_of<'a>(app: &App, files: &'a [GeneratedFile], suffix: &str) -> &'a str {
+    let file = files.iter().find(|file| app.relative(&file.path).ends_with(suffix));
+    &file.unwrap_or_else(|| panic!("no {suffix} among {:?}", app.paths(files))).text
+}
+
+#[test]
+fn listed_polymorphic_and_foreign_columns() {
+    let app = App::new();
+    let spec = NewModel {
+        name: "Ticket".to_owned(),
+        fields: vec![
+            ModelField {
+                values: vec!["open".to_owned(), " closed ".to_owned(), "won't fix".to_owned()],
+                default: "open".to_owned(),
+                ..field("status", "enum")
+            },
+            field("subject", "morphs"),
+            ModelField { nullable: true, ..field("origin", "morphs") },
+            ModelField { on_delete: "cascade".to_owned(), ..field("team_id", "foreignUuid") },
+            ModelField { nullable: true, on_delete: "setNull".to_owned(), ..field("agent_id", "foreignId") },
+            field("opened_at", "time"),
+            field("code", "char"),
+        ],
+        indexes: vec![ModelIndex { columns: vec!["subject_type".to_owned(), "status".to_owned()], unique: false }],
+        factory: true,
+        form_requests: true,
+        ..NewModel::default()
+    };
+    let files = app.generate(&spec).unwrap();
+
+    let migration = text_of(&app, &files, "_create_tickets_table.php");
+    for line in [
+        r"$table->enum('status', ['open', 'closed', 'won\'t fix'])->default('open');",
+        "$table->morphs('subject');",
+        "$table->nullableMorphs('origin');",
+        "$table->foreignUuid('team_id')->constrained()->cascadeOnDelete();",
+        "$table->foreignId('agent_id')->nullable()->constrained()->nullOnDelete();",
+        "$table->time('opened_at');",
+        "$table->char('code');",
+        "$table->index(['subject_type', 'status']);",
+    ] {
+        assert!(migration.contains(line), "no `{line}` in\n{migration}");
+    }
+
+    // The two columns of each morph are fillable; a morph has no factory value or rule of its own.
+    let model = text_of(&app, &files, "app/Models/Ticket.php");
+    for column in ["'subject_type',", "'subject_id',", "'origin_type',", "'origin_id',", "'team_id',"] {
+        assert!(model.contains(column), "no {column} in\n{model}");
+    }
+    let factory = text_of(&app, &files, "TicketFactory.php");
+    assert!(factory.contains(r"'status' => fake()->randomElement(['open', 'closed', 'won\'t fix']),"), "{factory}");
+    assert!(factory.contains("'team_id' => fake()->uuid(),"), "{factory}");
+    assert!(!factory.contains("subject"), "{factory}");
+    let request = text_of(&app, &files, "StoreTicketRequest.php");
+    // A value with a quote can't be listed in the rule, so the rule is left out.
+    assert!(request.contains("'status' => ['required'],"), "{request}");
+    assert!(request.contains("'team_id' => ['required', 'uuid'],"), "{request}");
+    assert!(!request.contains("subject"), "{request}");
+
+    let listed = NewModel {
+        name: "Order".to_owned(),
+        fields: vec![ModelField { values: vec!["new".to_owned(), "paid".to_owned()], ..field("state", "enum") }],
+        form_requests: true,
+        ..NewModel::default()
+    };
+    let files = app.generate(&listed).unwrap();
+    assert!(text_of(&app, &files, "StoreOrderRequest.php").contains("'state' => ['required', 'in:new,paid'],"));
+}
+
+#[test]
+fn what_a_column_can_not_be() {
+    let app = App::new();
+    let with =
+        |fields: Vec<ModelField>| app.generate(&NewModel { name: "Ticket".to_owned(), fields, ..NewModel::default() });
+    assert_eq!(with(vec![field("status", "enum")]).unwrap_err(), "List the values of the enum column 'status'");
+    assert_eq!(
+        with(vec![ModelField { on_delete: "cascade".to_owned(), ..field("title", "string") }]).unwrap_err(),
+        "'title' is not a foreign key: only one says what deleting does"
+    );
+    assert_eq!(
+        with(vec![ModelField { on_delete: "explode".to_owned(), ..field("user_id", "foreignId") }]).unwrap_err(),
+        "'explode' is not something a foreign key does on delete"
+    );
+    assert_eq!(
+        with(vec![ModelField { on_delete: "setNull".to_owned(), ..field("user_id", "foreignId") }]).unwrap_err(),
+        "'user_id' has to be nullable to be set to null on delete"
+    );
+    // A morph makes two columns: one of them can't be there again.
+    assert_eq!(
+        with(vec![field("subject", "morphs"), field("subject_id", "integer")]).unwrap_err(),
+        "The column 'subject_id' is there twice"
+    );
+}
+
+#[test]
+fn relations_through_and_polymorphic() {
+    let app = App::new();
+    let spec = NewModel {
+        name: "Country".to_owned(),
+        relations: vec![
+            ModelRelation { through: "User".to_owned(), ..relation("hasManyThrough", "Post", "") },
+            relation("morphOne", "App\\Models\\Image", ""),
+            relation("morphToMany", "Tag", ""),
+        ],
+        migration: false,
+        ..NewModel::default()
+    };
+    let files = app.generate(&spec).unwrap();
+    let model = text_of(&app, &files, "app/Models/Country.php");
+    for line in [
+        "@return HasManyThrough<Post, User, $this>",
+        "public function posts(): HasManyThrough",
+        "return $this->hasManyThrough(Post::class, User::class);",
+        "@return MorphOne<Image, $this>",
+        "public function image(): MorphOne",
+        "return $this->morphOne(Image::class, 'imageable');",
+        "@return MorphToMany<Tag, $this>",
+        "public function tags(): MorphToMany",
+        "return $this->morphToMany(Tag::class, 'tagable');",
+        "use Illuminate\\Database\\Eloquent\\Relations\\HasManyThrough;",
+    ] {
+        assert!(model.contains(line), "no `{line}` in\n{model}");
+    }
+    let missing = NewModel {
+        name: "Country".to_owned(),
+        relations: vec![relation("hasManyThrough", "Post", "")],
+        ..NewModel::default()
+    };
+    assert_eq!(app.generate(&missing).unwrap_err(), "Name the model the hasManyThrough relation goes through");
 }

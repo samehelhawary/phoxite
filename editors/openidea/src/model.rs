@@ -15,22 +15,32 @@ pub const VIEW: &str = "model";
 /// The command the server's lens on an Eloquent model class carries: the class name.
 pub const LENS_COMMAND: &str = "laravel.modelView";
 
-/// The column types Add Columns accepts (Laravel's `Blueprint` methods).
-const COLUMN_TYPES: [&str; 14] = [
+/// The column types Add Columns accepts (Laravel's `Blueprint` methods): those a name
+/// is enough for. The same list as the VS Code extension's (`COLUMN_TYPES` in its
+/// `laravel/model.ts`).
+const COLUMN_TYPES: [&str; 22] = [
     "string",
+    "char",
     "text",
+    "longText",
     "integer",
+    "tinyInteger",
     "bigInteger",
+    "unsignedInteger",
     "unsignedBigInteger",
     "foreignId",
+    "foreignUuid",
     "boolean",
     "decimal",
     "float",
     "date",
     "dateTime",
+    "time",
     "timestamp",
     "json",
     "uuid",
+    "ulid",
+    "ipAddress",
 ];
 
 #[derive(Deserialize)]

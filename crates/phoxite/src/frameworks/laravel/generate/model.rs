@@ -27,10 +27,69 @@ pub struct ModelField {
     /// The default value as PHP (`0`, `true`, `'draft'`); a bare word is
     /// quoted. Empty = none.
     pub default: String,
+    /// The values of an `enum` (or `set`) column.
+    pub values: Vec<String>,
+    /// What deleting the row a foreign key (`foreignId`, `foreignUuid`,
+    /// `foreignUlid`) points at does to this one: one of [`ON_DELETE`].
+    /// Empty = the database's default.
+    pub on_delete: String,
+}
+
+/// What a foreign key column can do when the row it points at is deleted,
+/// with the `Blueprint` modifier saying so.
+pub const ON_DELETE: &[(&str, &str)] = &[
+    ("cascade", "cascadeOnDelete"),
+    ("restrict", "restrictOnDelete"),
+    ("setNull", "nullOnDelete"),
+    ("noAction", "noActionOnDelete"),
+];
+
+impl ModelField {
+    /// A foreign key column: constrained to the table its name tells.
+    fn is_foreign(&self) -> bool {
+        matches!(self.ty.as_str(), "foreignId" | "foreignUuid" | "foreignUlid")
+    }
+
+    /// A column whose values are listed (`enum`, `set`).
+    fn is_listed(&self) -> bool {
+        matches!(self.ty.as_str(), "enum" | "set")
+    }
+
+    /// The `{name}_type` and `{name}_id` columns of a polymorphic relation
+    /// (`morphs` and its kin), which the one `Blueprint` call makes.
+    fn is_morphs(&self) -> bool {
+        matches!(self.ty.as_str(), "morphs" | "nullableMorphs" | "uuidMorphs" | "ulidMorphs")
+    }
+
+    /// The columns the field makes in the table.
+    fn columns(&self) -> Vec<String> {
+        if self.is_morphs() {
+            vec![format!("{}_type", self.name), format!("{}_id", self.name)]
+        } else {
+            vec![self.name.clone()]
+        }
+    }
+}
+
+/// `['draft', 'published']`.
+fn php_list(values: &[String]) -> String {
+    let quoted: Vec<String> =
+        values.iter().map(|value| format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))).collect();
+    format!("[{}]", quoted.join(", "))
 }
 
 /// The kinds of relations the dialog adds.
-pub const RELATION_KINDS: &[&str] = &["belongsTo", "hasOne", "hasMany", "belongsToMany", "morphMany", "morphTo"];
+pub const RELATION_KINDS: &[&str] = &[
+    "belongsTo",
+    "hasOne",
+    "hasMany",
+    "belongsToMany",
+    "hasManyThrough",
+    "morphOne",
+    "morphMany",
+    "morphToMany",
+    "morphTo",
+];
 
 /// A relation of the new model.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,6 +103,9 @@ pub struct ModelRelation {
     /// The method name; empty = from the related model (`author` for
     /// `belongsTo(User)` is typed; `user` is the default).
     pub name: String,
+    /// The model a `hasManyThrough` relation goes through, written as
+    /// `model` is.
+    pub through: String,
 }
 
 /// An index over several columns.
@@ -116,6 +178,8 @@ struct Relation {
     /// The related model's FQN (empty for `morphTo`).
     model: String,
     method: String,
+    /// The intermediate model's FQN of a `hasManyThrough`.
+    through: String,
 }
 
 impl Relation {
@@ -167,9 +231,17 @@ fn php_literal(value: &str) -> String {
 
 /// The `Blueprint` call making `field`.
 fn column_line(field: &ModelField) -> String {
+    if field.is_morphs() {
+        // The two columns and their index are one call; `nullable` is one of its names.
+        let method = if field.nullable && field.ty == "morphs" { "nullableMorphs" } else { field.ty.as_str() };
+        return format!("$table->{method}('{}');", field.name);
+    }
     let mut line = format!("$table->{}('{}')", field.ty, field.name);
     if field.ty == "decimal" {
         line = format!("$table->decimal('{}', 8, 2)", field.name);
+    }
+    if field.is_listed() {
+        line = format!("$table->{}('{}', {})", field.ty, field.name, php_list(&field.values));
     }
     if field.nullable {
         line.push_str("->nullable()");
@@ -182,8 +254,11 @@ fn column_line(field: &ModelField) -> String {
     } else if field.index {
         line.push_str("->index()");
     }
-    if field.ty == "foreignId" {
+    if field.is_foreign() {
         line.push_str("->constrained()");
+        if let Some((_, modifier)) = ON_DELETE.iter().find(|(name, _)| *name == field.on_delete) {
+            line.push_str(&format!("->{modifier}()"));
+        }
     }
     line.push(';');
     line
@@ -225,6 +300,9 @@ pub(super) fn fake_value(field: &ModelField) -> String {
     {
         return value.to_owned();
     }
+    if field.is_listed() {
+        return format!("fake()->randomElement({})", php_list(&field.values));
+    }
     match field.ty.as_str() {
         "string" | "char" => "fake()->word()",
         "text" | "mediumText" | "longText" => "fake()->paragraph()",
@@ -244,8 +322,8 @@ pub(super) fn fake_value(field: &ModelField) -> String {
         "time" => "fake()->time()",
         "year" => "fake()->year()",
         "json" | "jsonb" => "[]",
-        "uuid" => "fake()->uuid()",
-        "ulid" => "(string) \\Illuminate\\Support\\Str::ulid()",
+        "uuid" | "foreignUuid" => "fake()->uuid()",
+        "ulid" | "foreignUlid" => "(string) \\Illuminate\\Support\\Str::ulid()",
         "ipAddress" => "fake()->ipv4()",
         "macAddress" => "fake()->macAddress()",
         _ => "null",
@@ -267,12 +345,16 @@ fn rules_of(field: &ModelField, table: &str) -> Vec<String> {
         "decimal" | "float" | "double" => vec!["numeric"],
         "date" | "dateTime" | "dateTimeTz" | "timestamp" | "timestampTz" => vec!["date"],
         "json" | "jsonb" => vec!["array"],
-        "uuid" => vec!["uuid"],
-        "ulid" => vec!["ulid"],
+        "uuid" | "foreignUuid" => vec!["uuid"],
+        "ulid" | "foreignUlid" => vec!["ulid"],
         "ipAddress" => vec!["ip"],
         _ => Vec::new(),
     };
     rules.extend(typed.into_iter().map(str::to_owned));
+    // A value with a comma can't be written in the `in:` rule's list.
+    if field.is_listed() && field.values.iter().all(|value| !value.contains([',', '\''])) {
+        rules.push(format!("in:{}", field.values.join(",")));
+    }
     if field.name.to_ascii_lowercase().contains("email") && field.ty == "string" {
         rules.insert(2, "email".to_owned());
     }
@@ -348,10 +430,23 @@ impl PhpEngine {
                 }
                 if model.contains('\\') { model } else { format!("{models_namespace}\\{model}") }
             };
+            let through = if relation.kind == "hasManyThrough" {
+                let through = relation.through.trim().trim_start_matches('\\').replace('/', "\\");
+                if through.is_empty() || !through.split('\\').all(is_identifier) {
+                    return Err("Name the model the hasManyThrough relation goes through".to_owned());
+                }
+                if through.contains('\\') { through } else { format!("{models_namespace}\\{through}") }
+            } else {
+                String::new()
+            };
             let related = short_name(&model);
             let method = match relation.name.trim() {
                 "" if relation.kind == "morphTo" => return Err("Name the morphTo relation (`commentable`)".to_owned()),
-                "" if matches!(relation.kind.as_str(), "hasMany" | "belongsToMany" | "morphMany") => {
+                "" if matches!(
+                    relation.kind.as_str(),
+                    "hasMany" | "belongsToMany" | "morphMany" | "hasManyThrough" | "morphToMany"
+                ) =>
+                {
                     camel(&plural(&snake(related)))
                 }
                 "" => camel(related),
@@ -361,7 +456,7 @@ impl PhpEngine {
             if relations.iter().any(|known| known.method.eq_ignore_ascii_case(&method)) {
                 return Err(format!("Two relations are named '{method}'"));
             }
-            relations.push(Relation { kind: relation.kind.clone(), model, method });
+            relations.push(Relation { kind: relation.kind.clone(), model, method, through });
         }
 
         // The fields, and the columns relations add.
@@ -375,18 +470,44 @@ impl PhpEngine {
             if !is_identifier(&field.ty) {
                 return Err(format!("'{}' is not a column type", field.ty));
             }
+            let field = ModelField {
+                values: field
+                    .values
+                    .iter()
+                    .map(|value| value.trim().to_owned())
+                    .filter(|value| !value.is_empty())
+                    .collect(),
+                on_delete: field.on_delete.trim().to_owned(),
+                ..field
+            };
+            if field.is_listed() && field.values.is_empty() {
+                return Err(format!("List the values of the {} column '{}'", field.ty, field.name));
+            }
+            if !field.on_delete.is_empty() {
+                if !field.is_foreign() {
+                    return Err(format!("'{}' is not a foreign key: only one says what deleting does", field.name));
+                }
+                if !ON_DELETE.iter().any(|(name, _)| *name == field.on_delete) {
+                    return Err(format!("'{}' is not something a foreign key does on delete", field.on_delete));
+                }
+                if field.on_delete == "setNull" && !field.nullable {
+                    return Err(format!("'{}' has to be nullable to be set to null on delete", field.name));
+                }
+            }
             let reserved = ["id"]
                 .into_iter()
                 .chain(spec.timestamps.then_some(["created_at", "updated_at"]).into_iter().flatten())
                 .chain(spec.soft_deletes.then_some("deleted_at"));
+            let taken =
+                |name: &str| fields.iter().flat_map(ModelField::columns).any(|known| known.eq_ignore_ascii_case(name));
             if reserved.into_iter().any(|name| name.eq_ignore_ascii_case(&field.name))
-                || fields.iter().any(|known| known.name.eq_ignore_ascii_case(&field.name))
+                || field.columns().iter().any(|column| taken(column))
             {
                 return Err(format!("The column '{}' is there twice", field.name));
             }
             fields.push(field);
         }
-        let mut columns: Vec<String> = fields.iter().map(|field| field.name.clone()).collect();
+        let mut columns: Vec<String> = fields.iter().flat_map(ModelField::columns).collect();
         for relation in &relations {
             if let Some(key) = relation.foreign_key()
                 && !columns.iter().any(|known| known.eq_ignore_ascii_case(&key))
@@ -453,9 +574,15 @@ impl PhpEngine {
                 imports.add(&format!("Illuminate\\Database\\Eloquent\\Relations\\{}", studly(&relation.kind)));
             let body = match relation.kind.as_str() {
                 "morphTo" => "return $this->morphTo();".to_owned(),
-                "morphMany" => {
+                // The related model has the `{name}_type`/`{name}_id` columns, named after it.
+                kind @ ("morphOne" | "morphMany" | "morphToMany") => {
                     let related = class_name(&mut imports);
-                    format!("return $this->morphMany({related}::class, '{}able');", snake(short_name(&relation.model)))
+                    format!("return $this->{kind}({related}::class, '{}able');", snake(short_name(&relation.model)))
+                }
+                "hasManyThrough" => {
+                    let related = class_name(&mut imports);
+                    let through = imports.add(&relation.through);
+                    format!("return $this->hasManyThrough({related}::class, {through}::class);")
                 }
                 kind => {
                     let related = class_name(&mut imports);
@@ -470,6 +597,8 @@ impl PhpEngine {
             };
             let generic = if relation.kind == "morphTo" {
                 format!("{returns}<Model, $this>")
+            } else if relation.kind == "hasManyThrough" {
+                format!("{returns}<{}, {}, $this>", imports.add(&relation.model), imports.add(&relation.through))
             } else {
                 format!("{returns}<{}, $this>", imports.add(&relation.model))
             };
@@ -573,8 +702,9 @@ impl PhpEngine {
             let mut lines: Vec<String> = fields
                 .iter()
                 .filter(|field| {
-                    field.ty != "foreignId"
-                        || !relations.iter().any(|r| r.foreign_key().as_deref() == Some(&field.name))
+                    !field.is_morphs()
+                        && (!field.is_foreign()
+                            || !relations.iter().any(|r| r.foreign_key().as_deref() == Some(&field.name)))
                 })
                 .map(|field| format!("'{}' => {},", field.name, fake_value(field)))
                 .collect();
@@ -616,8 +746,11 @@ impl PhpEngine {
 
         // The Form Requests.
         if spec.form_requests {
-            let mut lines: Vec<String> =
-                fields.iter().map(|field| rule_line(&field.name, &rules_of(field, &table))).collect();
+            let mut lines: Vec<String> = fields
+                .iter()
+                .filter(|field| !field.is_morphs())
+                .map(|field| rule_line(&field.name, &rules_of(field, &table)))
+                .collect();
             for relation in &relations {
                 if let Some(key) = relation.foreign_key()
                     && !fields.iter().any(|field| field.name.eq_ignore_ascii_case(&key))

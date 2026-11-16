@@ -41,6 +41,12 @@
   so a per-folder one was never honoured).
 - VS Code: the commands of the server's lenses run under the extension's own names, so
   another extension registering `laravel.modelView` can't break them.
+- New Eloquent Model writes more of Laravel's schema: `enum` columns with their values,
+  `morphs`, `foreignUuid`, what a foreign key does on delete (`cascade`, `restrict`, set
+  null, no action), and the relations `hasManyThrough`, `morphOne` and `morphToMany`.
+  The VS Code form and the OpenIDEA plugin offer them, and more column types (`char`,
+  `longText`, `tinyInteger`, `unsignedInteger`, `time`, `ulid`, `ipAddress`) in New
+  Model and Add Columns.
 - VS Code, Artisan: **Run Last Artisan Command**; the arguments prompt shows the command
   that really runs (not always `php artisan`); a project set up for Laravel Sail is
   asked once whether Artisan should run through Sail.

@@ -210,6 +210,13 @@ The data behind the Laravel tools of the VS Code extension is there for any clie
 - `addColumns`, `generateClass` and `newModel` take an optional `timestamp`
   (`2024_05_01_120000`, the client's local time) for the migration's file name; without it
   the server uses UTC.
+- A field of `newModel` is `{ name, ty, nullable, unique, index, default, values,
+  onDelete }`: `ty` is a `Blueprint` method; `values` are those of an `enum`; `onDelete`
+  (`cascade`, `restrict`, `setNull`, `noAction`) is for a foreign key (`foreignId`,
+  `foreignUuid`, `foreignUlid`); `morphs` makes the `{name}_type` and `{name}_id`
+  columns. A relation is `{ kind, model, name, through }`, with `kind` one of
+  `belongsTo`, `hasOne`, `hasMany`, `belongsToMany`, `hasManyThrough` (which names the
+  model between in `through`), `morphOne`, `morphMany`, `morphToMany`, `morphTo`.
 - A generator's `options` say which members of `spec` it reads (`model`, `related`,
   `table`, `create`, `event`, `queued`, `api`, `backing`, `status`); the `fields` of an
   `ide.json` code generation go in `spec.inputs`, by field id.

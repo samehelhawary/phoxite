@@ -239,6 +239,34 @@ const checks = [
     for (const uri of created) await vscode.workspace.fs.stat(uri);
     return names.join(", ");
   }],
+  ["Laravel: New Model with an enum, a foreign key's on delete, morphs and a relation through a model", async () => {
+    const created = await laravel().apply(await laravel().newModel({
+      name: "Ticket", module: "",
+      fields: [
+        { name: "status", ty: "enum", values: ["open", "closed"] },
+        { name: "team_id", ty: "foreignUuid", onDelete: "cascade" },
+        { name: "subject", ty: "morphs" },
+      ],
+      relations: [{ kind: "hasManyThrough", model: "App\\Models\\Post", through: "App\\Models\\User", name: "" }],
+      indexes: [], timestamps: true, softDeletes: false, migration: true, factory: false, seeder: false,
+      controller: "none", formRequests: false, resource: false, policy: false,
+    }));
+    const read = async (pattern) => {
+      const uri = created.find((u) => pattern.test(u.fsPath));
+      assert.ok(uri, `no ${pattern} among ${created.map((u) => path.basename(u.fsPath)).join(", ")}`);
+      return Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
+    };
+    const migration = await read(/_create_tickets_table\.php$/);
+    for (const line of [
+      "$table->enum('status', ['open', 'closed']);",
+      "$table->foreignUuid('team_id')->constrained()->cascadeOnDelete();",
+      "$table->morphs('subject');",
+    ]) assert.ok(migration.includes(line), `no ${line} in\n${migration}`);
+    const model = await read(/Ticket\.php$/);
+    assert.ok(model.includes("return $this->hasManyThrough(Post::class, User::class);"), model);
+    assert.ok(model.includes("'subject_type',") && model.includes("'subject_id',"), model);
+    return "the migration and the model have them";
+  }],
   ["Laravel: the New Model form and the model view open", async () => {
     const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
       .filter((t) => t.input instanceof vscode.TabInputWebview);

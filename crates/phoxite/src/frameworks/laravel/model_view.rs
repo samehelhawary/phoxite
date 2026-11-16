@@ -221,7 +221,7 @@ pub fn migration_source(table: &str, columns: &[NewColumn]) -> String {
         if column.nullable {
             line.push_str("->nullable()");
         }
-        if column.ty == "foreignId" {
+        if matches!(column.ty.as_str(), "foreignId" | "foreignUuid" | "foreignUlid") {
             line.push_str("->constrained()");
             down.push_str(&format!("{body}$table->dropConstrainedForeignId('{}');\n", column.name));
         } else {

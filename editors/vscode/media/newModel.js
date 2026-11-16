@@ -54,9 +54,21 @@
 
   function addField(field) {
     const f = field || { name: "", ty: "string", default: "" };
+    const ty = select("ty", "Column type", plain(data.columnTypes), f.ty);
+    const values = input("values", "Values, e.g. draft, published", f.values);
+    const onDelete = select("onDelete", "On delete", data.onDelete, f.onDelete || "");
+    // An enum lists its values; a foreign key says what deleting does.
+    const sync = () => {
+      values.classList.toggle("hidden", ty.value !== "enum");
+      onDelete.classList.toggle("hidden", !data.foreignTypes.includes(ty.value));
+    };
+    ty.addEventListener("change", sync);
+    sync();
     const row = element("div", { className: "row" }, [
       input("name", "Column name", f.name),
-      select("ty", "Column type", plain(data.columnTypes), f.ty),
+      ty,
+      values,
+      onDelete,
       input("default", "Default", f.default, "narrow"),
       check("nullable", "Nullable", f.nullable),
       check("unique", "Unique", f.unique),
@@ -75,15 +87,23 @@
     const kind = select("kind", "Relation", plain(data.relationKinds), r.kind);
     const model = select("model", "Related model", models, r.model);
     const name = input("name", "Name (optional)", r.name);
-    // A morphTo relation has no model, and needs its name.
+    const through = select(
+      "through",
+      "Through model",
+      [{ value: "", label: "Through model…" }].concat(models.slice(1)),
+      r.through || "",
+    );
+    // A morphTo relation has no model, and needs its name; hasManyThrough names the model between.
     const sync = () => {
       const morph = kind.value === "morphTo";
       model.classList.toggle("hidden", morph);
+      through.classList.toggle("hidden", kind.value !== "hasManyThrough");
       name.placeholder = morph ? "Name, e.g. commentable" : "Name (optional)";
+      name.setAttribute("aria-label", name.placeholder);
     };
     kind.addEventListener("change", sync);
     sync();
-    const row = element("div", { className: "row" }, [kind, model, name, remove("Remove the relation")]);
+    const row = element("div", { className: "row" }, [kind, model, through, name, remove("Remove the relation")]);
     lists.relations.append(row);
     return row;
   }
@@ -141,6 +161,8 @@
       fields: [...lists.fields.children].map((row) => ({
         name: value(row, "name"),
         ty: value(row, "ty"),
+        values: value(row, "values"),
+        onDelete: value(row, "onDelete"),
         default: value(row, "default"),
         nullable: checked(row, "nullable"),
         unique: checked(row, "unique"),
@@ -149,6 +171,7 @@
       relations: [...lists.relations.children].map((row) => ({
         kind: value(row, "kind"),
         model: value(row, "model"),
+        through: value(row, "through"),
         name: value(row, "name"),
       })),
       indexes: [...lists.indexes.children].map((row) => ({ columns: value(row, "columns"), unique: checked(row, "unique") })),

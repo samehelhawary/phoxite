@@ -4,6 +4,9 @@
 
 import {
   COLUMN_TYPES,
+  FOREIGN_TYPES,
+  MODEL_COLUMN_TYPES,
+  ON_DELETE,
   CONTROLLER_KINDS,
   type GenerationContext,
   type ModelColumn,
@@ -194,6 +197,8 @@ export interface NewModelData {
   modules: string[];
   models: string[];
   columnTypes: readonly string[];
+  onDelete: ReadonlyArray<{ value: string; label: string }>;
+  foreignTypes: readonly string[];
   relationKinds: readonly string[];
   controllerKinds: ReadonlyArray<{ value: string; label: string }>;
   form: NewModelForm;
@@ -210,7 +215,9 @@ export function newModelPage(
     namespace: ctx.namespace,
     modules: ctx.modules,
     models: ctx.models,
-    columnTypes: COLUMN_TYPES,
+    columnTypes: MODEL_COLUMN_TYPES,
+    onDelete: ON_DELETE,
+    foreignTypes: FOREIGN_TYPES,
     relationKinds: RELATION_KINDS,
     controllerKinds: CONTROLLER_KINDS,
     form,
