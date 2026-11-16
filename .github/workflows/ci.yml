@@ -76,6 +76,23 @@ jobs:
           node scripts/package_vscode.mjs --server target/debug/phoxite-lsp --target linux-x64
           ls -l editors/vscode/*.vsix
 
+  # Format Document through a real Laravel Pint: the runners have PHP and Composer.
+  pint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: A project that installs Pint
+        run: |
+          mkdir -p "$RUNNER_TEMP/pint-project" && cd "$RUNNER_TEMP/pint-project"
+          echo '{ "name": "phoxite/pint-check" }' > composer.json
+          composer require --dev --no-interaction laravel/pint
+          php --version && php vendor/bin/pint --version
+      - run: cargo test -p phoxite-lsp -- --ignored a_real_pint
+        env:
+          PHOXITE_REAL_PINT: ${{ runner.temp }}/pint-project
+
   # The OpenIDEA plugin is its own crate, outside the workspace: a WebAssembly component.
   openidea:
     runs-on: ubuntu-latest

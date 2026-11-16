@@ -800,6 +800,62 @@ fn pint_formats_the_whole_file_of_a_trusted_project() {
     c.shutdown();
 }
 
+/// Format Document through a real Laravel Pint, run by a real PHP. `PHOXITE_REAL_PINT`
+/// names a project that installs it (`composer require --dev laravel/pint`), and `php`
+/// is on `PATH`: CI's `pint` job sets that up.
+#[test]
+#[ignore = "needs PHP and Laravel Pint: set PHOXITE_REAL_PINT to a project that installs it"]
+fn a_real_pint_formats_the_file() {
+    let project = std::env::var("PHOXITE_REAL_PINT").expect("PHOXITE_REAL_PINT names a project with vendor/bin/pint");
+    let root = dunce::canonicalize(project).unwrap();
+    assert!(root.join("vendor/bin/pint").is_file(), "{} doesn't install Pint", root.display());
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let messy = root.join("src/Messy.php");
+    let before = "<?php\nnamespace App;\nclass Messy {\n  function  total( $a,$b ){ return $a+$b; }\n}\n";
+    std::fs::write(&messy, before).unwrap();
+    let options = json!({ "tabSize": 4, "insertSpaces": true });
+
+    let mut c = Client::start(&root);
+    let uri = c.open(&messy, "php");
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": true }));
+    c.notify::<n::DidChangeConfiguration>(json!({ "settings": { "phoxite": { "format": { "tool": "pint" } } } }));
+    let edits = c.request::<r::Formatting>(json!({ "textDocument": { "uri": uri }, "options": options }));
+
+    // One edit over the whole text, as Pint (the Laravel preset) writes it.
+    assert_eq!(edits.as_array().map(Vec::len), Some(1), "{edits}");
+    assert_eq!(edits[0]["range"]["start"], json!({ "line": 0, "character": 0 }));
+    let formatted = edits[0]["newText"].as_str().unwrap();
+    assert!(formatted.contains("function total($a, $b)"), "{formatted}");
+    assert!(formatted.contains("return $a + $b;"), "{formatted}");
+    assert!(formatted.contains("class Messy\n{"), "{formatted}");
+    // Pint worked on a copy: the project's file is as it was.
+    assert_eq!(std::fs::read_to_string(&messy).unwrap(), before);
+
+    // The project's `pint.json` applies: the PSR-12 preset keeps what Laravel's removes.
+    std::fs::write(root.join("pint.json"), r#"{ "preset": "psr12" }"#).unwrap();
+    let text = "<?php\n\nnamespace App;\n\nclass Messy\n{\n    function total($a, $b)\n    {\n        return $a.$b;\n    }\n}\n";
+    c.notify::<n::DidChangeTextDocument>(json!({
+        "textDocument": { "uri": uri, "version": 2 },
+        "contentChanges": [{ "text": text }],
+    }));
+    let edits = c.request::<r::Formatting>(json!({ "textDocument": { "uri": uri }, "options": options }));
+    let formatted = edits[0]["newText"].as_str().unwrap_or(text);
+    // PSR-12 asks for the visibility; Laravel's preset would also space the concatenation.
+    assert!(formatted.contains("public function total($a, $b)"), "{formatted}");
+    assert!(formatted.contains("return $a.$b;") || formatted.contains("return $a . $b;"), "{formatted}");
+
+    // A file Pint can't parse: it changes nothing, and the answer is no worse than without it.
+    c.notify::<n::DidChangeTextDocument>(json!({
+        "textDocument": { "uri": uri, "version": 3 },
+        "contentChanges": [{ "text": "<?php\nclass {{{\n" }],
+    }));
+    let broken = c.request::<r::Formatting>(json!({ "textDocument": { "uri": uri }, "options": options }));
+    assert!(broken.is_null() || broken.as_array().is_some(), "{broken}");
+    c.shutdown();
+    let _ = std::fs::remove_file(root.join("pint.json"));
+    let _ = std::fs::remove_dir_all(root.join("src"));
+}
+
 #[test]
 fn the_database_schema_joins_the_migrations() {
     let (_tmp, root) = laravel_project();
