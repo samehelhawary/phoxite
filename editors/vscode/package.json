@@ -2,7 +2,7 @@
   "name": "phoxite",
   "displayName": "Phoxite — PHP & Laravel IntelliSense",
   "description": "PHP and Laravel code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections and Laravel support (routes, views, config, translations, validation, Eloquent, Blade, generators, Artisan).",
-  "version": "0.2.2",
+  "version": "0.4.0",
   "publisher": "phoxite",
   "license": "Apache-2.0",
   "icon": "icon.png",
@@ -721,7 +721,8 @@
     "test": "npm run build && node --test --experimental-strip-types test/*.test.mts",
     "package": "node ../../scripts/package_vscode.mjs",
     "vscode:prepublish": "npm run build -- --minify",
-    "test:e2e": "npm run build && node test/e2e/run.js"
+    "test:e2e": "npm run build && node test/e2e/run.js",
+    "screenshots": "npm run build && node test/screenshots/run.js"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -734,6 +735,8 @@
     "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.24.0",
     "eslint": "^10.15.0",
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.72.2",
     "vscode-oniguruma": "^2.0.1",

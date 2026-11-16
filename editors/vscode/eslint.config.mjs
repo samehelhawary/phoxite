@@ -20,6 +20,10 @@ const node = {
   require: "readonly",
   setTimeout: "readonly",
   clearTimeout: "readonly",
+  fetch: "readonly",
+  URL: "readonly",
+  URLSearchParams: "readonly",
+  WebSocket: "readonly",
 };
 
 export default tseslint.config(
@@ -36,6 +40,6 @@ export default tseslint.config(
     },
   },
   { files: ["media/**/*.js"], languageOptions: { sourceType: "script", globals: browser }, rules: { eqeqeq: ["error", "always"] } },
-  { files: ["test/e2e/**/*.js"], languageOptions: { sourceType: "commonjs", globals: node } },
+  { files: ["test/e2e/**/*.js", "test/screenshots/**/*.js"], languageOptions: { sourceType: "commonjs", globals: node } },
   { files: ["eslint.config.mjs"], languageOptions: { sourceType: "module" } },
 );

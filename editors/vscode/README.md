@@ -3,6 +3,8 @@
 PHP and Laravel code intelligence from a native engine written in Rust: no PHP, Node.js or
 licence needed for any feature.
 
+![Completion that follows an Eloquent model to its columns and relations](images/completion.gif)
+
 ## Quick start
 
 1. Install the extension and open a folder with PHP in it. The server is part of the
@@ -31,6 +33,8 @@ commands, and PHPStan or Psalm on save.
 
 ### Refactorings that ask first
 
+![The Change Signature form beside the method it changes](images/change-signature.png)
+
 - **Change Signature…** (the lightbulb on a function or method, the Command Palette, or
   **PHP Refactorings** in the editor's context menu) opens a form: rename it, change its
   visibility and return type, and add, remove, reorder and retype its parameters. Calls,
@@ -47,6 +51,8 @@ commands, and PHPStan or Psalm on save.
 
 ## Laravel
 
+![Route and view names completing inside the strings that name them](images/laravel.gif)
+
 - Routes, views, Blade components, config, env, translations, validation rules, gates and
   policies, Artisan commands, Livewire, Inertia, macros and modules: completion, go to
   definition, hover, usages and rename for the strings that name them
@@ -57,6 +63,8 @@ commands, and PHPStan or Psalm on save.
 
 ### Laravel tools
 
+![The Laravel Routes view beside a route file with its URIs after each route](images/routes.png)
+
 The commands below are in the Command Palette under **Laravel** once a Laravel project is open.
 
 - **Laravel Routes** (Explorer view) lists the routes by route file: click one to go to it,
@@ -66,6 +74,7 @@ The commands below are in the Command Palette under **Laravel** once a Laravel p
   relations, scopes, accessors and related classes (factory, policy, migrations…). Each
   item goes to its declaration; right-click for Find Usages and Rename. **Add Columns…**
   writes a migration and adds the columns to `$fillable`.
+  ![The model view of a Post model: columns, casts, relations and scopes](images/model-view.png)
 - **Generate…** (also in the Explorer's context menu) creates controllers, Form Requests,
   migrations, jobs, mailables, policies, Blade components, tests and more, plus the code
   generations of the project's `ide.json`. **New Eloquent Model…** is a form for a model
@@ -87,6 +96,8 @@ The commands below are in the Command Palette under **Laravel** once a Laravel p
   (`.phoxite/templates/<name>.ft`); the generators use it instead of the default.
 
 ## Blade
+
+![A Blade template with directives, echoes and a bound attribute highlighted inside HTML](images/blade.png)
 
 Completion, hover, go to definition and usages inside echoes, directives and `@php` blocks;
 directive, section, stack and component names; the template's own problems; formatting.

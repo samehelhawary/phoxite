@@ -8,6 +8,9 @@
 // `--target` for a platform-specific VSIX). The VSIX lands in editors/vscode/.
 //
 // `--list` prints the files the package would hold instead of writing it.
+//
+// A version with an odd minor (0.5.x) is packaged as a pre-release: the stores offer it
+// only to who asked for pre-releases. Stable versions have even minors.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -30,6 +33,11 @@ const TARGETS = {
 
 /** What travels with the extension: the Marketplace shows the changelog, and Apache-2.0 has the notice go with the work. */
 const COPIED = ["CHANGELOG.md", "NOTICE", "THIRD_PARTY_LICENSES.md"];
+
+/** Whether `version` is a pre-release: its minor is odd (the convention of the VS Code Marketplace). */
+export function isPreRelease(version) {
+  return Number(version.split(".")[1]) % 2 === 1;
+}
 
 function fail(message) {
   console.error(message);
@@ -65,8 +73,17 @@ fs.chmodSync(binary, 0o755);
 for (const name of COPIED) fs.copyFileSync(path.join(root, name), path.join(extension, name));
 
 // esbuild bundles the client library into dist/extension.js, so no dependencies are packed.
+const { version } = JSON.parse(fs.readFileSync(path.join(extension, "package.json"), "utf8"));
 const args = ["vsce", list ? "ls" : "package", "--no-dependencies"];
-if (target && !list) args.push("--target", target);
+if (!list) {
+  if (target) args.push("--target", target);
+  if (isPreRelease(version)) args.push("--pre-release");
+  // The README's pictures and links are served from the repository, at this version's tag:
+  // the extension is not at the repository's root, where `vsce` would look.
+  const repository = "https://github.com/samehelhawary/phoxite";
+  args.push("--baseImagesUrl", `${repository}/raw/v${version}/editors/vscode`);
+  args.push("--baseContentUrl", `${repository}/blob/v${version}/editors/vscode`);
+}
 const run = spawnSync(process.platform === "win32" ? "npx.cmd" : "npx", args, {
   cwd: extension,
   stdio: "inherit",

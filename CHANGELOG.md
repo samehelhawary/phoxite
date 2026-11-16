@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-11-16
+
+Versions with an even minor are stable; an odd minor (0.5.x) is a pre-release, published
+to the pre-release channel of the extension stores. That is why this one is not 0.3.0.
 
 - VS Code: **Restart the Language Server** works after a server that didn't start, and a
   second request waits for the first instead of starting another server. A missing
@@ -55,6 +58,8 @@
 - VS Code, Artisan: **Run Last Artisan Command**; the arguments prompt shows the command
   that really runs (not always `php artisan`); a project set up for Laravel Sail is
   asked once whether Artisan should run through Sail.
+- VS Code: the README shows the extension at work (`npm run screenshots` takes the
+  pictures and the animations in a real VS Code, on the fixture).
 - VS Code: the package carries `NOTICE` and the third-party licences; the Marketplace
   page links the issues and has a quick start and a troubleshooting section.
 - Packaging is `node scripts/package_vscode.mjs` (it was a Python script). CI runs the

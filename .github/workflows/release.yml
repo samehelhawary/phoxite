@@ -90,7 +90,16 @@ jobs:
         run: |
           cargo install --locked cargo-about --features cli
           cargo about generate --workspace -o dist/THIRD_PARTY_RUST_LICENSES.html about.hbs
+      - name: Stable or pre-release
+        # An odd minor (0.5.x) is a pre-release: its packages were built as one, and its
+        # GitHub release is marked so, which also keeps it from being the latest release
+        # (OpenIDEA installs the server from that).
+        id: channel
+        run: |
+          minor="$(echo "${GITHUB_REF_NAME#v}" | cut -d. -f2)"
+          case "$minor" in *[13579]) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
+          prerelease: ${{ steps.channel.outputs.prerelease }}
           files: dist/*
