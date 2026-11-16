@@ -78,7 +78,7 @@ Together about 1,000 of the 1,396. What stays is listed under "Not planned".
 
 Done: factory `hasX()`/`forX()`, `scopeQuery()` closures, join closures with
 a non-literal table (1,396 → 1,318 on Bagisto, Inspect Code unchanged).
-Still to do: update `PROGRESS.md` (it says 1,570).
+
 
 ### 1. Make the probe report root causes
 
@@ -293,7 +293,7 @@ commit per item, so a regression can be reverted alone.
 
 ## Checks at the end
 
-- `cargo test -p ide-php`, `cargo test -p ide-host php`, clippy clean.
+- `cargo test -p phoxite`, clippy clean.
 - The probe on Bagisto and Monica: target under 500 unresolved on Bagisto,
   under 100 on Monica.
 - Inspect Code on both apps: the same problems as now (182 and 201), compared
@@ -301,13 +301,13 @@ commit per item, so a regression can be reverted alone.
   true positive to list or a regression to fix before the commit stays.
 - `real_app_checklist` on both apps.
 - Performance: Inspect Code times on both apps within 10 % of today's
-  (Bagisto about 8 s parallel, 44 s one by one), and `pnpm perf:rust` within
+  (Bagisto about 8 s parallel, 44 s one by one), and the benches (`cargo bench -p phoxite`) within
   budget. Items 3, 6 and 11 add index lookups on hot paths; cache them per
   modification count.
 - In the running app: completion, hover and goto on one example of each item
   in Bagisto.
 - Docs: `laravel.md` (features and limits), `architecture.md` (Pest, traits,
-  untyped properties and parameters), one `PROGRESS.md` entry.
+  untyped properties and parameters).
 
 ## Risks
 

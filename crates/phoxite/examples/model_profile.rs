@@ -1,5 +1,5 @@
-//! Where the Laravel project model's time goes (roadmap phase 9.4):
-//! `cargo run --release -p ide-php --example model_profile -- <app dir>`
+//! Where the Laravel project model's time goes:
+//! `cargo run --release -p phoxite --example model_profile -- <app dir>`
 //! opens the engine on a Laravel application (its index cached in
 //! `target/model-profile`), builds the model cold a few times
 //! (`PhpEngine::forget_laravel_model` first), then opens new sessions on the

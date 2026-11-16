@@ -46,7 +46,7 @@ impl PhpEngine {
     /// the current modification count yet; `None` outside Laravel projects.
     ///
     /// Once the project itself is loaded, the parts that don't need each
-    /// other are built at the same time (roadmap phase 9.4).
+    /// other are built at the same time.
     pub fn laravel_model(&self) -> Option<LaravelModelSummary> {
         let project = self.laravel()?;
         let mut routes = None;

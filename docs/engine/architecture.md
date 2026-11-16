@@ -1,61 +1,50 @@
 # PHP engine architecture
 
-A guide for contributors to the built-in PHP engine, `crates/ide-php`. It was
-built phase by phase along the [roadmap](ROADMAP.md); the roadmap's design
-section says why, this note says where things are. The user-facing side is in
-[docs/php.md](../php.md).
+A guide for contributors to the PHP engine, `crates/phoxite`. This note says
+where things are. The user-facing side is in the [README](../../README.md)
+and [docs/editors.md](../editors.md).
 
 The engine is clean-room. Its design inputs were public documentation (the
 IntelliJ Platform SDK pages on PSI stubs, indexes and type providers, PhpStorm's
 advanced metadata, the PHPStan and Psalm type docs) and open-source code with
-compatible licences. Don't read or copy closed-source products
-([RULES.md](RULES.md)).
+compatible licences. Don't read or copy closed-source products.
 
 ## The request path
 
 ```
-frontend ── IPC ──▶ ide-host ops/lsp.rs ──▶ LanguageService (php.rs: PhpService) ──▶ PhpEngine
-                                       └──▶ LspManager (when the service says "not handled")
+editor ── LSP (stdio) ──▶ phoxite-lsp server.rs ──▶ handlers.rs ──▶ PhpEngine
 ```
 
-- `crates/ide-host/src/language_service.rs` defines `LanguageService`: one
-  method per `LspManager` feature `ops/lsp.rs` uses, each returning an
-  `Answer` that defaults to "not handled". `ops/lsp.rs` asks the service
-  registered for the document's language first and falls back to LSP. Local and
-  remote development go through the same path, so the frontend and IPC don't
-  know which one answered.
-- `crates/ide-host/src/php.rs` adapts the engine to that trait (`PhpService`)
-  and converts its results to the `ide-lsp` types the frontend already renders.
-  `PhpEngineSlot` holds the project's `PhpEngine` while
-  `PhpSettings.engine == Native` (the default) and starts or stops it when the
-  setting changes. `PhpObserver` forwards open documents, `files_changed`
-  forwards watcher batches, and `IndexStates` merges the engine's dumb mode
-  with the project index's.
-- `crates/ide-host/src/twig.rs` registers `TwigService` for `twig`. It needs
-  no engine: `phoxite::twig` answers the outline, completion and template
-  goto from the open document's text and the project's template directories.
-- `crates/ide-host/src/blade.rs` registers `BladeService` for `blade`
-  (`*.blade.php`). Directive completion and view/component goto need no
-  engine. For the PHP inside echoes, directives and `@php` blocks it asks the
-  engine: `phoxite::blade::compile` turns the view into PHP with an offset
-  map, `PhpEngine::embedded_document` holds it under the view's id (never
+- `crates/phoxite-lsp/src/server.rs` is the server loop: initialization, the
+  client's notifications (handled in order on its thread), requests (each on
+  its own thread, cancellable) and the engine's events (diagnostics, indexing
+  progress).
+- `state.rs` holds one `PhpEngine` per workspace folder, the open documents,
+  the settings and the problems published per file. `config.rs` maps the
+  client's settings onto the engine's `PhpConfig`.
+- `handlers.rs` answers the standard requests and `convert.rs` turns the
+  engine's types (`phoxite::base`) into the LSP's.
+- Twig templates need no engine: `phoxite::twig` answers the outline,
+  completion and template goto from the open document's text and the
+  project's template directories.
+- Blade templates (`*.blade.php`, whatever language id the client sends):
+  directive completion and view/component goto need no engine. For the PHP
+  inside echoes, directives and `@php` blocks the server asks the engine:
+  `phoxite::blade::compile` turns the view into PHP with an offset map,
+  `PhpEngine::embedded_document` holds it under the view's id (never
   inspected, ignored by `document_changed`), and the `blade_*` methods map
-  positions in and answers out. `PhpObserver` drops it when the view closes.
-- `crates/ide-host/src/php_analyzers.rs` runs PHPStan and Psalm from the
-  project's `vendor/bin` on each saved PHP file of a trusted project when
-  `PhpSettings.analyzers_on_save` is on, and publishes their problems under
-  the sources `phpstan` and `psalm`. `phoxite::analyzers` detects the tools,
-  parses their JSON reports and drops the problems the engine's latest
-  inspection of the file already reports.
-- With `Intelephense` selected, the slot is empty, the service answers
-  nothing, and `ide_sdk::apply::language_servers` starts the server from
-  `languages/php.toml`. Only one of the two runs at a time.
-- Batch Inspect Code (`crates/ide-host/src/ops/analysis.rs`) and the
-  refactorings with their own commands (`ops/refactor.rs`: file moves, change
-  signature, pull up/push down) call the engine directly.
+  positions in and answers out.
+- `analyzers.rs` runs PHPStan and Psalm from the project's `vendor/bin` on
+  each saved PHP file when `analyzers.onSave` is on, and publishes their
+  problems under the sources `phpstan` and `psalm`. `phoxite::analyzers`
+  detects the tools, parses their JSON reports and drops the problems the
+  engine's latest inspection of the file already reports.
+- `laravel.rs` (`phoxite/laravel/*`) and `refactor.rs` (`phoxite/refactor/*`)
+  hold the requests beyond standard LSP: the routes list, the model view, the
+  generators, Artisan, and the refactorings that ask the user first.
 
 Coordinates at the crate edge are 0-based lines and UTF-16 columns
-(`ide-core::text`). Mago works in byte offsets; `syntax::LineIndex` converts.
+(`phoxite::base`). Mago works in byte offsets; `syntax::LineIndex` converts.
 
 ## Layers
 
@@ -75,7 +64,7 @@ From the bottom up. Each module's `//!` header is the detailed reference.
 | `complete`, `signature`, `semantic`, `navigate` | Completion; signature help and inlay hints; semantic tokens; symbols, definition, hover, references, hierarchies, rename and file moves.                                                                                                                          |
 | `imports`, `format`                             | Auto-import, Optimize Imports, `use` insertion; Reformat Code through `mago-formatter`.                                                                                                                                                                           |
 | `inspect`                                       | The `Inspection` trait, the built-in checks, `@noinspection`, quick-fixes and intentions, the debounced background `runner` that publishes `IdeEvent::Diagnostics { source: "php" }`, and `inspect_file` for Inspect Code.                                        |
-| `refactor`                                      | Extract variable/constant/method, inline, change signature, pull up/push down, generate code. Edits are `ide-workspace` `WorkspaceEdit`s.                                                                                                                         |
+| `refactor`                                      | Extract variable/constant/method, inline, change signature, pull up/push down, generate code. Edits are `WorkspaceEdit`s (`phoxite::base`).                                                                                                                         |
 
 ### Types in two phases
 
@@ -220,30 +209,27 @@ the last three are guesses only what the editor shows uses
 ## Adding to the engine
 
 - **An inspection:** implement `inspect::Inspection` in the module of its family,
-  register it in `Inspections::builtin`, and add it to `PHP_INSPECTIONS` in
-  `src/platform/phpInspections.ts`, which the settings pages list (its name and
-  description in `en` and `zh`). Write unit tests with an inline fixture and a `/*|*/`
+  and register it in `Inspections::builtin`. Write unit tests with an inline fixture and a `/*|*/`
   caret, plus a before/after test for each quick-fix.
 - **A feature of an existing request:** change the engine module, then the
-  conversion in `ide-host/src/php.rs` if the result shape changed.
-- **A new request:** add the method to `LanguageService` with a "not handled"
-  default, call it from `ops/lsp.rs` before the LSP path, and implement it in
-  `PhpService`.
+  conversion in `crates/phoxite-lsp/src/convert.rs` if the result shape changed.
+- **A new request:** add its handler to `crates/phoxite-lsp/src/handlers.rs`
+  (or `laravel.rs` / `refactor.rs` for a `phoxite/*` request), route it in
+  `server.rs` and advertise it in the capabilities.
 - **A summary field:** bump `summary::SCHEMA_VERSION` (old indexes are then
   rebuilt) and update the golden snapshots.
 
 ## Testing and measuring
 
 - Unit tests sit next to each module (`tests.rs`, `*_tests.rs`):
-  `cargo nextest run -p ide-php` or `cargo test -p ide-php`.
-- `crates/ide-host/tests/language_smoke.rs`: `php_native` runs the full smoke
-  table on `fixtures/php-library` with the engine; the ignored `php` case runs it on
-  the Intelephense fallback.
+  `cargo nextest run -p phoxite` or `cargo test -p phoxite`.
+- `crates/phoxite-lsp/src/tests.rs` runs the server end to end over an
+  in-memory connection, on the fixtures.
 - `crates/phoxite/tests/differential.rs` (ignored; needs Intelephense and the
   corpora from `scripts/php-corpus.sh`) compares definition and hover with
   Intelephense. The last report is in [differential.md](differential.md).
-- `crates/phoxite/benches/engine.rs` holds the performance budgets, run by
-  `pnpm perf:rust` against `perf/budgets.json`; see
+- `crates/phoxite/benches/engine.rs` holds the performance budgets
+  (`cargo bench -p phoxite --bench engine`); see
   [performance.md](performance.md). `tests/memory.rs` compares memory with
   Intelephense.
 - `examples/parse_corpus.rs` measures the parser on the corpora

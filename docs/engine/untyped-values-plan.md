@@ -198,7 +198,7 @@ ones (`types/provider/laravel_tests.rs`, `types/provider/tests.rs`,
 
 ## Checks at the end
 
-- `cargo test -p ide-php`, `cargo test -p ide-host php`, clippy.
+- `cargo test -p phoxite`, clippy.
 - Inspect Code on Bagisto and Monica identical per inspection (182 and 201).
   A, C, the parameter half of D and E's guesses sit behind the editor switch
   and can't change it; B and the return half of D can, and are checked after
@@ -209,7 +209,7 @@ ones (`types/provider/laravel_tests.rs`, `types/provider/tests.rs`,
   measure of what C costs.
 - `real_app_checklist` on both apps.
 - Docs: `architecture.md` ("What nothing declares"), `laravel.md`,
-  `docs/php.md`, a `PROGRESS.md` entry.
+  `docs/php.md`.
 
 ## Risks
 

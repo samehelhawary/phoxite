@@ -1,8 +1,8 @@
 # Laravel support
 
-The native PHP engine understands Laravel applications: the strings that name routes, views, configuration keys, translations, validation rules, columns and the rest complete, go to their declaration, find their usages, rename, and are checked. It also generates code, runs Artisan commands and shows a model's schema. Everything is answered by the engine in `crates/ide-php` through the usual editor requests, so it works in PHP files and in Blade templates alike.
+The native PHP engine understands Laravel applications: the strings that name routes, views, configuration keys, translations, validation rules, columns and the rest complete, go to their declaration, find their usages, rename, and are checked. It also generates code, runs Artisan commands and shows a model's schema. Everything is answered by the engine in `crates/phoxite` through the usual editor requests, so it works in PHP files and in Blade templates alike.
 
-This file is the user guide (phases 8.1–8.29 of [ROADMAP.md](ROADMAP.md), designed in [LARAVEL-ROADMAP.md](LARAVEL-ROADMAP.md)). The second half, "Measurements", records the parity and performance checks on the fixture app and on two real applications.
+This file is the user guide. The second half, "Measurements", records the parity and performance checks on the fixture app and on two real applications.
 
 - [Turning it on](#turning-it-on)
 - [Features](#features)
@@ -254,7 +254,7 @@ The engine's general PHP inspections (undefined classes and methods, argument ty
 
 ## Settings
 
-Settings › PHP › Laravel, stored under `languages.php.laravel` (the engine receives them as one `LaravelSettings` struct, `crates/ide-core/src/settings.rs`):
+Settings › PHP › Laravel, stored under `languages.php.laravel` (the engine receives them as one `LaravelSettings` struct, `crates/phoxite/src/base/settings.rs`):
 
 | Setting              | Key                                                                                              | Default                                                 | What it does                                                                                                                         |
 | -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -398,7 +398,7 @@ All 33 generators produce files that parse: New Model, the 31 class generators a
 
 ### Performance (phase 8.21)
 
-The criterion benches live in `crates/phoxite/benches/engine.rs` and run with `pnpm perf:rust`. Their budgets are in `perf/budgets.json`.
+The criterion benches live in `crates/phoxite/benches/engine.rs` and run with `cargo bench -p phoxite --bench engine`.
 
 - `php_laravel_app/*` runs on the fixture app.
 - `php_laravel_real/*` runs on the application in `LARAVEL_APP_DIR`. Without it, those benches and their budgets are skipped.
@@ -459,8 +459,8 @@ To measure again (Git Bash):
 
 ```sh
 bash scripts/laravel-apps.sh
-LARAVEL_APP_DIR=../php-corpus/apps/monica cargo bench -p ide-php --bench engine -- php_laravel_real
-LARAVEL_APP_DIR=../php-corpus/apps/monica cargo test -p ide-php --release --test laravel_parity -- --ignored --nocapture
+LARAVEL_APP_DIR=../php-corpus/apps/monica cargo bench -p phoxite --bench engine -- php_laravel_real
+LARAVEL_APP_DIR=../php-corpus/apps/monica cargo test -p phoxite --release --test laravel_parity -- --ignored --nocapture
 ```
 
 #### Incremental model (phase 8.22, 2026-11-09)
@@ -573,7 +573,7 @@ Every model has a model view on both. Every remaining problem names a column tha
 To run it again:
 
 ```sh
-LARAVEL_APP_DIR=../php-corpus/apps/monica cargo test -p ide-php --test laravel_parity -- --ignored real_app_eloquent_columns --nocapture
+LARAVEL_APP_DIR=../php-corpus/apps/monica cargo test -p phoxite --test laravel_parity -- --ignored real_app_eloquent_columns --nocapture
 ```
 
 #### Real-application check (phase 8.29, 2026-11-10)
@@ -634,13 +634,13 @@ The rest follow a wrong declaration or are limits of the analysis:
 To run them:
 
 ```sh
-LARAVEL_APP_DIR=../php-corpus/apps/bagisto cargo test -p ide-php --test laravel_parity -- --ignored real_app_checklist real_app_inspect_code --nocapture
-LARAVEL_APP_DIR=../php-corpus/apps/bagisto cargo bench -p ide-php --bench engine -- php_laravel_real
+LARAVEL_APP_DIR=../php-corpus/apps/bagisto cargo test -p phoxite --test laravel_parity -- --ignored real_app_checklist real_app_inspect_code --nocapture
+LARAVEL_APP_DIR=../php-corpus/apps/bagisto cargo bench -p phoxite --bench engine -- php_laravel_real
 ```
 
 #### Cold model, stored parts and Inspect Code (phase 9.4, 2026-11-11)
 
-Monica's cold model had grown from 358 ms (8.23) to 542 ms (8.29). The new `crates/phoxite/examples/model_profile.rs` times each part of the model on a real application (`cargo run --release -p ide-php --example model_profile -- ../php-corpus/apps/monica`). On Monica, before the changes below, the cold build spent its time like this:
+Monica's cold model had grown from 358 ms (8.23) to 542 ms (8.29). The new `crates/phoxite/examples/model_profile.rs` times each part of the model on a real application (`cargo run --release -p phoxite --example model_profile -- ../php-corpus/apps/monica`). On Monica, before the changes below, the cold build spent its time like this:
 
 | Part                      | Time   | Why                                                                                                                                                                                                |
 | ------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

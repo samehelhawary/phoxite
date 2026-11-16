@@ -2,15 +2,14 @@
 
 ## Status
 
-Final verification (phase 9.8, 2026-11-11, `pnpm perf:rust` with the corpora and `LARAVEL_APP_DIR` on Monica):
+Final verification (phase 9.8, 2026-11-11, `cargo bench -p phoxite --bench engine` with the corpora and `LARAVEL_APP_DIR` on Monica):
 
 - **Fixed:** `php_laravel/completion_after_keystroke` had grown to 473 ms and `hover_after_keystroke` to 73 ms (budget 50 ms; 5.7 ms and 2.1 ms in the table below). Every PHPDoc type and docblock parse went through `parser_stack`, which maps a fresh 64 MB stack segment on a thread with a default 2 MB stack (each request's), about a millisecond for one method's parameters. Phase 8.29 added that guard and 9.4.b moved batch work to big-stack threads, but requests still paid it. `phpdoc_stack` now gives the parse only as much stack as its text can nest (64 KB for each `<({[|&?:-!`), so most parses stay where they are. Now 13 ms and 4.1 ms; `php_fixture` completion went from 5.2 ms to 0.8 ms.
 - **Fixed in 9.8.b:** `php_laravel_real/model_warm_start` was 155 ms against 150 ms (129 ms in 9.4); now 97 ms. See [Warm start (phase 9.8.b)](#warm-start-phase-98b).
-- Everything else in `rust.php_*` is within budget: Monica's Inspect Code takes 6.3 s (budget 20 s), its cold model 231 ms (400 ms), Laravel's cold index 1.8 s.
-- Outside the PHP engine, `plugins/load_50` (119 ms, budget 20 ms), `search_5k/literal` and `regex` (114 ms and 117 ms, budget 100 ms) and `syntax_2mb/outline_after_keystroke_incremental` (394 ms, budget 350 ms) were over in the full run. They're recorded here and not investigated.
+- Everything else is within budget: Monica's Inspect Code takes 6.3 s (budget 20 s), its cold model 231 ms (400 ms), Laravel's cold index 1.8 s.
 - Memory (`memory` test, laravel/framework): the engine uses 179 MB after requests (peak 180 MB), Intelephense 333 MB.
 
-Phase 6.3 of the [roadmap](ROADMAP.md). The budgets are criterion benches in `crates/phoxite/benches/engine.rs`, gated by `pnpm perf:rust` against `perf/budgets.json` (`rust.php_…`, means in µs).
+The budgets are criterion benches in `crates/phoxite/benches/engine.rs`, run with `cargo bench -p phoxite --bench engine` (means in µs).
 
 | Bench                                                      | Budget | Measured (2026-11-07) |
 | ---------------------------------------------------------- | ------ | --------------------- |
@@ -57,7 +56,7 @@ The Laravel benches (`php_laravel_app/*` on the fixture app, `php_laravel_real/*
 - **Warm start:** a new engine on the cache of an earlier session. The per-file parts (configuration keys, translations, routes, provider registrations) are stored in the index database with the content hash, size and modification time of their text, so the new session neither reads nor parses the files that didn't change.
 - **Inspect Code:** `PhpEngine::inspect_files` inspects the scope's files in parallel (rayon) after building what they share, reports each as it finishes and stops on cancellation. The host's Inspect Code (`ops::analysis::inspect_code`) uses it. The bench runs every built-in inspection over the application's own PHP files and Blade templates (not `vendor/`).
 
-`cargo run --release -p ide-php --example model_profile -- <app>` prints the time of each part of the model, cold and in a new session.
+`cargo run --release -p phoxite --example model_profile -- <app>` prints the time of each part of the model, cold and in a new session.
 
 ### Warm start (phase 9.8.b)
 
@@ -74,7 +73,7 @@ In 9.8 Monica's `model_warm_start` took 155 ms. `model_profile` showed it wasn't
 - `PhpEngine::laravel()` builds the resolver's facts while the project loads, when the project has an `artisan` file (or Laravel support is forced on), and the facts and Symfony facts decode their summaries in parallel.
 - Artisan builds its command classes' models and reads their files in parallel, in the same order as before.
 
-Monica, release build, 2026-11-11, `pnpm perf:rust --package ide-php` with `LARAVEL_APP_DIR` (the machine was busy with other processes, so `model_profile` varied between 113 and 128 ms):
+Monica, release build, 2026-11-11, `cargo bench -p phoxite --bench engine` with `LARAVEL_APP_DIR` (the machine was busy with other processes, so `model_profile` varied between 113 and 128 ms):
 
 | Bench                               | Budget | 9.8    | 9.8.b  |
 | ----------------------------------- | ------ | ------ | ------ |
@@ -84,7 +83,7 @@ Monica, release build, 2026-11-11, `pnpm perf:rust --package ide-php` with `LARA
 
 ### Inspect Code scaling (phase 9.4.b)
 
-In 9.4 Inspect Code over Monica took 24.3 s on 16 threads and 74 s on one, scaling only about 3×. `cargo run --release -p ide-php --example inspect_profile -- <app> [threads…]` runs the batch in pools of each thread count and sums the time of each file, which shows how much the files slow each other down. With timers around each stage, the index database's reads (declaration lookups and summary decoding) took 2 s of the 72 s. Even parsing, which shares nothing between threads, ran 8× slower on 16 threads. The cause was the parser's stack guard (`syntax::stack::parser_stack`, from 8.29). Every Mago parse (each file, each docblock, each PHPDoc type) needs 40 MB of free stack for Mago's 512-level limit. A rayon worker has 2 MB, so each parse mapped a new 64 MB stack segment and unmapped it afterwards, and those calls serialize threads on the process's address space. The engine's threads now have stacks of that size (`PARSER_THREAD_STACK`, reserved address space, not committed memory): the worker, the background inspections, and a pool of its own (`on_parser_stacks`) for the batch and the index scan. Callers already on such threads keep their pool.
+In 9.4 Inspect Code over Monica took 24.3 s on 16 threads and 74 s on one, scaling only about 3×. `cargo run --release -p phoxite --example inspect_profile -- <app> [threads…]` runs the batch in pools of each thread count and sums the time of each file, which shows how much the files slow each other down. With timers around each stage, the index database's reads (declaration lookups and summary decoding) took 2 s of the 72 s. Even parsing, which shares nothing between threads, ran 8× slower on 16 threads. The cause was the parser's stack guard (`syntax::stack::parser_stack`, from 8.29). Every Mago parse (each file, each docblock, each PHPDoc type) needs 40 MB of free stack for Mago's 512-level limit. A rayon worker has 2 MB, so each parse mapped a new 64 MB stack segment and unmapped it afterwards, and those calls serialize threads on the process's address space. The engine's threads now have stacks of that size (`PARSER_THREAD_STACK`, reserved address space, not committed memory): the worker, the background inspections, and a pool of its own (`on_parser_stacks`) for the batch and the index scan. Callers already on such threads keep their pool.
 
 Monica's own code, 896 files, release build, i7-10875H (8 cores, 16 threads), `inspect_profile`, 2026-11-11:
 
@@ -98,7 +97,7 @@ The bench `php_laravel_real/inspect_code` measures 5.7 s. The rest of the slow-d
 
 ## Memory against Intelephense
 
-`cargo test -p ide-php --release --test memory -- --ignored --nocapture` (needs the corpora and `npm i -g intelephense`) indexes laravel/framework from an empty cache with both:
+`cargo test -p phoxite --release --test memory -- --ignored --nocapture` (needs the corpora and `npm i -g intelephense`) indexes laravel/framework from an empty cache with both:
 
 |                             | Index time | Working set                                                                                                                 |
 | --------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- |

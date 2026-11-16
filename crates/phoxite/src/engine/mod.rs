@@ -479,7 +479,7 @@ impl PhpEngine {
         });
         let worker = shared.clone();
         let thread = std::thread::Builder::new()
-            .name("openidea-php-engine".into())
+            .name("phoxite-engine".into())
             .stack_size(crate::syntax::stack::PARSER_THREAD_STACK)
             .spawn(move || worker.run())
             .map_err(|e| IdeError::internal(format!("php engine: {e}")))?;
@@ -904,7 +904,7 @@ impl PhpEngine {
                 let root = self.root();
                 // The resolver's facts (read from the index's summaries) are
                 // needed right after: built at the same time when the
-                // project looks like a Laravel one (roadmap phase 9.8.b).
+                // project looks like a Laravel one.
                 let (loaded, _) = rayon::join(
                     || LaravelProject::load_with(&root, force).map(Arc::new),
                     || (force || root.join("artisan").is_file()).then(|| self.resolver().laravel()),
@@ -1487,7 +1487,7 @@ impl Declarations for PhpEngine {
     fn laravel(&self) -> LaravelFacts {
         let indexed = self.index().and_then(|index| index.laravel_files().ok()).unwrap_or_default();
         // Decoded in parallel: hundreds of summaries on a new session
-        // (roadmap phase 9.8.b).
+        //.
         let mut summaries: Vec<(PathBuf, Arc<FileSummary>)> = {
             use rayon::prelude::*;
             indexed.par_iter().filter_map(|path| Some((path.clone(), self.shared_summary(path).ok()??))).collect()
@@ -1663,7 +1663,7 @@ impl Declarations for PhpEngine {
     fn symfony(&self) -> SymfonyProject {
         let indexed = self.index().and_then(|index| index.symfony_files().ok()).unwrap_or_default();
         // Decoded in parallel: hundreds of summaries on a new session
-        // (roadmap phase 9.8.b).
+        //.
         let mut summaries: Vec<(PathBuf, Arc<FileSummary>)> = {
             use rayon::prelude::*;
             indexed.par_iter().filter_map(|path| Some((path.clone(), self.shared_summary(path).ok()??))).collect()

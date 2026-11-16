@@ -1,7 +1,7 @@
 # laravel-app
 
 A small Laravel 11 blog: the test fixture of the engine's Laravel support
-(`docs/php-engine/LARAVEL-ROADMAP.md`, Plan 8). The skeleton files (`artisan`,
+(`docs/engine/laravel.md`). The skeleton files (`artisan`,
 `bootstrap/`, `public/index.php`, `config/app.php`, the users migration, `User`) follow
 the MIT `laravel/laravel` skeleton; the rest is hand-written.
 
@@ -13,34 +13,30 @@ It also holds stand-ins for `livewire/livewire` and `inertiajs/inertia-laravel`,
 `installed.json` doesn't list: `refs/livewire_tests.rs` installs them in its own copy. For
 manual QA, do the same or run `composer install` on a copy.
 
-- `crates/ide-php/tests/laravel_app.rs` indexes it with the engine and inspects every
+- `crates/phoxite/tests/laravel_app.rs` indexes it with the engine and inspects every
   PHP file: no problems except the deliberate one below.
-- `crates/ide-php/src/frameworks/laravel/tests.rs` (`the_fixture_app_model`) checks the
+- `crates/phoxite/src/frameworks/laravel/tests.rs` (`the_fixture_app_model`) checks the
   Laravel project model: version, app namespace, route files with their prefixes, name
   prefixes and middleware, and the module.
-- `crates/ide-php/src/frameworks/laravel/refs/route_tests.rs` and `view_tests.rs` check
+- `crates/phoxite/src/frameworks/laravel/refs/route_tests.rs` and `view_tests.rs` check
   route names, controller actions, middleware and view names (completion, goto, usages,
   rename, the undefined route and view inspections, the variables passed to views).
-- `crates/ide-php/src/frameworks/laravel/refs/blade_tests.rs` checks Blade layouts, stacks,
+- `crates/phoxite/src/frameworks/laravel/refs/blade_tests.rs` checks Blade layouts, stacks,
   components and custom directives (completion, goto, bound attributes, unclosed sections).
-- `crates/ide-php/src/frameworks/laravel/refs/data_tests.rs` checks config keys of packages,
+- `crates/phoxite/src/frameworks/laravel/refs/data_tests.rs` checks config keys of packages,
   environment keys, translations and Vite assets (completion, goto, hover, the undefined
   inspections and their quick-fixes).
-- `crates/ide-php/src/frameworks/laravel/refs/eloquent_tests.rs` checks Eloquent columns and
+- `crates/phoxite/src/frameworks/laravel/refs/eloquent_tests.rs` checks Eloquent columns and
   nested relations in queries and model properties (completion, goto, hover, the unknown-column
   inspection), relation closures, typed collections, factories and `*_count` properties.
-- `crates/ide-php/src/frameworks/laravel/refs/auth_tests.rs` checks gates, policies, guards and password
+- `crates/phoxite/src/frameworks/laravel/refs/auth_tests.rs` checks gates, policies, guards and password
   brokers (completion, goto, hover, usages and rename of gates, the unknown-ability inspection,
   `can:`/`auth:` middleware parameters, `@can` in Blade).
-- `crates/ide-php/src/frameworks/laravel/refs/ide_json_tests.rs` checks `ide.json` support: the
+- `crates/phoxite/src/frameworks/laravel/refs/ide_json_tests.rs` checks `ide.json` support: the
   app's `ide.json` (completion rules mapped onto route names, configuration keys with a prefix,
   static strings, folder files and view names; Blade directives; an unsupported type and key that
   are ignored) and the one of the stub package `vendor/acme/widgets` (a view namespace, a
   component folder and a listed component).
-- `crates/ide-host/tests/php_engine.rs` (`inspect_code_over_the_laravel_fixture_app`) runs batch
-  Inspect Code over the app, PHP files and Blade templates: no problems except the deliberate one.
-- `crates/ide-host/tests/language_smoke.rs` (`laravel`) checks hover and completion on a
-  model attribute through the app's `ops`.
 
 **Deliberate problem:** `PostController::destroy()` calls the undefined method
 `forgetCachedFeed()` (`app/Http/Controllers/PostController.php`).

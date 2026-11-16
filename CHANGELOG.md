@@ -79,8 +79,7 @@ to the pre-release channel of the extension stores. That is why this one is not 
 - Pull Members Up and the Generate actions add several imports to a file without
   imports as one block, not one blank line apart.
 - The VS Code extension has an icon, and leaves watching files to the server.
-- The engine is developed in this repository now; it is no longer copied from OpenIDEA,
-  which offers Phoxite as a selectable PHP language server (`docs/openidea.md`).
+- OpenIDEA offers Phoxite as a selectable PHP language server (`docs/openidea.md`).
 - In OpenIDEA (on its `main`, after 0.1.45), Pull Members Up and Push Members Down work for PHP with
   Phoxite as the server.
 - An OpenIDEA plugin in `editors/openidea` with the Laravel tools: the routes view and
@@ -110,8 +109,7 @@ to the pre-release channel of the extension stores. That is why this one is not 
 
 ## 0.1.0 — 2026-11-14
 
-The first release: the engine of [OpenIDEA](https://github.com/l0ng-ai/openidea) as a
-language server and a VS Code extension.
+The first release: the engine, a language server and a VS Code extension.
 
 ### PHP
 

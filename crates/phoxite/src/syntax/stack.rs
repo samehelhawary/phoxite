@@ -55,7 +55,7 @@ const DEEP_STACK: usize = 4 << 20;
 /// the engine parses often (each file, docblock and PHPDoc type). Those maps
 /// serialize threads on the process's address space: batch Inspect Code
 /// over Monica spent more than half its time there and scaled only 3× on 16
-/// threads (roadmap phase 9.4.b). Work that parses a lot runs on threads of
+/// threads. Work that parses a lot runs on threads of
 /// [`PARSER_THREAD_STACK`] instead ([`on_parser_stacks`]), where this never
 /// switches stacks.
 pub fn parser_stack<R>(parse: impl FnOnce() -> R) -> R {
@@ -121,7 +121,7 @@ fn parser_pool() -> &'static rayon::ThreadPool {
     static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
     POOL.get_or_init(|| {
         rayon::ThreadPoolBuilder::new()
-            .thread_name(|i| format!("openidea-php-analysis-{i}"))
+            .thread_name(|i| format!("phoxite-analysis-{i}"))
             .stack_size(PARSER_THREAD_STACK)
             .build()
             .expect("a thread pool for PHP analysis")
@@ -237,7 +237,7 @@ mod tests {
         // A pool with rayon's default stacks hands it over.
         let small = rayon::ThreadPoolBuilder::new().num_threads(1).thread_name(|_| "small".to_owned()).build().unwrap();
         let ran = small.install(|| on_parser_stacks(name));
-        assert!(ran.is_some_and(|name| name.starts_with("openidea-php-analysis-")), "on the engine's pool");
+        assert!(ran.is_some_and(|name| name.starts_with("phoxite-analysis-")), "on the engine's pool");
 
         // A deeply nested parse runs there.
         let deep = format!("<?php {}1{};", "(".repeat(400), ")".repeat(400));

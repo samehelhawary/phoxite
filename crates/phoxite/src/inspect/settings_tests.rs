@@ -142,27 +142,3 @@ fn inspect_file_uses_the_buffer_of_an_open_document() {
     let codes: Vec<Option<String>> = found.unwrap().into_iter().map(|d| d.code).collect();
     assert_eq!(codes, [Some("PhpTodoCall".to_owned())]);
 }
-
-/// Settings › PHP › Inspections lists the engine's inspections from
-/// `src/platform/phpInspections.ts`: every built-in one, in order, the call
-/// and type checks with the Strict option. Only inside OpenIDEA: the
-/// standalone engine has no such page.
-#[test]
-fn the_settings_page_lists_every_inspection() {
-    let page = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src/platform/phpInspections.ts");
-    let Ok(ts) = std::fs::read_to_string(&page) else {
-        assert!(!page.parent().unwrap().exists(), "{} is unreadable", page.display());
-        return;
-    };
-    let listed: Vec<&str> =
-        ts.lines().filter_map(|line| line.trim().strip_prefix("code: \"")?.strip_suffix("\",")).collect();
-    // The engine's inspections in its order, then the checks of Blade templates.
-    let (blade, php): (Vec<&str>, Vec<&str>) =
-        listed.iter().copied().partition(|code| crate::blade::structure::INSPECTIONS.contains(code));
-    assert_eq!(php, Inspections::builtin().ids());
-    assert_eq!(blade, crate::blade::structure::INSPECTIONS);
-    assert!(listed.ends_with(&crate::blade::structure::INSPECTIONS));
-    assert!(ts.contains(&format!("BLADE_PRODUCER = \"{}\"", crate::blade::structure::DIAGNOSTIC_SOURCE)));
-    assert!(ts.contains(&format!("PHP_STRICT_OPTION = \"{STRICT_OPTION}\"")));
-    assert!(ts.contains("`lsp:${PHP_PRODUCER}:${code}`") && PROFILE_ID == "lsp:php");
-}

@@ -1,7 +1,7 @@
 //! Byte offset ⇄ 0-based line / UTF-16 column conversion for one PHP source.
 //!
-//! Mago spans are byte offsets; the IDE speaks 0-based lines and UTF-16
-//! columns (`ide-core::text`). Like `ide-text`, only `\n` breaks a line. A
+//! Mago spans are byte offsets; editors speak 0-based lines and UTF-16
+//! columns ([`crate::base`]). Only `\n` breaks a line. A
 //! `\r` in front of it belongs to the line but is never a valid caret column
 //! target: positions past the line's content clamp to before the `\r\n`.
 //!

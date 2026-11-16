@@ -182,14 +182,14 @@ probe, to confirm the cause is what this plan says.
 
 ## Checks at the end
 
-- `cargo test -p ide-php`, `cargo test -p ide-host php`, clippy.
+- `cargo test -p phoxite`, clippy.
 - Inspect Code on both apps, compared line by line. A and D can't change it.
   B, C and parts of E can: every new report is read and classed as a true
   finding or a regression before its commit stays.
 - The root-cause probe before and after. Target: under 350 root causes on
   Bagisto (from 476). The probe's run time within 10 % of 104 s.
 - `real_app_checklist` on both apps.
-- Docs: `architecture.md`, `laravel.md`, a `PROGRESS.md` entry, and this
+- Docs: `architecture.md`, `laravel.md`, and this
   file's outcome.
 
 ## Honest expectation

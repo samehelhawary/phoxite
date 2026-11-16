@@ -1,4 +1,4 @@
-//! Blade components beyond the component folders (roadmap phase 8.25), as
+//! Blade components beyond the component folders, as
 //! Laravel's `BladeCompiler` and `ComponentTagCompiler` (MIT) find and
 //! compile them:
 //!

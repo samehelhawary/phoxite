@@ -1,6 +1,5 @@
-//! `cargo bench -p ide-php`: the native PHP engine's performance budgets
-//! (roadmap phase 6.3, checked by `pnpm perf:rust` against
-//! `perf/budgets.json`):
+//! `cargo bench -p phoxite`: the native PHP engine's performance budgets
+//! (criterion benches):
 //!
 //! - cold index (no cache) and warm start (cache from an earlier run): open
 //!   the engine and wait until it is ready,
@@ -16,7 +15,7 @@
 //! under 2 s, and the request latencies on `Eloquent/Builder.php`
 //! (2.5k lines).
 //!
-//! The Laravel support budgets (roadmap phase 8.21): `php_laravel_app/*` on
+//! The Laravel support budgets: `php_laravel_app/*` on
 //! `fixtures/laravel-app` (with `fixtures/laravel-stubs` as its `vendor/`),
 //! and `php_laravel_real/*` on a real application with `vendor/` when
 //! `LARAVEL_APP_DIR` points to one (skipped otherwise):

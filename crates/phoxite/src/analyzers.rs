@@ -1,8 +1,7 @@
 //! External static analysers: PHPStan and Psalm from the project's
 //! `vendor/bin`.
 //!
-//! The host runs one on a saved file (`ide-host` `php_analyzers`) when
-//! Settings › PHP › External Analyzers asks for it; this module knows what is
+//! The host runs one on a saved file when its settings ask for it; this module knows what is
 //! installed ([`detect`]), how to start it ([`Analyzer::args`]), how to read
 //! its JSON report ([`Analyzer::parse`]) and which of its problems the engine
 //! already reports ([`remove_duplicates`]).

@@ -1,7 +1,7 @@
 //! Mago test-drive over the PHP corpora (phase 0.5).
 //!
 //! ```text
-//! cargo run --release -p ide-php --example parse_corpus [-- <dir>...]
+//! cargo run --release -p phoxite --example parse_corpus [-- <dir>...]
 //! ```
 //!
 //! Without arguments it reads every corpus under `PHP_CORPUS_DIR` (default
@@ -9,7 +9,7 @@
 //! It reports parse throughput (one thread and all cores), peak heap while
 //! parsing, files with parse errors, and how much of the outline survives when
 //! 200 files are cut short at random offsets. Results go in
-//! `docs/php-engine/spike.md`.
+//! `docs/engine/spike.md`.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::HashSet;

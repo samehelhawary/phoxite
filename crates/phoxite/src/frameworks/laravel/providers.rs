@@ -1,5 +1,5 @@
 //! The service providers of a Laravel project and what the providers of
-//! packages register (roadmap phase 8.23).
+//! packages register.
 //!
 //! - **Providers** ([`discover`]): the ones the application registers
 //!   (`bootstrap/providers.php` of Laravel 11, the `providers` of
@@ -104,7 +104,7 @@ pub(crate) fn discover(
         }
     }
     // `$this->app->register(Other::class)`, breadth first: each level's
-    // files are read and parsed in parallel (roadmap phase 9.4), and only
+    // files are read and parsed in parallel, and only
     // the ones whose text calls a `register` method are parsed at all.
     let mut level = queue;
     while !level.is_empty() && seen.len() < MAX_PROVIDERS {
@@ -649,7 +649,7 @@ mod tests {
 
     /// `installed.json` is parsed once by `LaravelProject::load_with` and
     /// shared by package discovery, the autoload rules and the class aliases
-    /// (roadmap phase 9.8.b), in both of its formats.
+    ///, in both of its formats.
     #[test]
     fn one_installed_json_parse_gives_providers_and_aliases() {
         let package = r#"{"name": "acme/pkg", INSTALL

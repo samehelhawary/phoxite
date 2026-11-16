@@ -1,5 +1,5 @@
 //! How the readers of the Laravel project model get what they read from
-//! single files (roadmap phase 8.22).
+//! single files.
 //!
 //! A reader asks a [`PartReader`] for each file's part (the configuration
 //! keys of one `config/*.php`, the translations of one language file, the
@@ -40,7 +40,7 @@ pub trait PartReader {
     /// [`part`](Self::part) of `kind` for each of `files` (a path and its
     /// context), in order: `build` gets the file's position in `files` and
     /// its text. One after another here; the engine builds them in parallel
-    /// (roadmap phase 9.4).
+    ///.
     fn parts_of<T: Serialize + DeserializeOwned + Send + Sync + 'static>(
         &self,
         kind: &'static str,

@@ -159,14 +159,13 @@ there, so they are not mistaken for classes. That is the source.
    about +3 on Monica. Read every new report; a false one is a bug in the
    collector, not something to tolerate.
 5. **Inline `@var`** (optional): from the flow analysis.
-6. Docs: the header of `inspect/undefined.rs`, `docs/php.md` (inspections),
-   a `PROGRESS.md` entry.
+6. Docs: the header of `inspect/undefined.rs`, `docs/php.md` (inspections).
 
 One commit per work item.
 
 ## Checks at the end
 
-- `cargo test -p ide-php`, `cargo test -p ide-host php`, clippy, and the
+- `cargo test -p phoxite`, clippy, and the
   frontend tests that list the inspections.
 - Inspect Code on Bagisto and Monica: every new report read and listed as a
   true finding. The plan's numbers (+5, then about +25 and +3) are the

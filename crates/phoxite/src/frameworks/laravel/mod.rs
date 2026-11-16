@@ -1,4 +1,4 @@
-//! Laravel support (`docs/php-engine/LARAVEL-ROADMAP.md`): the project
+//! Laravel support (`docs/engine/laravel.md`): the project
 //! model ([`project`]) every Laravel feature reads, the Artisan commands
 //! ([`artisan`]), the configuration keys
 //! ([`config`]), a live database schema ([`database`]), the environment

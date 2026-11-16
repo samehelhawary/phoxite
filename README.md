@@ -3,9 +3,9 @@
 PHP and Laravel code intelligence written in Rust, packaged for any editor: a library
 (`phoxite`), a language server (`phoxite-lsp`) and a VS Code extension.
 
-Phoxite began as a native PHP engine written for
-[OpenIDEA](https://github.com/l0ng-ai/openidea), which now offers it as one of its PHP
-language servers. What it does:
+Phoxite is a standalone engine: it depends on no editor.
+[OpenIDEA](https://github.com/l0ng-ai/openidea) offers it as one of its PHP language
+servers. What it does:
 
 - **PHP:** completion with auto-import, hover, signature help, go to definition, type
   definition and implementation, Find Usages, rename (files named after a class move with

@@ -196,17 +196,17 @@ of completion and hover in a file with many untyped parameters.
 ### 6. Hover and docs
 
 - Hover's "from N callers" note.
-- `docs/php-engine/architecture.md` ("What nothing declares"), `docs/php.md`
-  for the user-facing side, a `PROGRESS.md` entry.
+- `docs/engine/architecture.md` ("What nothing declares"), `docs/php.md`
+  for the user-facing side.
 
 ## Checks at the end
 
-- `cargo test -p ide-php`, `cargo test -p ide-host php`, clippy.
+- `cargo test -p phoxite`, clippy.
 - Inspect Code on Bagisto and Monica: identical, per inspection and per line.
   With the switch this should hold trivially; the check is that the switch
   really is off there.
 - The root-cause probe on both apps, before and after.
-- `pnpm perf:rust` within budget; completion's p95 on the fixture unchanged.
+- the benches (`cargo bench -p phoxite`) within budget; completion's p95 on the fixture unchanged.
 - In the running app: hover and completion on one private, one protected and
   (if built) one public example in Bagisto.
 

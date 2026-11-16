@@ -6,7 +6,7 @@
 //! Templates are parsed with `mago-twig-syntax` (Twig 3), after the repairs
 //! of [`recover`] so that broken templates keep their structure; completion
 //! also blanks the tag being typed. Everything here is a pure
-//! function of the template text, so `ide-host` serves it for open documents
+//! function of the template text, so a host serves it for open documents
 //! without the PHP engine running. Positions are 0-based lines and UTF-16
 //! columns, like the rest of the crate.
 

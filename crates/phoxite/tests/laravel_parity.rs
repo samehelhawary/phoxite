@@ -1,7 +1,7 @@
-//! The Laravel parity checklist (roadmap phase 8.21): every string-reference kind through
+//! The Laravel parity checklist: every string-reference kind through
 //! completion, goto, find usages and its "undefined …" inspection, and every generator, on the
 //! fixture app (`fixtures/laravel-app` with `fixtures/laravel-stubs` as its `vendor/`, Livewire
-//! and Inertia installed). The results are written down in `docs/php-engine/laravel.md`.
+//! and Inertia installed). The results are written down in `docs/engine/laravel.md`.
 //!
 //! What isn't supported yet is listed in [`GAPS`]; a gap that starts working fails the test, so
 //! the list (and the document) stays true. `real_app_checklist` runs the parts that don't need
@@ -202,7 +202,7 @@ const CHECKS: &[Check] = &[
 ];
 
 /// What isn't supported yet: `(kind, feature)` with `feature` one of `completion`, `goto`,
-/// `usages`, `inspection`. Kept in step with `docs/php-engine/laravel.md`.
+/// `usages`, `inspection`. Kept in step with `docs/engine/laravel.md`.
 const GAPS: &[(&str, &str)] = &[];
 
 const PROBE: &str = "app/Parity/Probe.php";
@@ -763,7 +763,7 @@ fn app_php_files(root: &Path) -> Vec<PathBuf> {
 /// Phase 8.27: the model view of every model of a real application, and the
 /// unknown-column problems of its own files (`LARAVEL_APP_DIR`). Prints
 /// each problem so they can be checked for false positives; the counts
-/// are recorded in `docs/php-engine/laravel.md`.
+/// are recorded in `docs/engine/laravel.md`.
 #[test]
 #[ignore = "needs a real Laravel application in LARAVEL_APP_DIR"]
 fn real_app_eloquent_columns() {
@@ -829,7 +829,7 @@ fn app_blade_files(root: &Path) -> Vec<PathBuf> {
 
 /// Phase 8.29: batch Inspect Code over the application's own PHP files and Blade templates
 /// (`LARAVEL_APP_DIR`, not `vendor/`). Prints the count of each inspection and an even sample
-/// of `SAMPLE` diagnostics with their source line, which `docs/php-engine/laravel.md` reviews
+/// of `SAMPLE` diagnostics with their source line, which `docs/engine/laravel.md` reviews
 /// for false positives.
 #[test]
 #[ignore = "needs a real Laravel application in LARAVEL_APP_DIR"]

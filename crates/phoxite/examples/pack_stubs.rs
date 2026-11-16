@@ -2,7 +2,7 @@
 //! (`crates/phoxite/stubs/phpstorm-stubs.zip`).
 //!
 //! ```text
-//! cargo run -p ide-php --example pack_stubs -- <phpstorm-stubs checkout> <out.zip>
+//! cargo run -p phoxite --example pack_stubs -- <phpstorm-stubs checkout> <out.zip>
 //! ```
 //!
 //! `scripts/php-stubs.sh` clones the pinned release and runs this. Only the

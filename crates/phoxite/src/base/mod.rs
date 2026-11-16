@@ -2,7 +2,7 @@
 //! errors, events and settings.
 //!
 //! These types keep the engine independent of any one editor. A front end
-//! (OpenIDEA's `ide-host`, the Phoxite language server `phoxite-lsp`) converts them at its
+//! (the Phoxite language server `phoxite-lsp`) converts them at its
 //! edge. Their shapes follow the LSP: 0-based lines, **UTF-16 columns**,
 //! half-open ranges.
 

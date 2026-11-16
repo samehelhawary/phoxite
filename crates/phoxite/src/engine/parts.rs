@@ -1,5 +1,5 @@
 //! The parts of the Laravel project model read from single files
-//! (roadmap phase 8.22): configuration keys per `config/*.php`, translations
+//!: configuration keys per `config/*.php`, translations
 //! per language file, routes per route file, and the view namespaces a
 //! service provider registers. Each part is kept with the stamp of the text
 //! it was read from:

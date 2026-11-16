@@ -563,7 +563,7 @@ pub const MODEL_PARTS_SCHEMA: u32 = 1;
 
 /// A part of the Laravel project model read from one file
 /// (`crate::engine::parts`), stored so that a new session doesn't read and
-/// parse the file again (roadmap phase 9.4). It is used when the file's
+/// parse the file again. It is used when the file's
 /// content hash, or its size and modification time, are still the ones it
 /// was read from, and it was read in the same context.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -653,7 +653,7 @@ fn open_file(cache_dir: &Path) -> Option<Database> {
 }
 
 fn stamp() -> String {
-    format!("ide-php-index {INDEX_SCHEMA} summary {SCHEMA_VERSION}")
+    format!("phoxite-index {INDEX_SCHEMA} summary {SCHEMA_VERSION}")
 }
 
 fn internal(e: impl std::fmt::Display) -> IdeError {

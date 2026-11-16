@@ -223,7 +223,7 @@ impl LaravelProject {
         let vendor = root.join(manifest.as_ref().map_or("vendor", |m| m.vendor_dir.as_str()));
         // `composer.lock` and `installed.json` are large (700 KB each in
         // Monica): parsed at the same time, and `installed.json` only once
-        // for every reader below (roadmap phase 9.8.b).
+        // for every reader below.
         let (composer, (lock, installed)) = rayon::join(
             || read_json(&root.join("composer.json")),
             || {
@@ -289,7 +289,7 @@ impl LaravelProject {
         project.directory_modules(manifest.as_ref());
         let local = super::views::local_provider_files(&project);
         // The `ide.json` files, the class aliases and the providers don't
-        // need each other: read at the same time (roadmap phase 9.8.b).
+        // need each other: read at the same time.
         let (ide_json, (class_aliases, discovery)) = rayon::join(
             || IdeJson::load(&root, &vendor),
             || {

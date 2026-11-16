@@ -1,13 +1,13 @@
 //! Native, in-process PHP code intelligence.
 //!
-//! The engine is built up phase by phase following `docs/php-engine/ROADMAP.md`:
+//! The engine is built in layers:
 //! a syntax layer on top of the Mago parser, per-file declaration summaries,
 //! redb-backed indexes, two-phase type inference, flow analysis and
-//! inspections. `ide-host` consults it through a `LanguageService` before
-//! falling back to LSP, so the frontend and IPC stay unchanged.
+//! inspections. A front end such as the language server `phoxite-lsp` calls it
+//! in process.
 //!
-//! Coordinates follow the rest of the backend: 0-based lines and UTF-16
-//! columns at the crate edge (`ide-core::text`). Mago works in byte offsets, so
+//! Coordinates follow the LSP: 0-based lines and UTF-16
+//! columns at the crate edge ([`base`]). Mago works in byte offsets, so
 //! the syntax layer converts between the two.
 //!
 //! Modules so far:
@@ -73,7 +73,7 @@
 //!   and PHPDoc, display in PHP syntax, unions and intersections, and
 //!   subtyping against a class [`types::Hierarchy`].
 //! - [`probe`]: the declaration outline used by the Mago test-drive
-//!   (`examples/parse_corpus.rs`, results in `docs/php-engine/spike.md`).
+//!   (`examples/parse_corpus.rs`, results in `docs/engine/spike.md`).
 
 pub mod analyzers;
 pub mod base;

@@ -110,7 +110,7 @@ impl Runner {
         // Parses (the document, docblocks, PHPDoc types) stay on this
         // thread's stack (`syntax::stack::parser_stack`).
         let spawned = std::thread::Builder::new()
-            .name("openidea-php-inspections".into())
+            .name("phoxite-inspections".into())
             .stack_size(crate::syntax::stack::PARSER_THREAD_STACK)
             .spawn(move || runner.run(engine, sink));
         match spawned {

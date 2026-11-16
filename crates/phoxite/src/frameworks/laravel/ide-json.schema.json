@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "openidea://schemas/laravel-ide-json.json",
+  "$id": "phoxite://schemas/laravel-ide-json.json",
   "title": "ide.json",
-  "description": "Settings a Laravel project or package ships for Laravel tooling. OpenIDEA reads the keys described here.",
+  "description": "Settings a Laravel project or package ships for Laravel tooling. Phoxite reads the keys described here.",
   "type": "object",
   "properties": {
     "$schema": { "type": "string" },

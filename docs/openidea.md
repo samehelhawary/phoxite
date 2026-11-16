@@ -1,13 +1,7 @@
 # Phoxite and OpenIDEA
 
-The engine started as `crates/ide-php` on a branch of
-[OpenIDEA](https://github.com/l0ng-ai/openidea). Its maintainers chose to keep OpenIDEA's
-PHP support on language servers instead of taking the engine into their tree, so this
-repository is the engine's home: it is developed here, and OpenIDEA uses it the way any
-other editor does, through `phoxite-lsp`.
-
-`crates/phoxite/SYNCED_FROM` records the OpenIDEA commit the engine was last copied from.
-Nothing is copied any more.
+[OpenIDEA](https://github.com/l0ng-ai/openidea) uses Phoxite the way any other editor
+does, through `phoxite-lsp`.
 
 ## What OpenIDEA has
 

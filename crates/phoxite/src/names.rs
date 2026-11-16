@@ -23,7 +23,7 @@
 //! Fully qualified names are stored without the leading `\`, as written
 //! (PHP compares class, function and namespace names case-insensitively; see
 //! [`fqn_eq`]). Identifiers are bytes in Mago; they become `String`s here,
-//! lossily, which is the summary boundary described in `docs/php-engine/spike.md`.
+//! lossily, which is the summary boundary described in `docs/engine/spike.md`.
 
 use std::fmt;
 use std::sync::Arc;

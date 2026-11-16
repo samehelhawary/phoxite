@@ -3,8 +3,8 @@
 Phase 6.2 ran `crates/phoxite/tests/differential.rs` on the three corpora and on `fixtures/php-library`. This is the summary; the full per-sample reports are written to `target/php-differential/<name>.{md,json}` by each run.
 
 ```text
-cargo test -p ide-php --test differential -- --ignored --exact fixture
-PHP_DIFF_CORPUS=laravel-framework cargo test -p ide-php --test differential -- --ignored --exact corpus
+cargo test -p phoxite --test differential -- --ignored --exact fixture
+PHP_DIFF_CORPUS=laravel-framework cargo test -p phoxite --test differential -- --ignored --exact corpus
 ```
 
 Setup: 2026-11-07, Intelephense 1.18.5 (unlicensed), engine at this commit, PHP 8.5 stubs with every extension set, seed 1592590342, 200 identifier positions per project sampled uniformly from all names and variables (`PHP_DIFF_SAMPLES`, `PHP_DIFF_SEED`). The corpora are the pinned tags of `scripts/php-corpus.sh` (laravel/framework v13.40.0, symfony v8.1.11, WordPress 7.1.4), without `vendor/`.

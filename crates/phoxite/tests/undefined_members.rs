@@ -11,7 +11,7 @@
 //! corpora (`scripts/php-corpus.sh`).
 //!
 //! ```text
-//! cargo test -p ide-php --test undefined_members -- --ignored --exact corpus --nocapture
+//! cargo test -p phoxite --test undefined_members -- --ignored --exact corpus --nocapture
 //! ```
 //!
 //! Environment: `PHP_CORPUS_DIR` (default `../php-corpus` next to the workspace),

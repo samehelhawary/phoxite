@@ -1,10 +1,9 @@
-//! Memory of the native engine against Intelephense on laravel/framework
-//! (roadmap phase 6.3). Ignored: it needs the corpora
+//! Memory of the native engine against Intelephense on laravel/framework. Ignored: it needs the corpora
 //! (`scripts/php-corpus.sh`, `PHP_CORPUS_DIR`) and Intelephense
 //! (`npm i -g intelephense`).
 //!
 //! ```text
-//! cargo test -p ide-php --release --test memory -- --ignored --nocapture
+//! cargo test -p phoxite --release --test memory -- --ignored --nocapture
 //! ```
 //!
 //! - **Engine:** the working set of this process before the engine opens,
@@ -192,7 +191,7 @@ fn intelephense(root: &Path, storage: &Path) -> (Duration, Memory) {
         let method = message.get("method").and_then(Value::as_str);
         match (message.get("id"), method) {
             // Intelephense 1.18 crashes when `initialized` comes before the
-            // `initialize` result (see RULES.md).
+            // `initialize` result.
             (Some(id), None) if id == &json!(1) && !initialized => {
                 initialized = true;
                 send(&mut stdin, &json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));

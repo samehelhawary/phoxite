@@ -6,8 +6,8 @@
 
 ```text
 scripts/php-corpus.sh
-cargo run --release -p ide-php --example parse_corpus            # all corpora under PHP_CORPUS_DIR
-cargo run --release -p ide-php --example parse_corpus -- fixtures/php-library
+cargo run --release -p phoxite --example parse_corpus            # all corpora under PHP_CORPUS_DIR
+cargo run --release -p phoxite --example parse_corpus -- fixtures/php-library
 ```
 
 The example reads every `.php` file into memory first, so the timings below leave out disk reads. A counting global allocator measures the heap. Truncation is deterministic: a fixed xorshift seed picks 200 error-free files that have at least one declaration, and cuts each at a random byte offset.
@@ -78,7 +78,7 @@ Versions are pinned exactly (`=1.59.0`) in `crates/phoxite/Cargo.toml`, because 
 
   `FileId::new(logical_name)` hashes a name; the engine can derive it from `DocId` or the path. `LexerSettings::enable_short_tags` defaults to true; tie it to `short_open_tag` once settings exist. `elide_detached_whitespace` saves trivia memory and keeps docblock lookups working, so it's good for indexing.
 
-- **Spans (`mago-span`).** `Span { file_id, start: Position { offset: u32 }, end }` holds **byte** offsets, with the end exclusive. Identifiers (`LocalIdentifier { span, value: &[u8] }`) are bytes rather than `str`, because PHP source may hold any bytes. Convert them with `from_utf8_lossy` at the summary boundary. The `ide-text` UTF-16 mapping goes on top of the byte offsets.
+- **Spans (`mago-span`).** `Span { file_id, start: Position { offset: u32 }, end }` holds **byte** offsets, with the end exclusive. Identifiers (`LocalIdentifier { span, value: &[u8] }`) are bytes rather than `str`, because PHP source may hold any bytes. Convert them with `from_utf8_lossy` at the summary boundary. The UTF-16 mapping goes on top of the byte offsets.
 - **Traversal.** `walker::Walker<'ast, 'arena, C>` (and `MutWalker`) has `walk_in_<node>`, `walk_<node>` and `walk_out_<node>` for every node, with a caller-owned context `C`. Override `walk_<node>` without recursing to skip a subtree, for example function bodies when only summaries are needed.
 - **Names (`mago-names`).**
   - `NameResolver::new(&arena).resolve(program)` returns `ResolvedNames`, keyed by the identifier's start offset.

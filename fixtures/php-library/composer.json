@@ -1,6 +1,6 @@
 {
-    "name": "openidea/fixture-library",
-    "description": "OpenIDEA QA fixture: a tiny lending library",
+    "name": "phoxite/fixture-library",
+    "description": "QA fixture: a tiny lending library",
     "type": "project",
     "license": "MIT",
     "require": {

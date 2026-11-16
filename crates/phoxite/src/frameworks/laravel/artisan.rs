@@ -139,7 +139,7 @@ impl ArtisanCommands {
         let mut project_commands = Vec::new();
         let mut packages = Vec::new();
         // Each command class's file is read: hundreds with `vendor/`, so in
-        // parallel, in the classes' order (roadmap phase 9.8.b).
+        // parallel, in the classes' order.
         let found: Vec<ArtisanCommand> = {
             use rayon::prelude::*;
             command_classes(engine).par_iter().filter_map(|model| class_command(engine, model)).collect()
@@ -232,7 +232,7 @@ fn command_classes(engine: &PhpEngine) -> Vec<std::sync::Arc<ClassModel>> {
         }
     }
     // The models (with their inherited members) are built in parallel, in
-    // the order found (roadmap phase 9.8.b).
+    // the order found.
     use rayon::prelude::*;
     classes
         .par_iter()

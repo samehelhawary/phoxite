@@ -194,7 +194,7 @@ impl BundledStubs {
     pub fn get() -> &'static Self {
         static STUBS: OnceLock<BundledStubs> = OnceLock::new();
         // Parsed in parallel on a pool of its own, from a thread of its own
-        // (roadmap phase 9.4): the first caller may be a worker of the
+        //: the first caller may be a worker of the
         // global pool (Inspect Code, the Laravel model's parts), and a
         // global worker waiting here while the global pool parses (or
         // stealing a task that asks for the stubs again) would wait for

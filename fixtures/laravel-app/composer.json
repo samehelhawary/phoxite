@@ -1,7 +1,7 @@
 {
-    "name": "openidea/laravel-app",
+    "name": "phoxite/laravel-app",
     "type": "project",
-    "description": "OpenIDEA's Laravel QA fixture (from the MIT laravel/laravel skeleton).",
+    "description": "A Laravel QA fixture (from the MIT laravel/laravel skeleton).",
     "license": "MIT",
     "require": {
         "php": "^8.2",

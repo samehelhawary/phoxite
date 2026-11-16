@@ -9,7 +9,7 @@
 //!   `(DocId, version)`.
 //!
 //! Files are always parsed with `recover_incomplete` on: the Mago test-drive
-//! (`docs/php-engine/spike.md`) showed that without it an unfinished class at
+//! (`docs/engine/spike.md`) showed that without it an unfinished class at
 //! the end of a file disappears with everything inside it, which is the
 //! normal state of a document being typed.
 

@@ -1,5 +1,5 @@
-//! How batch Inspect Code scales with threads (roadmap phase 9.4.b):
-//! `cargo run --release -p ide-php --example inspect_profile -- <app dir> [threads…]`
+//! How batch Inspect Code scales with threads:
+//! `cargo run --release -p phoxite --example inspect_profile -- <app dir> [threads…]`
 //! opens the engine on a Laravel application (its index cached in
 //! `target/inspect-profile`), then, for each thread count (default 1, 4 and
 //! all cores), opens a new session on the same cache, builds the shared

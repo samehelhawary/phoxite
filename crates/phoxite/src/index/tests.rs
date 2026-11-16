@@ -243,7 +243,7 @@ fn another_schema_stamp_clears_the_index() {
         let index = PhpIndex::open(&p.cache()).unwrap();
         index.sync(&p.files(), &token()).unwrap();
         let txn = index.db.begin_write().unwrap();
-        txn.open_table(META).unwrap().insert("stamp", b"ide-php-index 0 summary 0".as_slice()).unwrap();
+        txn.open_table(META).unwrap().insert("stamp", b"phoxite-index 0 summary 0".as_slice()).unwrap();
         txn.commit().unwrap();
     }
     let index = PhpIndex::open(&p.cache()).unwrap();

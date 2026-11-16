@@ -59,8 +59,8 @@ final class LibraryTest extends TestCase
 
     public function testIntentionallyFailing(): void
     {
-        if (getenv('OPENIDEA_FAIL') === false) {
-            self::markTestSkipped('set OPENIDEA_FAIL=1 to run');
+        if (getenv('PHOXITE_FAIL') === false) {
+            self::markTestSkipped('set PHOXITE_FAIL=1 to run');
         }
         // FIXME: wrong on purpose (QA: failing test in the test tree)
         self::assertSame('0.00 EUR', $this->library->totalValue());
