@@ -969,9 +969,24 @@ fn the_client_is_told_which_folders_are_laravel_projects() {
         c.notifications.iter().filter(|n| n.method == l::STATUS_CHANGED).map(|n| n.params.clone()).collect()
     };
 
+    // The notification follows the index: a request can be answered before it is sent, so
+    // the client keeps reading (each call reads what the server sent meanwhile) until
+    // `arrived` holds.
+    let wait = |c: &mut Client, arrived: &dyn Fn(&[Value]) -> bool| {
+        for _ in 0..400 {
+            if arrived(&status(c)) {
+                return;
+            }
+            let _ = c.call(l::STATUS, json!({}));
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        panic!("the status never arrived: {:?}", status(c));
+    };
+
     let (_dir, root) = laravel_project();
     let mut c = Client::start(&root);
     c.call_until(l::ROUTES, json!({}), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    wait(&mut c, &|told| !told.is_empty());
     let told = status(&c);
     assert_eq!(told.len(), 1, "once, not with every index pass: {told:?}");
     assert_eq!(told[0]["laravel"], true);
@@ -983,12 +998,14 @@ fn the_client_is_told_which_folders_are_laravel_projects() {
         "removed": [{ "uri": Url::from_file_path(&root).unwrap(), "name": "fixture" }],
     } }));
     c.call_until(l::STATUS, json!({}), |v| v["laravel"] == false);
-    assert_eq!(status(&c).last().unwrap(), &json!({ "laravel": false, "folders": [] }));
+    let gone = json!({ "laravel": false, "folders": [] });
+    wait(&mut c, &|told| told.last() == Some(&gone));
     c.shutdown();
 
     // A project that is not a Laravel one is told so too.
     let mut c = Client::start(&fixture("php-library"));
     c.call_until("workspace/symbol", json!({ "query": "Library" }), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    wait(&mut c, &|told| !told.is_empty());
     assert_eq!(status(&c), [json!({ "laravel": false, "folders": [] })]);
     c.shutdown();
 }
