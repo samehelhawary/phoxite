@@ -23,6 +23,22 @@
   `>` are no longer bracket pairs (`{{ $a > $b }}` unbalanced the rest of the file),
   `{!! !!}` closes itself, Enter between tags indents, `#region` comments fold, and there
   are snippets for the directives.
+- VS Code, several projects in one workspace: a model view, the New Model form and a
+  generator stay with the project they were opened for, whatever is focused later (Add
+  Columns could write into another project); Generate in the Explorer uses the clicked
+  folder; Artisan runs in the Laravel project's folder, and Run Task lists the commands
+  of every project; the routes view groups the routes by project.
+- VS Code: the routes view has **Go to Route** and a **filter** in its title bar, reads
+  the routes again when PHP files are created or deleted, and when empty says whether
+  the project has no routes, none match the filter, or the server couldn't be asked.
+- VS Code: the generators ask their questions as one input with a step counter and a
+  **Back** button, instead of separate prompts that lost everything on Escape.
+- VS Code: Change Signature keeps what was typed when its tab is hidden; the model view
+  and the forms come back after a window reload. Enter in a text field of a form no
+  longer submits it (Ctrl+Enter does), and the remove buttons are labelled for screen
+  readers.
+- VS Code: `phoxite.laravel.database` is a window setting (the server reads one value,
+  so a per-folder one was never honoured).
 - VS Code: the commands of the server's lenses run under the extension's own names, so
   another extension registering `laravel.modelView` can't break them.
 - The server tells the client when a folder is (or stops being) a Laravel project

@@ -21,7 +21,12 @@ function copyDir(from, to) {
   }
 }
 
-async function main() {
+/**
+ * Runs the suite in a fresh VS Code on a fresh copy of the fixture. In mode `two-projects`
+ * the workspace has two folders, each a copy of the fixture, and the suite runs the
+ * checks about that instead.
+ */
+async function run(mode) {
   const extension = path.resolve(__dirname, "../..");
   const fixtures = path.resolve(extension, "../../fixtures");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "phoxite-e2e-"));
@@ -41,15 +46,28 @@ async function main() {
       "security.workspace.trust.enabled": false,
     }),
   );
+  let opened = project;
+  const second = path.join(tmp, "shop");
+  if (mode === "two-projects") {
+    copyDir(project, second);
+    opened = path.join(tmp, "two.code-workspace");
+    fs.writeFileSync(opened, JSON.stringify({ folders: [{ path: "app" }, { path: "shop" }] }));
+  }
   const options = {
     extensionDevelopmentPath: extension,
     extensionTestsPath: path.join(__dirname, "suite.js"),
-    launchArgs: [project, "--disable-extensions", `--user-data-dir=${userData}`, "--skip-welcome", "--skip-release-notes"],
-    extensionTestsEnv: { PHOXITE_E2E_PROJECT: project },
+    launchArgs: [opened, "--disable-extensions", `--user-data-dir=${userData}`, "--skip-welcome", "--skip-release-notes"],
+    extensionTestsEnv: { PHOXITE_E2E_PROJECT: project, PHOXITE_E2E_SECOND: second, PHOXITE_E2E_MODE: mode },
   };
   if (process.argv[2]) options.vscodeExecutablePath = process.argv[2];
+  console.log(`\n== ${mode} ==`);
+  await runTests(options);
+}
+
+async function main() {
   try {
-    await runTests(options);
+    await run("one-project");
+    await run("two-projects");
   } catch (e) {
     console.error("the end-to-end tests failed", e);
     process.exitCode = 1;

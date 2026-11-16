@@ -15,6 +15,7 @@ import {
   type Place,
   type SchemaStatus,
   type Template,
+  chosenFolder,
   migrationTimestamp,
 } from "./model";
 
@@ -31,89 +32,35 @@ const STATUS_DELAY_MS = 1500;
 /** The notification of a server that says when a folder is (or stops being) a Laravel project. */
 const STATUS_CHANGED = "phoxite/laravel/statusChanged";
 
-export class Laravel {
-  private active = false;
-  private check = 0;
-  /** The server tells when the status changes, so asking once is enough. */
-  private told = false;
-  private readonly changed = new vscode.EventEmitter<boolean>();
-  /** The workspace turned out to be a Laravel project, or stopped being one. */
-  readonly onDidChange = this.changed.event;
+/** A workspace folder's URI as VS Code writes it, whoever wrote `uri`. */
+function folderUri(uri: string): string {
+  const parsed = vscode.Uri.parse(uri);
+  return (vscode.workspace.getWorkspaceFolder(parsed)?.uri ?? parsed).toString();
+}
 
-  constructor(private readonly client: () => LanguageClient | undefined) {}
+/** The name of workspace folder `folder` (a URI). */
+export function folderName(folder: string): string {
+  const uri = vscode.Uri.parse(folder);
+  return vscode.workspace.getWorkspaceFolder(uri)?.name ?? baseName(uri);
+}
 
-  /** A Laravel project is open, as far as the server said. */
-  get isActive(): boolean {
-    return this.active;
+/**
+ * The server's requests about one Laravel project: the one in workspace folder
+ * `folder`, or the one the server picks when there is none.
+ */
+export class Project {
+  constructor(
+    protected readonly client: () => LanguageClient | undefined,
+    private readonly fixed?: string,
+  ) {}
+
+  /** The workspace folder (a URI) the requests are about. */
+  get folder(): string | undefined {
+    return this.fixed;
   }
 
-  /** The folder the requests are about: the active editor's, when it is in one. */
-  private folder(): string | undefined {
-    const uri = vscode.window.activeTextEditor?.document.uri;
-    const folder = uri && uri.scheme === "file" ? vscode.workspace.getWorkspaceFolder(uri) : undefined;
-    return folder?.uri.toString();
-  }
-
-  private async request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-    return running(this.client()).sendRequest<T>(`phoxite/laravel/${method}`, { folder: this.folder(), ...params });
-  }
-
-  /** Sets the context key the views and menus show on, and tells who listens. */
-  private async set(found: boolean): Promise<void> {
-    if (found === this.active) return;
-    this.active = found;
-    await vscode.commands.executeCommand("setContext", CONTEXT_KEY, found);
-    this.changed.fire(found);
-  }
-
-  /**
-   * A server started: listens to what it says about Laravel projects, and asks once
-   * for what it knows now. The answer of the listener stays while the client lives.
-   */
-  attach(client: LanguageClient): vscode.Disposable {
-    const experimental = client.initializeResult?.capabilities.experimental as
-      | { phoxite?: { laravelStatus?: boolean } }
-      | undefined;
-    this.told = experimental?.phoxite?.laravelStatus === true;
-    const listener = client.onNotification(STATUS_CHANGED, (status: { laravel?: boolean }) => {
-      // What the server says now is newer than the answer of a question still on its way.
-      this.check++;
-      void this.set(status?.laravel === true);
-    });
-    void this.refreshStatus();
-    return listener;
-  }
-
-  /**
-   * Asks the server whether a Laravel project is open. A server that tells when that
-   * changes is asked once; an older one a few times, as it may answer before it has
-   * read the project.
-   */
-  async refreshStatus(): Promise<boolean> {
-    const check = ++this.check;
-    const tries = this.told ? 1 : STATUS_TRIES;
-    let found = false;
-    for (let attempt = 0; attempt < tries && check === this.check; attempt++) {
-      found = await this.request<{ laravel: boolean }>("status").then(
-        (status) => status.laravel,
-        () => false,
-      );
-      if (found || attempt + 1 === tries) break;
-      await new Promise((resolve) => setTimeout(resolve, STATUS_DELAY_MS));
-    }
-    if (check !== this.check) return this.active;
-    await this.set(found);
-    return found;
-  }
-
-  /** The server stopped: nothing is known until it runs again. */
-  async reset(): Promise<void> {
-    this.check++;
-    await this.set(false);
-  }
-
-  dispose(): void {
-    this.changed.dispose();
+  protected async request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    return running(this.client()).sendRequest<T>(`phoxite/laravel/${method}`, { folder: this.folder, ...params });
   }
 
   routes(query = ""): Promise<Route[]> {
@@ -176,6 +123,118 @@ export class Laravel {
       if (doc.isDirty && touched.includes(uri) && !dirtyBefore.has(uri)) await doc.save();
     }
     return applied.created.map((uri) => vscode.Uri.parse(uri));
+  }
+}
+
+/**
+ * The Laravel projects of the workspace, as far as the server said. Its own requests
+ * are about the project of the active editor; `in` gives those of one folder, for
+ * what outlives the active editor (a panel) or was asked about another (the Explorer).
+ */
+export class Laravel extends Project {
+  private active = false;
+  /** The workspace folders that are Laravel projects; empty when the server doesn't say. */
+  private known: string[] = [];
+  private check = 0;
+  /** The server tells when the status changes, so asking once is enough. */
+  private told = false;
+  private readonly changed = new vscode.EventEmitter<boolean>();
+  /** The workspace turned out to be a Laravel project, or stopped being one. */
+  readonly onDidChange = this.changed.event;
+
+  constructor(client: () => LanguageClient | undefined) {
+    super(client);
+  }
+
+  /** A Laravel project is open, as far as the server said. */
+  get isActive(): boolean {
+    return this.active;
+  }
+
+  /** The workspace folders (URIs) that are Laravel projects; empty when the server doesn't say. */
+  get folders(): readonly string[] {
+    return this.known;
+  }
+
+  /** The Laravel project of the active editor, else the first one. */
+  override get folder(): string | undefined {
+    const uri = vscode.window.activeTextEditor?.document.uri;
+    const folder = uri && uri.scheme === "file" ? vscode.workspace.getWorkspaceFolder(uri) : undefined;
+    return chosenFolder(folder?.uri.toString(), this.known);
+  }
+
+  /** The requests about the project in `folder`; without one, the project of this moment. */
+  in(folder?: string): Project {
+    return new Project(this.client, folder ? chosenFolder(folderUri(folder), this.known) : this.folder);
+  }
+
+  /** The project file `uri` is in. */
+  of(uri: vscode.Uri): Project {
+    return this.in(vscode.workspace.getWorkspaceFolder(uri)?.uri.toString());
+  }
+
+  /** Sets the context key the views and menus show on, and tells who listens. */
+  private async set(found: boolean, folders: string[] = []): Promise<void> {
+    const same = found === this.active && folders.join("\n") === this.known.join("\n");
+    this.known = folders;
+    if (same) return;
+    if (found !== this.active) {
+      this.active = found;
+      await vscode.commands.executeCommand("setContext", CONTEXT_KEY, found);
+    }
+    this.changed.fire(found);
+  }
+
+  /**
+   * A server started: listens to what it says about Laravel projects, and asks once
+   * for what it knows now. The answer of the listener stays while the client lives.
+   */
+  attach(client: LanguageClient): vscode.Disposable {
+    const experimental = client.initializeResult?.capabilities.experimental as
+      | { phoxite?: { laravelStatus?: boolean } }
+      | undefined;
+    this.told = experimental?.phoxite?.laravelStatus === true;
+    const listener = client.onNotification(STATUS_CHANGED, (status: { laravel?: boolean; folders?: string[] }) => {
+      // What the server says now is newer than the answer of a question still on its way.
+      this.check++;
+      const folders = Array.isArray(status?.folders) ? status.folders.map(folderUri) : [];
+      void this.set(status?.laravel === true, folders);
+    });
+    void this.refreshStatus();
+    return listener;
+  }
+
+  /**
+   * Asks the server whether a Laravel project is open. A server that tells when that
+   * changes is asked once; an older one a few times, as it may answer before it has
+   * read the project.
+   */
+  async refreshStatus(): Promise<boolean> {
+    const check = ++this.check;
+    const tries = this.told ? 1 : STATUS_TRIES;
+    let found = false;
+    for (let attempt = 0; attempt < tries && check === this.check; attempt++) {
+      found = await this.request<{ laravel: boolean }>("status").then(
+        (status) => status.laravel,
+        () => false,
+      );
+      if (found || attempt + 1 === tries) break;
+      await new Promise((resolve) => setTimeout(resolve, STATUS_DELAY_MS));
+    }
+    if (check !== this.check) return this.active;
+    // The folders are what the server last said; a server that doesn't say has none.
+    await this.set(found, found ? this.known : []);
+    return found;
+  }
+
+  /** The server stopped: nothing is known until it runs again. */
+  async reset(): Promise<void> {
+    this.check++;
+    await this.set(false);
+  }
+
+  dispose(): void {
+    this.changed.dispose();
   }
 }
 

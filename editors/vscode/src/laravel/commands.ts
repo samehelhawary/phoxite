@@ -6,7 +6,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { FAILED, registerServerCommand, shown } from "../errors";
-import { type Laravel, baseName, count, message } from "./api";
+import { runSteps, type Step } from "../steps";
+import { type Laravel, type Project, baseName, count, message } from "./api";
+import { type Answer, type At, type Choice, askChoice, askText, askTicks } from "./input";
 import {
   type ArtisanCommand,
   type GenerationContext,
@@ -33,154 +35,170 @@ import { openNewModel } from "./pages";
 
 const NOT_LARAVEL = "Laravel generators need a Laravel project in this workspace.";
 
-type Pick<T> = vscode.QuickPickItem & { value: T };
-
-/** Asks for one of `items`; `undefined` when the user backs out. */
-async function pick<T>(title: string, placeHolder: string, items: Array<Pick<T>>): Promise<T | undefined> {
-  const picked = await vscode.window.showQuickPick(items, { title, placeHolder, matchOnDescription: true });
-  return picked?.value;
-}
-
 // ---------------------------------------------------------------------------
 // Generators.
 
 /** The model list of a generator's dialog; `none` is the entry for no model. */
-function modelItems(ctx: GenerationContext, none?: string): Array<Pick<string>> {
-  const items: Array<Pick<string>> = ctx.models.map((model) => ({ label: shortName(model), description: model, value: model }));
+function modelItems(ctx: GenerationContext, none?: string): Array<Choice<string>> {
+  const items: Array<Choice<string>> = ctx.models.map((model) => ({ label: shortName(model), description: model, value: model }));
   if (none) items.unshift({ label: none, value: "" });
   return items;
 }
 
 /**
- * Asks what generator `generator` needs, one step at a time: the name, the module,
- * then the options the server lists for it. `undefined` when the user backs out.
+ * Asks what generator `generator` needs as one input of several steps: the name, the
+ * module, then the options the server lists for it. Back at a step returns to the one
+ * before, with what was answered there. `undefined` when the user gives up.
  */
 async function askClass(ctx: GenerationContext, generator: Generator): Promise<NewClassSpec | undefined> {
   const title = generatorTitle(ctx, generator.id);
   const spec = emptyClassSpec(generator.id, ctx.defaultModule ?? "");
   const options = new Set(generator.options);
   const pivot = nameKind(generator.id) === "none";
+  if (options.has("model") && pivot && ctx.models.length < 2) {
+    void vscode.window.showInformationMessage("A pivot table needs two Eloquent models, and this project has fewer.");
+    return undefined;
+  }
+
+  const steps: Step[] = [];
+  /** A step that keeps its answer with `set`. */
+  const step = <T>(ask: (at: At) => Promise<Answer<T>>, set: (value: T) => void) =>
+    steps.push(async (at) => {
+      const answer = await ask({ ...at, title });
+      if (typeof answer === "string") return answer;
+      set(answer.value);
+      return "next";
+    });
+  const text = (prompt: string, get: () => string, set: (value: string) => void, validate?: (value: string) => string | null | undefined) =>
+    step((at) => askText(at, { prompt, value: get(), validate }), (value) => set(value.trim()));
+  const choice = <T>(placeHolder: string, items: () => Array<Choice<T>>, get: () => T, set: (value: T) => void) =>
+    step((at) => askChoice(at, { placeHolder, items: items(), current: get() }), set);
 
   if (!pivot) {
-    const name = await vscode.window.showInputBox({
-      title,
-      prompt: namePlaceholder(generator.id),
-      validateInput: (value) => (value.trim() ? nameError(generator.id, value) : null),
-    });
-    if (!name?.trim()) return undefined;
-    spec.name = name.trim();
+    text(
+      namePlaceholder(generator.id),
+      () => spec.name,
+      (name) => (spec.name = name),
+      (value) => (value.trim() ? nameError(generator.id, value) : "Enter a name"),
+    );
   }
   if (ctx.modules.length) {
-    const targets: Array<Pick<string>> = [
+    const targets: Array<Choice<string>> = [
       { label: "Application", description: ctx.namespace, value: "" },
       ...ctx.modules.map((m) => ({ label: m, description: "module", value: m })),
     ];
-    // The module of the settings first: Enter takes it.
-    targets.sort((a, b) => Number(b.value === spec.module) - Number(a.value === spec.module));
-    const module = await pick(title, "Where the class goes", targets);
-    if (module === undefined) return undefined;
-    spec.module = module;
+    choice("Where the class goes", () => targets, () => spec.module, (module) => (spec.module = module));
   }
   if (options.has("model")) {
-    if (pivot && ctx.models.length < 2) {
-      void vscode.window.showInformationMessage("A pivot table needs two Eloquent models, and this project has fewer.");
-      return undefined;
-    }
-    const model = await pick(title, pivot ? "The first model" : "The model", modelItems(ctx, pivot ? undefined : "No model"));
-    if (model === undefined) return undefined;
-    spec.model = model;
+    choice(
+      pivot ? "The first model" : "The model",
+      () => modelItems(ctx, pivot ? undefined : "No model"),
+      () => spec.model,
+      (model) => (spec.model = model),
+    );
     if (options.has("related")) {
-      const related = await pick(title, "The related model", modelItems(ctx).filter((m) => m.value !== model));
-      if (related === undefined) return undefined;
-      spec.related = related;
+      choice(
+        "The related model",
+        () => modelItems(ctx).filter((m) => m.value !== spec.model),
+        () => spec.related,
+        (related) => (spec.related = related),
+      );
     }
   }
-  if (options.has("table")) {
-    const table = await vscode.window.showInputBox({ title, prompt: "Table (guessed from the name when empty)" });
-    if (table === undefined) return undefined;
-    spec.table = table.trim();
-  }
+  if (options.has("table")) text("Table (guessed from the name when empty)", () => spec.table, (table) => (spec.table = table));
   if (options.has("event")) {
-    const event = await vscode.window.showInputBox({ title, prompt: "Event class (optional), e.g. OrderShipped" });
-    if (event === undefined) return undefined;
-    spec.event = event.trim();
+    text("Event class (optional), e.g. OrderShipped", () => spec.event, (event) => (spec.event = event));
   }
   if (options.has("backing")) {
-    const backing = await pick(title, "Backing type", [
-      { label: "Pure enum", value: "" },
-      { label: "Backed by string", value: "string" },
-      { label: "Backed by int", value: "int" },
-    ]);
-    if (backing === undefined) return undefined;
-    spec.backing = backing;
+    choice(
+      "Backing type",
+      () => [
+        { label: "Pure enum", value: "" },
+        { label: "Backed by string", value: "string" },
+        { label: "Backed by int", value: "int" },
+      ],
+      () => spec.backing,
+      (backing) => (spec.backing = backing),
+    );
   }
   if (options.has("status")) {
-    const status = await vscode.window.showInputBox({
-      title,
-      prompt: "HTTP status, e.g. 403 (500 when empty)",
-      validateInput: statusError,
-    });
-    if (status === undefined) return undefined;
-    spec.status = Number.parseInt(status.trim(), 10) || 0;
+    text(
+      "HTTP status, e.g. 403 (500 when empty)",
+      () => (spec.status ? String(spec.status) : ""),
+      (status) => (spec.status = Number.parseInt(status, 10) || 0),
+      statusError,
+    );
   }
   // The inputs of an `ide.json` code generation.
   for (const field of generator.fields) {
     if (field.kind === "checkbox") continue;
     if (field.kind === "select") {
-      const items: Array<Pick<string>> = field.options.map((o) => ({
+      const items: Array<Choice<string>> = field.options.map((o) => ({
         label: o.label,
         description: o.value === field.default ? "default" : undefined,
         value: o.value,
       }));
       if (field.optional) items.unshift({ label: "None", value: "" });
-      const value = await pick(title, field.title, items);
-      if (value === undefined) return undefined;
-      spec.inputs[field.id] = value;
+      choice(field.title, () => items, () => spec.inputs[field.id] ?? field.default, (value) => (spec.inputs[field.id] = value));
       continue;
     }
-    const value = await vscode.window.showInputBox({
-      title,
-      prompt: field.optional ? `${field.title} (optional)` : field.title,
-      value: field.default,
-      validateInput: (typed) => (field.optional || typed.trim() ? null : `Enter ${field.title}`),
+    steps.push(async (at) => {
+      // Not trimmed: the text goes into the generated code as typed.
+      const answer = await askText(
+        { ...at, title },
+        {
+          prompt: field.optional ? `${field.title} (optional)` : field.title,
+          value: spec.inputs[field.id] ?? field.default,
+          validate: (typed) => (field.optional || typed.trim() ? null : `Enter ${field.title}`),
+        },
+      );
+      if (typeof answer === "string") return answer;
+      spec.inputs[field.id] = answer.value;
+      return "next";
     });
-    if (value === undefined) return undefined;
-    spec.inputs[field.id] = value;
   }
   // Everything ticked or not, in one list.
-  type Flag = { set(on: boolean): void };
-  const flags: Array<Pick<Flag>> = [];
+  type Flag = { on(): boolean; set(on: boolean): void };
+  const flags: Array<{ label: string; description?: string; value: Flag }> = [];
   if (options.has("create")) {
-    flags.push({ label: "Create the table", picked: spec.create, value: { set: (on) => (spec.create = on) } });
+    flags.push({ label: "Create the table", value: { on: () => spec.create, set: (on) => (spec.create = on) } });
   }
-  if (options.has("queued")) flags.push({ label: "Queued", picked: spec.queued, value: { set: (on) => (spec.queued = on) } });
+  if (options.has("queued")) flags.push({ label: "Queued", value: { on: () => spec.queued, set: (on) => (spec.queued = on) } });
   if (options.has("api")) {
     flags.push({
       label: "API",
       description: "no create and edit actions",
-      picked: spec.api,
-      value: { set: (on) => (spec.api = on) },
+      value: { on: () => spec.api, set: (on) => (spec.api = on) },
     });
   }
   for (const field of generator.fields.filter((f) => f.kind === "checkbox")) {
+    spec.inputs[field.id] = truthy(field.default) ? "true" : "";
     flags.push({
       label: field.title,
-      picked: truthy(field.default),
-      value: { set: (on) => (spec.inputs[field.id] = on ? "true" : "") },
+      value: { on: () => spec.inputs[field.id] === "true", set: (on) => (spec.inputs[field.id] = on ? "true" : "") },
     });
   }
   if (flags.length) {
-    const ticked = await vscode.window.showQuickPick(flags, { title, placeHolder: "Options", canPickMany: true });
-    if (!ticked) return undefined;
-    for (const flag of flags) flag.value.set(ticked.includes(flag));
+    step(
+      (at) => askTicks(at, { placeHolder: "Options", items: flags.map((flag) => ({ ...flag, picked: flag.value.on() })) }),
+      (ticked: Flag[]) => {
+        for (const flag of flags) flag.value.set(ticked.includes(flag.value));
+      },
+    );
   }
-  return spec;
+  return (await runSteps(steps)) ? spec : undefined;
 }
 
-/** Runs generator `id`, asking for what it needs. */
-async function generate(context: vscode.ExtensionContext, laravel: Laravel, ctx: GenerationContext, id: string): Promise<void> {
+/** Runs generator `id` in `project`, asking for what it needs. */
+async function generate(
+  context: vscode.ExtensionContext,
+  laravel: Laravel,
+  project: Project,
+  ctx: GenerationContext,
+  id: string,
+): Promise<void> {
   if (id === MODEL_GENERATOR) {
-    await openNewModel(context, laravel);
+    await openNewModel(context, laravel, project.folder);
     return;
   }
   const generator = ctx.generators.find((g) => g.id === id);
@@ -191,7 +209,7 @@ async function generate(context: vscode.ExtensionContext, laravel: Laravel, ctx:
   const spec = await askClass(ctx, generator);
   if (!spec) return;
   try {
-    const created = await laravel.apply(await laravel.generateClass(spec));
+    const created = await project.apply(await project.generateClass(spec));
     if (created[0]) await vscode.window.showTextDocument(created[0]);
     void vscode.window.showInformationMessage(`Created ${created.map(baseName).join(", ") || "nothing"}.`);
   } catch (e) {
@@ -199,17 +217,22 @@ async function generate(context: vscode.ExtensionContext, laravel: Laravel, ctx:
   }
 }
 
-/** "Generate…": the generators of the project; `id` skips the list. */
-async function pickGenerator(context: vscode.ExtensionContext, laravel: Laravel, id?: unknown): Promise<void> {
+/**
+ * "Generate…": the generators of the project; `id` skips the list. The project is the
+ * one `clicked` (a file of the Explorer) is in, else the active editor's: it is settled
+ * here, so that what is focused while the questions are asked doesn't change it.
+ */
+async function pickGenerator(context: vscode.ExtensionContext, laravel: Laravel, id?: string, clicked?: vscode.Uri): Promise<void> {
+  const project = clicked ? laravel.of(clicked) : laravel.in();
   // A server that is down is not "no Laravel project": the failure is shown as it is.
-  const ctx = await shown(laravel.generationContext());
+  const ctx = await shown(project.generationContext());
   if (ctx === FAILED) return;
   if (!ctx) {
     void vscode.window.showInformationMessage(NOT_LARAVEL);
     return;
   }
   if (typeof id === "string" && id) {
-    await generate(context, laravel, ctx, id);
+    await generate(context, laravel, project, ctx, id);
     return;
   }
   const items: Array<vscode.QuickPickItem & { id?: string }> = generatorEntries(ctx).map((entry) =>
@@ -222,14 +245,19 @@ async function pickGenerator(context: vscode.ExtensionContext, laravel: Laravel,
     placeHolder: "What to create",
     matchOnDescription: true,
   });
-  if (picked?.id) await generate(context, laravel, ctx, picked.id);
+  if (picked?.id) await generate(context, laravel, project, ctx, picked.id);
 }
 
 // ---------------------------------------------------------------------------
 // Artisan.
 
-/** The folder Artisan runs in: the active editor's workspace folder, else the first one. */
-function projectFolder(): vscode.WorkspaceFolder | undefined {
+/**
+ * The folder Artisan runs in: the Laravel project's (`folder`, a URI). A server that
+ * doesn't say where the project is leaves the active editor's folder, else the first one.
+ */
+function projectFolder(folder: string | undefined): vscode.WorkspaceFolder | undefined {
+  const known = folder ? vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(folder)) : undefined;
+  if (known) return known;
   const uri = vscode.window.activeTextEditor?.document.uri;
   return (uri && vscode.workspace.getWorkspaceFolder(uri)) ?? vscode.workspace.workspaceFolders?.[0];
 }
@@ -259,10 +287,10 @@ function artisanTask(definition: ArtisanTaskDefinition, scope: vscode.WorkspaceF
   return task;
 }
 
-async function runArtisan(name: string, args: string): Promise<void> {
+async function runArtisan(project: Project, name: string, args: string): Promise<void> {
   const definition: ArtisanTaskDefinition = { type: ARTISAN_TASK, command: name };
   if (args.trim()) definition.arguments = args.trim();
-  await vscode.tasks.executeTask(artisanTask(definition, projectFolder() ?? vscode.TaskScope.Workspace));
+  await vscode.tasks.executeTask(artisanTask(definition, projectFolder(project.folder) ?? vscode.TaskScope.Workspace));
 }
 
 /**
@@ -272,16 +300,22 @@ async function runArtisan(name: string, args: string): Promise<void> {
 function artisanTasks(laravel: Laravel): vscode.TaskProvider {
   return {
     async provideTasks() {
-      const folder = projectFolder();
-      if (!laravel.isActive || !folder || !vscode.workspace.isTrusted) return [];
-      const commands = (await laravel.artisanCommands().catch(() => null)) ?? [];
-      return commands
-        .filter((c) => (c.source === "class" || c.source === "closure") && !needsArguments(c))
-        .map((c) => {
+      if (!laravel.isActive || !vscode.workspace.isTrusted) return [];
+      // The commands of every Laravel project of the workspace, each run in its folder.
+      const projects = laravel.folders.length ? laravel.folders.map((folder) => laravel.in(folder)) : [laravel.in()];
+      const tasks: vscode.Task[] = [];
+      for (const project of projects) {
+        const folder = projectFolder(project.folder);
+        if (!folder) continue;
+        const commands = (await project.artisanCommands().catch(() => null)) ?? [];
+        for (const c of commands) {
+          if ((c.source !== "class" && c.source !== "closure") || needsArguments(c)) continue;
           const task = artisanTask({ type: ARTISAN_TASK, command: c.name }, folder);
           task.detail = c.description || undefined;
-          return task;
-        });
+          tasks.push(task);
+        }
+      }
+      return tasks;
     },
     resolveTask(task) {
       const definition = task.definition as ArtisanTaskDefinition;
@@ -325,7 +359,9 @@ async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
       .then((choice) => choice && vscode.commands.executeCommand("workbench.trust.manage"));
     return;
   }
-  const commands = await shown(laravel.artisanCommands());
+  // The project is settled here: the command runs where its list was read.
+  const project = laravel.in();
+  const commands = await shown(project.artisanCommands());
   if (commands === FAILED) return;
   if (!commands) {
     void vscode.window.showInformationMessage("Artisan commands are listed for Laravel projects.");
@@ -334,11 +370,11 @@ async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
   if (typeof name === "string" && name) {
     const command = commands.find((c) => c.name === name);
     if (!command || !needsArguments(command)) {
-      await runArtisan(name, "");
+      await runArtisan(project, name, "");
       return;
     }
     const args = await askArguments(command);
-    if (args !== undefined) await runArtisan(name, args);
+    if (args !== undefined) await runArtisan(project, name, args);
     return;
   }
   // The project's own commands first.
@@ -360,7 +396,7 @@ async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
   });
   if (!picked?.value) return;
   const args = await askArguments(picked.value);
-  if (args !== undefined) await runArtisan(picked.value.name, args);
+  if (args !== undefined) await runArtisan(project, picked.value.name, args);
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +406,7 @@ async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
 async function createTranslation(laravel: Laravel, arg: unknown): Promise<void> {
   const request = translationRequestOf(arg);
   if (!request) return;
+  const project = laravel.in();
   const missing = missingLocales(request);
   if (!missing.length) {
     void vscode.window.showInformationMessage(`Every locale has '${request.key}' already.`);
@@ -398,7 +435,7 @@ async function createTranslation(laravel: Laravel, arg: unknown): Promise<void> 
     texts.push({ locale: locale.locale, text });
   }
   try {
-    await laravel.apply(await laravel.createTranslation(request.key, texts));
+    await project.apply(await project.createTranslation(request.key, texts));
     vscode.window.setStatusBarMessage(`Created '${request.key}' in ${count(texts.length, "locale")}`, 4000);
   } catch (e) {
     void vscode.window.showErrorMessage(`Phoxite: ${message(e)}`);
@@ -443,7 +480,9 @@ export function registerCommands(context: vscode.ExtensionContext, laravel: Lara
     vscode.commands.registerCommand(
       "phoxite.laravel.generate",
       // From the explorer's menu the argument is the clicked file, not a generator.
-      guarded((id?: unknown) => pickGenerator(context, laravel, typeof id === "string" ? id : undefined)),
+      guarded((arg?: unknown) =>
+        pickGenerator(context, laravel, typeof arg === "string" ? arg : undefined, arg instanceof vscode.Uri ? arg : undefined),
+      ),
     ),
     vscode.commands.registerCommand(
       "phoxite.laravel.artisan",

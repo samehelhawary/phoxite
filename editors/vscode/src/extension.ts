@@ -91,6 +91,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
     ),
     vscode.commands.registerCommand("phoxite.restart", () => restart(context)),
     vscode.commands.registerCommand("phoxite.showOutput", () => output?.show()),
+    vscode.commands.registerCommand("phoxite.showLog", () => output?.show()),
     vscode.commands.registerCommand(
       "phoxite.rescan",
       guarded(async () => {

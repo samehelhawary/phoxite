@@ -99,6 +99,13 @@ the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
 | `phoxite.trace.server` | Log what the extension and the server say to each other. |
 | `phoxite.warnAboutOtherServers` | Warn about extensions that answer the same requests. |
 
+## Several projects in one workspace
+
+In a multi-root workspace each Laravel folder is its own project. A command is about the
+project of the active editor (the first Laravel project when the editor is elsewhere);
+a model view or a form stays with the project it was opened for. The routes view lists
+the routes under their project, and Run Task offers each project's Artisan commands.
+
 ## When something is wrong
 
 The **Phoxite** entry in the language status (the `{}` in the status bar of a PHP or

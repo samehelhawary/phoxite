@@ -128,6 +128,16 @@ export function migrationTimestamp(date: Date): string {
   return `${pad(date.getFullYear(), 4)}_${pad(date.getMonth() + 1)}_${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
+/**
+ * The workspace folder the requests are about: `active` (the active editor's) when it
+ * is one of the Laravel projects `known`, else the first of them. A server that
+ * doesn't say which folders are Laravel projects (`known` empty) picks itself.
+ */
+export function chosenFolder(active: string | undefined, known: readonly string[]): string | undefined {
+  if (!known.length) return active;
+  return active !== undefined && known.includes(active) ? active : known[0];
+}
+
 /** `App\Models\Post` → `Post`. */
 export const shortName = (fqn: string) => fqn.slice(fqn.lastIndexOf("\\") + 1);
 

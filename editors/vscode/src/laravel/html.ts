@@ -45,10 +45,21 @@ export function page(title: string, resources: PageResources, body: string, data
 <body>
 ${body}
 ${data === undefined ? "" : `<script type="application/json" id="data">${embedJson(data)}</script>`}
-<script src="${escapeHtml(resources.script)}"></script>
+${resources.script ? `<script src="${escapeHtml(resources.script)}"></script>` : ""}
 </body>
 </html>`;
 }
+
+/** A page that only says something: no script runs in it. */
+export function messagePage(title: string, text: string, resources: PageResources): string {
+  return page(title, { ...resources, script: "" }, `<main><p class="hint" role="status">${escapeHtml(text)}</p></main>`);
+}
+
+/**
+ * What a panel's page keeps with `setState`, so that the panel opens again after a
+ * window reload: enough to ask the server for the rest.
+ */
+export type PanelState = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
 // The model view.
@@ -144,7 +155,7 @@ ${section(
 }
 
 /** The model view's page: the details, and the Add Columns form its script runs. */
-export function modelViewPage(view: ModelView, resources: PageResources): string {
+export function modelViewPage(view: ModelView, resources: PageResources, panel?: PanelState): string {
   const body = `<main>
 <div id="details">${modelDetails(view)}</div>
 <p class="buttons" id="open-form"><button type="button" data-action="show-form">Add Columns…</button></p>
@@ -156,21 +167,21 @@ export function modelViewPage(view: ModelView, resources: PageResources): string
 <label class="check"><input type="checkbox" id="fillable" checked> Add them to <code>$fillable</code></label>
 <p class="error hidden" id="error" role="alert"></p>
 <p class="buttons">
-<button type="submit">Create Migration</button>
+<button type="submit" title="Ctrl+Enter">Create Migration</button>
 <button type="button" class="secondary" data-action="hide-form">Cancel</button>
 </p>
 </form>
 </main>`;
-  return page(`Eloquent Model ${view.name}`, resources, body, { columnTypes: COLUMN_TYPES });
+  return page(`Eloquent Model ${view.name}`, resources, body, { columnTypes: COLUMN_TYPES, panel });
 }
 
 /** The page shown when the model can't be read. */
-export function modelErrorPage(cls: string, error: string, resources: PageResources): string {
+export function modelErrorPage(cls: string, error: string, resources: PageResources, panel?: PanelState): string {
   return page(
     `Eloquent Model ${shortName(cls)}`,
     resources,
     `<main><div id="details"><p class="error" role="alert">${escapeHtml(error)}</p></div></main>`,
-    { columnTypes: COLUMN_TYPES },
+    { columnTypes: COLUMN_TYPES, panel },
   );
 }
 
@@ -186,9 +197,15 @@ export interface NewModelData {
   relationKinds: readonly string[];
   controllerKinds: ReadonlyArray<{ value: string; label: string }>;
   form: NewModelForm;
+  panel?: PanelState;
 }
 
-export function newModelPage(ctx: GenerationContext, form: NewModelForm, resources: PageResources): string {
+export function newModelPage(
+  ctx: GenerationContext,
+  form: NewModelForm,
+  resources: PageResources,
+  panel?: PanelState,
+): string {
   const data: NewModelData = {
     namespace: ctx.namespace,
     modules: ctx.modules,
@@ -197,6 +214,7 @@ export function newModelPage(ctx: GenerationContext, form: NewModelForm, resourc
     relationKinds: RELATION_KINDS,
     controllerKinds: CONTROLLER_KINDS,
     form,
+    panel,
   };
   const body = `<main>
 <form id="new-model" aria-label="New Eloquent Model">
@@ -215,7 +233,7 @@ export function newModelPage(ctx: GenerationContext, form: NewModelForm, resourc
 <div class="checks" id="generate"></div>
 <p class="error hidden" id="error" role="alert"></p>
 <p class="buttons">
-<button type="submit" id="create">Create</button>
+<button type="submit" id="create" title="Ctrl+Enter">Create</button>
 <button type="button" class="secondary" data-action="cancel">Cancel</button>
 </p>
 </form>

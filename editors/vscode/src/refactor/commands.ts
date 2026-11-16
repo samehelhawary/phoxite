@@ -126,19 +126,24 @@ function changeSignature(
   refactorings: Refactorings,
   uri: string,
   data: ChangeSignatureData,
+  restored?: vscode.WebviewPanel,
 ): void {
-  if (!uri || !data?.signature) return;
+  if (!uri || !data?.signature) {
+    restored?.dispose();
+    return;
+  }
   const media = vscode.Uri.joinPath(context.extensionUri, "media");
-  const view = vscode.window.createWebviewPanel(CHANGE_SIGNATURE, "Change Signature", vscode.ViewColumn.Beside, {
-    enableScripts: true,
-    localResourceRoots: [media],
-  });
+  const options = { enableScripts: true, localResourceRoots: [media] };
+  if (restored) restored.webview.options = options;
+  const view = restored ?? vscode.window.createWebviewPanel(CHANGE_SIGNATURE, "Change Signature", vscode.ViewColumn.Beside, options);
   const file = (name: string) => view.webview.asWebviewUri(vscode.Uri.joinPath(media, name)).toString();
-  view.webview.html = changeSignaturePage(data.signature, {
-    cspSource: view.webview.cspSource,
-    style: file("laravel.css"),
-    script: file("changeSignature.js"),
-  });
+  // The page keeps what it was opened with and what was typed: a hidden tab, and a
+  // window reload, bring the form back as it was.
+  view.webview.html = changeSignaturePage(
+    data.signature,
+    { cspSource: view.webview.cspSource, style: file("laravel.css"), script: file("changeSignature.js") },
+    { uri, data },
+  );
   const apply = async (wanted: Signature): Promise<void> => {
     const change = tidySignature(wanted);
     const invalid = signatureError(data.signature, change);
@@ -255,6 +260,11 @@ export function registerRefactorings(context: vscode.ExtensionContext, refactori
     vscode.commands.registerCommand(CHANGE_SIGNATURE, (uri: string, data: ChangeSignatureData) =>
       changeSignature(context, refactorings, uri, data),
     ),
+    vscode.window.registerWebviewPanelSerializer(CHANGE_SIGNATURE, {
+      async deserializeWebviewPanel(view, state: { uri?: unknown; data?: ChangeSignatureData } | undefined) {
+        changeSignature(context, refactorings, typeof state?.uri === "string" ? state.uri : "", state?.data as ChangeSignatureData, view);
+      },
+    }),
     vscode.commands.registerCommand("phoxite.refactor.changeSignature", guarded(changeSignatureAtCaret)),
     vscode.commands.registerCommand("phoxite.refactor.pullMembersUp", () => moveMembers(refactorings, "pullUp")),
     vscode.commands.registerCommand("phoxite.refactor.pushMembersDown", () => moveMembers(refactorings, "pushDown")),

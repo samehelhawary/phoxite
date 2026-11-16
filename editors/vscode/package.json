@@ -28,7 +28,10 @@
   "activationEvents": [
     "onLanguage:php",
     "onLanguage:blade",
-    "workspaceContains:composer.json"
+    "workspaceContains:composer.json",
+    "onWebviewPanel:phoxite.modelView",
+    "onWebviewPanel:phoxite.newModel",
+    "onWebviewPanel:phoxite.changeSignature"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -93,6 +96,11 @@
         "category": "Phoxite"
       },
       {
+        "command": "phoxite.showLog",
+        "title": "Show the Server Log",
+        "category": "Phoxite"
+      },
+      {
         "command": "phoxite.rescan",
         "title": "Index the Project Again",
         "category": "Phoxite"
@@ -145,13 +153,26 @@
       {
         "command": "phoxite.laravel.routes.goto",
         "title": "Go to Route…",
-        "category": "Laravel"
+        "category": "Laravel",
+        "icon": "$(search)"
       },
       {
         "command": "phoxite.laravel.routes.refresh",
         "title": "Refresh Routes",
         "category": "Laravel",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "phoxite.laravel.routes.filter",
+        "title": "Filter Routes…",
+        "category": "Laravel",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "phoxite.laravel.routes.clearFilter",
+        "title": "Clear the Routes Filter",
+        "category": "Laravel",
+        "icon": "$(clear-all)"
       },
       {
         "command": "phoxite.laravel.editTemplate",
@@ -340,7 +361,7 @@
         "phoxite.laravel.database": {
           "type": "string",
           "default": "",
-          "scope": "resource",
+          "scope": "window",
           "markdownDescription": "A SQLite database whose tables and columns Phoxite reads, read-only, along with the migrations (the database wins): `auto` for the one the project's `.env` names (`DB_CONNECTION=sqlite`), or the file's path relative to the project. Empty: the migrations alone."
         },
         "phoxite.laravel.artisanCommand": {
@@ -438,7 +459,18 @@
     "viewsWelcome": [
       {
         "view": "phoxite.laravel.routes",
-        "contents": "No routes were found yet. They show once the project is indexed.\n[Refresh](command:phoxite.laravel.routes.refresh)"
+        "when": "phoxite.laravel.routes.state == failed",
+        "contents": "The routes couldn't be read from the language server.\n[Restart the Language Server](command:phoxite.restart)\n[Show the Server Log](command:phoxite.showLog)"
+      },
+      {
+        "view": "phoxite.laravel.routes",
+        "when": "phoxite.laravel.routes.state == filtered",
+        "contents": "No route matches the filter.\n[Clear the Filter](command:phoxite.laravel.routes.clearFilter)"
+      },
+      {
+        "view": "phoxite.laravel.routes",
+        "when": "phoxite.laravel.routes.state == empty",
+        "contents": "This project declares no routes yet. They are read from the files of `routes/` and from the providers that register them.\n[Refresh](command:phoxite.laravel.routes.refresh)"
       }
     ],
     "submenus": [
@@ -516,6 +548,14 @@
         {
           "command": "phoxite.laravel.modelView.rename",
           "when": "false"
+        },
+        {
+          "command": "phoxite.laravel.routes.filter",
+          "when": "phoxite.laravel"
+        },
+        {
+          "command": "phoxite.laravel.routes.clearFilter",
+          "when": "phoxite.laravel && phoxite.laravel.routes.filter"
         }
       ],
       "editor/context": [
@@ -548,9 +588,24 @@
       ],
       "view/title": [
         {
+          "command": "phoxite.laravel.routes.goto",
+          "when": "view == phoxite.laravel.routes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "phoxite.laravel.routes.filter",
+          "when": "view == phoxite.laravel.routes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "phoxite.laravel.routes.clearFilter",
+          "when": "view == phoxite.laravel.routes && phoxite.laravel.routes.filter",
+          "group": "navigation@3"
+        },
+        {
           "command": "phoxite.laravel.routes.refresh",
           "when": "view == phoxite.laravel.routes",
-          "group": "navigation"
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [

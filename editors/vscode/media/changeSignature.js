@@ -5,6 +5,9 @@
   const vscode = acquireVsCodeApi();
   const data = JSON.parse(document.getElementById("data").textContent);
   const was = data.signature;
+  // What was typed before the tab was hidden, or the window reloaded.
+  const saved = vscode.getState();
+  const start = (saved && saved.edited) || was;
   const form = document.getElementById("signature");
   const head = document.getElementById("head");
   const rows = document.getElementById("parameters");
@@ -37,7 +40,7 @@
   }
 
   // The name, and for a method its visibility; a constructor has no return type.
-  const name = input("functionName", "Name", was.functionName);
+  const name = input("functionName", "Name", start.functionName);
   name.disabled = was.constructor;
   head.append(name);
   let visibility;
@@ -47,13 +50,13 @@
       { name: "visibility" },
       data.visibilities.map((v) => element("option", { value: v, textContent: v })),
     );
-    visibility.value = was.visibility;
+    visibility.value = start.visibility || was.visibility;
     visibility.setAttribute("aria-label", "Visibility");
     head.prepend(visibility);
   }
   let returnType;
   if (!was.constructor) {
-    returnType = input("returnType", "Return type", was.returnType, "narrow");
+    returnType = input("returnType", "Return type", start.returnType, "narrow");
     head.append(returnType);
   }
 
@@ -124,6 +127,7 @@
     if (s.returnType.trim()) text += ": " + s.returnType.trim();
     preview.textContent = text;
     none.classList.toggle("hidden", rows.children.length > 0);
+    if (data.panel) vscode.setState({ ...data.panel, edited: s });
     const all = [...rows.children];
     all.forEach((row, i) => {
       row.querySelector("[data-action=up]").disabled = i === 0;
@@ -136,13 +140,20 @@
     if (!busy) refresh();
   }
 
-  for (const p of was.parameters) addRow(p);
+  for (const p of start.parameters) addRow(p);
   refresh();
   (was.constructor ? rows.querySelector("input") || form.querySelector("button") : name).focus();
 
   form.addEventListener("input", () => {
     showError("");
     refresh();
+  });
+
+  // Enter in a text field is not "submit": Ctrl+Enter is.
+  form.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || !event.target.matches("input[type=text]")) return;
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) form.requestSubmit();
   });
 
   form.addEventListener("click", (event) => {

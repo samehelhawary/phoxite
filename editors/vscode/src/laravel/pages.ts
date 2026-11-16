@@ -4,8 +4,17 @@
 import * as vscode from "vscode";
 import { FAILED, guarded, registerServerCommand, shown } from "../errors";
 import { type Laravel, baseName, count, message, reveal } from "./api";
-import { type ItemContext, type PageResources, modelDetails, modelErrorPage, modelViewPage, newModelPage } from "./html";
 import {
+  type ItemContext,
+  type PageResources,
+  messagePage,
+  modelDetails,
+  modelErrorPage,
+  modelViewPage,
+  newModelPage,
+} from "./html";
+import {
+  type GenerationContext,
   type ModelView,
   type NewColumn,
   type NewModelForm,
@@ -28,11 +37,19 @@ const FILES_SETTLE_MS = 300;
 const REFRESH_TRIES = 8;
 const REFRESH_DELAY_MS = 400;
 
-function panel(context: vscode.ExtensionContext, type: string, title: string): vscode.WebviewPanel {
-  const media = vscode.Uri.joinPath(context.extensionUri, "media");
+/** What a page may do: run its script, and load from the extension's `media` folder only. */
+export function webviewOptions(context: vscode.ExtensionContext): vscode.WebviewOptions {
+  return { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")] };
+}
+
+/** A new panel, or `restored`: the one VS Code brought back after a window reload. */
+function panel(context: vscode.ExtensionContext, type: string, title: string, restored?: vscode.WebviewPanel): vscode.WebviewPanel {
+  if (restored) {
+    restored.webview.options = webviewOptions(context);
+    return restored;
+  }
   return vscode.window.createWebviewPanel(type, title, vscode.ViewColumn.Active, {
-    enableScripts: true,
-    localResourceRoots: [media],
+    ...webviewOptions(context),
     retainContextWhenHidden: true,
   });
 }
@@ -44,33 +61,46 @@ function resources(context: vscode.ExtensionContext, webview: vscode.Webview, sc
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** The open model views, by class: a model's lens shows its view again. */
+/** The open model views, by project and class: a model's lens shows its view again. */
 const modelViews = new Map<string, vscode.WebviewPanel>();
 
-/** Opens the model view of class `cls`. */
-export async function openModelView(context: vscode.ExtensionContext, laravel: Laravel, cls: string): Promise<void> {
-  const open = modelViews.get(cls);
-  if (open) {
+/**
+ * Opens the model view of class `cls` of the project in `folder` (the project of the
+ * active editor when there is none). The view stays with that project whatever is
+ * focused later.
+ */
+export async function openModelView(
+  context: vscode.ExtensionContext,
+  laravel: Laravel,
+  cls: string,
+  folder?: string,
+  restored?: vscode.WebviewPanel,
+): Promise<void> {
+  const project = laravel.in(folder);
+  const key = `${project.folder ?? ""}\n${cls}`;
+  const open = modelViews.get(key);
+  if (open && !restored) {
     open.reveal();
     return;
   }
-  const view = panel(context, MODEL_VIEW, `Model ${shortName(cls)}`);
+  const view = panel(context, MODEL_VIEW, `Model ${shortName(cls)}`, restored);
   const page = resources(context, view.webview, "modelView.js");
-  modelViews.set(cls, view);
+  const state = { class: cls, folder: project.folder };
+  modelViews.set(key, view);
   let shown: ModelView | undefined;
   let disposed = false;
 
   const load = async (first: boolean): Promise<void> => {
     try {
-      const model = await laravel.modelView(cls);
+      const model = await project.modelView(cls);
       if (disposed) return;
       // The page is written once; after that only what it shows is replaced, so a
       // form being filled in stays as it is.
-      if (first || !shown) view.webview.html = modelViewPage(model, page);
+      if (first || !shown) view.webview.html = modelViewPage(model, page, state);
       else await view.webview.postMessage({ type: "details", html: modelDetails(model) });
       shown = model;
     } catch (e) {
-      if (!disposed && (first || !shown)) view.webview.html = modelErrorPage(cls, message(e), page);
+      if (!disposed && (first || !shown)) view.webview.html = modelErrorPage(cls, message(e), page, state);
     }
   };
 
@@ -84,6 +114,9 @@ export async function openModelView(context: vscode.ExtensionContext, laravel: L
   watcher.onDidChange(later);
   watcher.onDidCreate(later);
   watcher.onDidDelete(later);
+  // The server started, or read the project: a view that couldn't be read (one brought
+  // back by a window reload, before the server ran) is read now.
+  const status = laravel.onDidChange(() => later());
 
   const addColumns = async (rows: NewColumn[], fillable: boolean): Promise<void> => {
     if (!shown) return;
@@ -97,7 +130,7 @@ export async function openModelView(context: vscode.ExtensionContext, laravel: L
     }
     const columns = chosenColumns(rows);
     try {
-      await laravel.apply(await laravel.addColumns(shown.class, columns, fillable));
+      await project.apply(await project.addColumns(shown.class, columns, fillable));
     } catch (e) {
       await view.webview.postMessage({ type: "error", message: message(e) });
       return;
@@ -120,7 +153,8 @@ export async function openModelView(context: vscode.ExtensionContext, laravel: L
     disposed = true;
     clearTimeout(timer);
     watcher.dispose();
-    modelViews.delete(cls);
+    status.dispose();
+    if (modelViews.get(key) === view) modelViews.delete(key);
   });
   await load(true);
 }
@@ -147,16 +181,49 @@ async function pickModel(context: vscode.ExtensionContext, laravel: Laravel): Pr
   if (picked) await openModelView(context, laravel, picked.model);
 }
 
-/** Opens the New Eloquent Model form. */
-export async function openNewModel(context: vscode.ExtensionContext, laravel: Laravel): Promise<void> {
-  const ctx = await shown(laravel.generationContext());
-  if (ctx === FAILED) return;
-  if (!ctx) {
-    void vscode.window.showInformationMessage("Laravel generators need a Laravel project in this workspace.");
-    return;
+/**
+ * Opens the New Eloquent Model form for the project in `folder` (the project of the
+ * active editor when there is none): the model is created there whatever is focused later.
+ */
+export async function openNewModel(
+  context: vscode.ExtensionContext,
+  laravel: Laravel,
+  folder?: string,
+  restored?: vscode.WebviewPanel,
+): Promise<void> {
+  const project = laravel.in(folder);
+  let ctx: GenerationContext | null = null;
+  if (!restored) {
+    const asked = await shown(project.generationContext());
+    if (asked === FAILED) return;
+    if (!asked) {
+      void vscode.window.showInformationMessage("Laravel generators need a Laravel project in this workspace.");
+      return;
+    }
+    ctx = asked;
   }
-  const view = panel(context, NEW_MODEL, "New Eloquent Model");
-  view.webview.html = newModelPage(ctx, emptyModelForm(ctx.defaultModule ?? ""), resources(context, view.webview, "newModel.js"));
+  const view = panel(context, NEW_MODEL, "New Eloquent Model", restored);
+  const page = resources(context, view.webview, "newModel.js");
+  let disposed = false;
+  let mounted = false;
+  // The form is built from what the server knows of the project. A form brought back by
+  // a window reload waits for the server; what was filled in is kept by the page.
+  const mount = async (known: GenerationContext | null): Promise<void> => {
+    const found = known ?? (await project.generationContext().catch(() => null));
+    if (disposed || mounted) return;
+    if (!found) {
+      view.webview.html = messagePage("New Eloquent Model", "Waiting for the language server to read the project…", page);
+      return;
+    }
+    mounted = true;
+    view.webview.html = newModelPage(found, emptyModelForm(found.defaultModule ?? ""), page, { folder: project.folder });
+  };
+  const status = laravel.onDidChange(() => void mount(null));
+  view.onDidDispose(() => {
+    disposed = true;
+    status.dispose();
+  });
+  await mount(ctx);
   const create = async (form: NewModelForm): Promise<void> => {
     const invalid = newModelError(form);
     if (invalid) {
@@ -165,7 +232,7 @@ export async function openNewModel(context: vscode.ExtensionContext, laravel: La
     }
     let created: vscode.Uri[];
     try {
-      created = await laravel.apply(await laravel.newModel(newModelSpec(form)));
+      created = await project.apply(await project.newModel(newModelSpec(form)));
     } catch (e) {
       await view.webview.postMessage({ type: "error", message: message(e) });
       return;
@@ -203,6 +270,21 @@ export function registerPages(context: vscode.ExtensionContext, laravel: Laravel
       "phoxite.laravel.newModel",
       guarded(() => openNewModel(context, laravel)),
     ),
+    // The panels VS Code brings back after a window reload, from what their pages kept.
+    vscode.window.registerWebviewPanelSerializer(MODEL_VIEW, {
+      async deserializeWebviewPanel(view, state: { class?: unknown; folder?: unknown } | undefined) {
+        if (typeof state?.class !== "string" || !state.class) {
+          view.dispose();
+          return;
+        }
+        await openModelView(context, laravel, state.class, typeof state.folder === "string" ? state.folder : undefined, view);
+      },
+    }),
+    vscode.window.registerWebviewPanelSerializer(NEW_MODEL, {
+      async deserializeWebviewPanel(view, state: { folder?: unknown } | undefined) {
+        await openNewModel(context, laravel, typeof state?.folder === "string" ? state.folder : undefined, view);
+      },
+    }),
     { dispose: () => [...modelViews.values()].forEach((view) => view.dispose()) },
   );
 }

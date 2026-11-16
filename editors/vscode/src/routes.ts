@@ -68,3 +68,26 @@ export function routePicks(routes: Route[]): RoutePick[] {
 export function openable(url: string): boolean {
   return /^https?:\/\//.test(url) && !/\{[^}]*\}/.test(url);
 }
+
+/**
+ * Whether `route` is one the filter `filter` keeps: every word of the filter is in its
+ * methods, URI, name or action, whatever the case. An empty filter keeps every route.
+ */
+export function routeMatches(route: Route, filter: string): boolean {
+  const text = `${routeLabel(route)} ${route.name ?? ""} ${route.action}`.toLowerCase();
+  return filter
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => text.includes(word));
+}
+
+/** What the routes view says when it has nothing to list. */
+export type RoutesState = "listed" | "failed" | "filtered" | "empty";
+
+/** `found` routes were read (`undefined`: they couldn't be), `kept` of them pass the filter. */
+export function routesState(found: number | undefined, kept: number): RoutesState {
+  if (found === undefined) return "failed";
+  if (kept > 0) return "listed";
+  return found > 0 ? "filtered" : "empty";
+}

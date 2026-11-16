@@ -395,9 +395,46 @@ const checks = [
   }],
 ];
 
+/** The checks of a workspace with two folders, each a Laravel project (run.js makes it). */
+const second = process.env.PHOXITE_E2E_SECOND;
+const inFolder = (fsPath, root) => fsPath.toLowerCase().startsWith(root.toLowerCase() + path.sep);
+const twoProjectChecks = [
+  ["Two projects: a request stays with the project it was made for", async () => {
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    await until("both Laravel projects", async () => laravel().folders, (found) => found.length === 2);
+    // An editor of the second project is active: a panel opened now is about that project…
+    const model = vscode.Uri.file(path.join(second, "app/Models/Post.php"));
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(model));
+    const kept = laravel().in();
+    assert.ok(inFolder(model.fsPath, vscode.Uri.parse(kept.folder).fsPath), kept.folder);
+    assert.equal(laravel().of(model).folder, kept.folder, "the Explorer's Generate on a file of the project");
+    // …and stays so when the first project gets the focus.
+    await open("routes/web.php");
+    assert.notEqual(laravel().folder, kept.folder);
+    const view = await until("the model", () => kept.modelView("App\\Models\\Post").catch(() => undefined), Boolean);
+    const created = await kept.apply(await kept.addColumns(view.class, [{ name: "subtitle", ty: "string", nullable: true }], false));
+    assert.ok(created.length > 0 && created.every((uri) => inFolder(uri.fsPath, second)), created.map((u) => u.fsPath).join(", "));
+    return `${path.relative(path.dirname(second), created[0].fsPath)}`;
+  }],
+  ["Two projects: the routes of each, and Artisan tasks in each folder", async () => {
+    const counts = [];
+    for (const folder of laravel().folders) {
+      const root = vscode.Uri.parse(folder).fsPath;
+      const routes = await until("routes", () => laravel().in(folder).routes().catch(() => []), (found) => found.length > 0);
+      assert.ok(routes.every((route) => inFolder(route.path, root)), `routes outside ${root}`);
+      counts.push(routes.length);
+    }
+    const tasks = await vscode.tasks.fetchTasks({ type: "artisan" });
+    const scopes = new Set(tasks.map((task) => (typeof task.scope === "object" ? task.scope.name : "")));
+    assert.deepEqual([...scopes].sort(), ["app", "shop"]);
+    return `${counts.join(" + ")} routes; ${tasks.length} tasks in ${[...scopes].join(", ")}`;
+  }],
+];
+
 exports.run = async function run() {
   const results = [];
-  for (const [name, check] of checks) {
+  const chosen = process.env.PHOXITE_E2E_MODE === "two-projects" ? twoProjectChecks : checks;
+  for (const [name, check] of chosen) {
     const started = Date.now();
     try {
       const detail = await check();

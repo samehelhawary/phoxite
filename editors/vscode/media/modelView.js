@@ -3,6 +3,8 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const data = JSON.parse(document.getElementById("data").textContent);
+  // Which model of which project this is: the panel opens again after a window reload.
+  if (data.panel) vscode.setState(data.panel);
   const details = document.getElementById("details");
   const form = document.getElementById("add-columns");
   const openForm = document.getElementById("open-form");
@@ -30,6 +32,7 @@
     ]);
     const remove = element("button", { type: "button", className: "remove", textContent: "✕", title: "Remove the column" });
     remove.dataset.action = "remove-row";
+    remove.setAttribute("aria-label", "Remove the column");
     rows.append(element("div", { className: "row" }, [name, type, nullable, remove]));
     return name;
   }
@@ -81,6 +84,13 @@
 
   if (form) {
     form.addEventListener("input", () => showError(""));
+    // Enter in a text field is not "submit": Ctrl+Enter is.
+    form.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || !event.target.matches("input[type=text]")) return;
+      event.preventDefault();
+      if (event.ctrlKey || event.metaKey) form.requestSubmit();
+    });
+
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const columns = [...rows.children].map((row) => ({

@@ -5,6 +5,9 @@
   const vscode = acquireVsCodeApi();
   const data = JSON.parse(document.getElementById("data").textContent);
   const form = document.getElementById("new-model");
+  // What was filled in before the window reloaded.
+  const saved = vscode.getState();
+  const start = (saved && saved.form) || data.form;
   const error = document.getElementById("error");
   const lists = {
     fields: document.getElementById("fields"),
@@ -42,6 +45,7 @@
   function remove(title) {
     const node = element("button", { type: "button", className: "remove", textContent: "✕", title });
     node.dataset.action = "remove";
+    node.setAttribute("aria-label", title);
     return node;
   }
 
@@ -97,14 +101,14 @@
 
   // The head: the class name, and the module when the application has modules.
   const head = document.getElementById("head");
-  const name = input("modelName", "Class name, e.g. Post", data.form.name);
+  const name = input("modelName", "Class name, e.g. Post", start.name);
   head.append(name);
   let moduleSelect = null;
   if (data.modules.length) {
     const modules = [{ value: "", label: "Application  (" + data.namespace + ")" }].concat(
       data.modules.map((m) => ({ value: m, label: m + "  (module)" })),
     );
-    moduleSelect = select("module", "Module", modules, data.form.module);
+    moduleSelect = select("module", "Module", modules, start.module);
     head.append(moduleSelect);
   }
 
@@ -119,13 +123,13 @@
     ["policy", "Policy"],
   ];
   const generate = document.getElementById("generate");
-  for (const [key, label] of GENERATE) generate.append(check(key, label, data.form[key]));
-  const controller = select("controller", "Controller", data.controllerKinds, data.form.controller);
+  for (const [key, label] of GENERATE) generate.append(check(key, label, start[key]));
+  const controller = select("controller", "Controller", data.controllerKinds, start.controller);
   generate.append(controller);
 
-  data.form.fields.forEach(addField);
-  data.form.relations.forEach(addRelation);
-  data.form.indexes.forEach(addIndex);
+  start.fields.forEach(addField);
+  start.relations.forEach(addRelation);
+  start.indexes.forEach(addIndex);
 
   const value = (row, field) => row.querySelector("[name=" + field + "]").value;
   const checked = (row, field) => row.querySelector("[name=" + field + "]").checked;
@@ -133,7 +137,7 @@
   function read() {
     const out = {
       name: name.value,
-      module: moduleSelect ? moduleSelect.value : data.form.module,
+      module: moduleSelect ? moduleSelect.value : start.module,
       fields: [...lists.fields.children].map((row) => ({
         name: value(row, "name"),
         ty: value(row, "ty"),
@@ -163,6 +167,11 @@
     for (const control of form.querySelectorAll("input, select, button")) control.disabled = busy;
   }
 
+  function keep() {
+    if (data.panel) vscode.setState({ ...data.panel, form: read() });
+  }
+  keep();
+
   form.addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
     if (!button) return;
@@ -181,10 +190,22 @@
         break;
       case "cancel":
         vscode.postMessage({ type: "cancel" });
-        break;
+        return;
     }
+    keep();
   });
-  form.addEventListener("input", () => showError(""));
+  form.addEventListener("input", () => {
+    showError("");
+    keep();
+  });
+
+  // Enter in a text field is not "submit": Ctrl+Enter is.
+  form.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || !event.target.matches("input[type=text]")) return;
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) form.requestSubmit();
+  });
+
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const filled = read();
