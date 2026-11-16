@@ -2,7 +2,7 @@
   "name": "phoxite",
   "displayName": "Phoxite — PHP & Laravel IntelliSense",
   "description": "PHP and Laravel code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections and Laravel support (routes, views, config, translations, validation, Eloquent, Blade, generators, Artisan).",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "phoxite",
   "license": "Apache-2.0",
   "icon": "icon.png",

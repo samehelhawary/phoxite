@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-11-16
+
+- The notices and the documentation describe Phoxite as a standalone engine, with Sameh
+  Elhawary as its author.
+- The index is rebuilt once after the update: its stamp was renamed.
+- The `ide.json` schema id is `phoxite://schemas/laravel-ide-json.json`.
+
 ## 0.4.0 — 2026-11-16
 
 Versions with an even minor are stable; an odd minor (0.5.x) is a pre-release, published
