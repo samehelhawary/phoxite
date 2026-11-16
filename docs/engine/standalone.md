@@ -46,4 +46,5 @@ language servers and not take the engine into their tree, so:
 - The server keeps its own copy of the Blade and Twig request routing; it was meant to
   move into the engine.
 - Change Signature, the Extract Method options and the Generate member choosers have
-  dialogs only in VS Code.
+  dialogs only in VS Code. In OpenIDEA they stay plain actions by its maintainers'
+  decision (`docs/openidea.md`).

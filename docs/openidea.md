@@ -18,7 +18,6 @@ Nothing is copied any more.
   serves a project, `laravel-lsp` is not started (`replaces = ["laravel-lsp"]`).
 - `.blade.php` files open with the language id `php` there; the server treats a file as
   Blade by its name, so they get code insight (without Blade highlighting).
-
 - **Pull Members Up / Push Members Down** through OpenIDEA's own dialogs
   ([#3603](https://github.com/l0ng-ai/openidea/pull/3603)): a small adapter there sends
   `phoxite/refactor/hierarchyMembers` and `phoxite/refactor/hierarchy` to a server that
@@ -30,7 +29,8 @@ Nothing is copied any more.
   `[[contributes.serverCommands]]`, which routes a command the server leaves to the
   client to the plugin ([#3597](https://github.com/l0ng-ai/openidea/pull/3597)).
 
-The last two are merged into OpenIDEA's `main` and come with the release after 0.1.45.
+All of it is on OpenIDEA's `main`. Its latest release, 0.1.45, was cut the day before the
+first of these was merged, so none of it is in a release yet.
 
 ## What is on the way
 
@@ -41,9 +41,16 @@ The last two are merged into OpenIDEA's `main` and come with the release after 0
   plugin registry. It was tried in an OpenIDEA built from `main` on Windows, on a copy of
   `fixtures/laravel-app`: both views, the lenses, the generators, New Eloquent Model, Add
   Columns and Create translation key. Run Artisan Command was not run there (no PHP on
-  that machine).
-- Change Signature, the Extract Method options and the Generate member choosers have no
-  dialog in OpenIDEA: it gets the plain actions (`docs/editors.md`).
+  that machine). It can be listed once an OpenIDEA release has plugin API 1.9: the
+  registry checks a package with the tool of the latest release.
+
+## What stays as it is
+
+Change Signature, the Extract Method options and the Generate member choosers are plain
+actions in OpenIDEA (`docs/editors.md` says what a client without the dialogs gets). That
+is its maintainers' decision, not something left to do: OpenIDEA runs these the same way
+for every language server, and when it gets dialogs for them it will design them once in
+the host for all servers, with their own request shape.
 
 ## What a release must keep for OpenIDEA
 
