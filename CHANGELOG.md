@@ -18,6 +18,11 @@
 - VS Code: the warning about other extensions names more of them (DEVSENSE PHP, the
   Laravel extensions, the ones defining Blade), says what each doubles, and is shown
   once per workspace.
+- VS Code, Blade: echoes, directives and a component's bound attributes are highlighted
+  inside HTML tags, attribute values, scripts and styles, not only in the text. `<` and
+  `>` are no longer bracket pairs (`{{ $a > $b }}` unbalanced the rest of the file),
+  `{!! !!}` closes itself, Enter between tags indents, `#region` comments fold, and there
+  are snippets for the directives.
 - VS Code: the commands of the server's lenses run under the extension's own names, so
   another extension registering `laravel.modelView` can't break them.
 - The server tells the client when a folder is (or stops being) a Laravel project

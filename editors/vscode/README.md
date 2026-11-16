@@ -72,6 +72,11 @@ The commands below are in the Command Palette under **Laravel** once a Laravel p
 Completion, hover, go to definition and usages inside echoes, directives and `@php` blocks;
 directive, section, stack and component names; the template's own problems; formatting.
 
+Highlighting covers Blade wherever it is written: in the text, inside HTML tags and
+attribute values (`<a href="{{ route('home') }}">`, `@class([...])`), in a component's
+bound attributes (`:type="$type"`) and in scripts and styles. Type `@` for snippets of
+the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
+
 ## Settings
 
 | Setting | |

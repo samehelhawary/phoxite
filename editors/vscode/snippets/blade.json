@@ -1,0 +1,283 @@
+{
+  "@if": {
+    "prefix": "@if",
+    "description": "@if … @endif",
+    "body": [
+      "@if (${1:condition})",
+      "\t$0",
+      "@endif"
+    ]
+  },
+  "@if … @else": {
+    "prefix": "@ifelse",
+    "description": "@if … @else … @endif",
+    "body": [
+      "@if (${1:condition})",
+      "\t$2",
+      "@else",
+      "\t$0",
+      "@endif"
+    ]
+  },
+  "@unless": {
+    "prefix": "@unless",
+    "description": "@unless … @endunless",
+    "body": [
+      "@unless (${1:condition})",
+      "\t$0",
+      "@endunless"
+    ]
+  },
+  "@isset": {
+    "prefix": "@isset",
+    "description": "@isset … @endisset",
+    "body": [
+      "@isset(${1:\\$value})",
+      "\t$0",
+      "@endisset"
+    ]
+  },
+  "@empty": {
+    "prefix": "@empty",
+    "description": "@empty … @endempty",
+    "body": [
+      "@empty(${1:\\$value})",
+      "\t$0",
+      "@endempty"
+    ]
+  },
+  "@auth": {
+    "prefix": "@auth",
+    "description": "@auth … @endauth",
+    "body": [
+      "@auth",
+      "\t$0",
+      "@endauth"
+    ]
+  },
+  "@guest": {
+    "prefix": "@guest",
+    "description": "@guest … @endguest",
+    "body": [
+      "@guest",
+      "\t$0",
+      "@endguest"
+    ]
+  },
+  "@can": {
+    "prefix": "@can",
+    "description": "@can … @endcan",
+    "body": [
+      "@can('${1:ability}', ${2:\\$model})",
+      "\t$0",
+      "@endcan"
+    ]
+  },
+  "@foreach": {
+    "prefix": "@foreach",
+    "description": "@foreach … @endforeach",
+    "body": [
+      "@foreach (${1:\\$items} as ${2:\\$item})",
+      "\t$0",
+      "@endforeach"
+    ]
+  },
+  "@forelse": {
+    "prefix": "@forelse",
+    "description": "@forelse … @empty … @endforelse",
+    "body": [
+      "@forelse (${1:\\$items} as ${2:\\$item})",
+      "\t$3",
+      "@empty",
+      "\t$0",
+      "@endforelse"
+    ]
+  },
+  "@for": {
+    "prefix": "@for",
+    "description": "@for … @endfor",
+    "body": [
+      "@for (${1:\\$i} = 0; ${1:\\$i} < ${2:\\$count}; ${1:\\$i}++)",
+      "\t$0",
+      "@endfor"
+    ]
+  },
+  "@while": {
+    "prefix": "@while",
+    "description": "@while … @endwhile",
+    "body": [
+      "@while (${1:condition})",
+      "\t$0",
+      "@endwhile"
+    ]
+  },
+  "@switch": {
+    "prefix": "@switch",
+    "description": "@switch … @case … @endswitch",
+    "body": [
+      "@switch(${1:\\$value})",
+      "\t@case(${2:1})",
+      "\t\t$0",
+      "\t\t@break",
+      "\t@default",
+      "\t\t",
+      "@endswitch"
+    ]
+  },
+  "@section": {
+    "prefix": "@section",
+    "description": "@section … @endsection",
+    "body": [
+      "@section('${1:name}')",
+      "\t$0",
+      "@endsection"
+    ]
+  },
+  "@yield": {
+    "prefix": "@yield",
+    "description": "@yield",
+    "body": [
+      "@yield('${1:name}')"
+    ]
+  },
+  "@extends": {
+    "prefix": "@extends",
+    "description": "@extends",
+    "body": [
+      "@extends('${1:layout}')"
+    ]
+  },
+  "@include": {
+    "prefix": "@include",
+    "description": "@include",
+    "body": [
+      "@include('${1:view}'${2:, [${3}]})"
+    ]
+  },
+  "@push": {
+    "prefix": "@push",
+    "description": "@push … @endpush",
+    "body": [
+      "@push('${1:stack}')",
+      "\t$0",
+      "@endpush"
+    ]
+  },
+  "@stack": {
+    "prefix": "@stack",
+    "description": "@stack",
+    "body": [
+      "@stack('${1:stack}')"
+    ]
+  },
+  "@once": {
+    "prefix": "@once",
+    "description": "@once … @endonce",
+    "body": [
+      "@once",
+      "\t$0",
+      "@endonce"
+    ]
+  },
+  "@php": {
+    "prefix": "@php",
+    "description": "@php … @endphp",
+    "body": [
+      "@php",
+      "\t$0",
+      "@endphp"
+    ]
+  },
+  "@verbatim": {
+    "prefix": "@verbatim",
+    "description": "@verbatim … @endverbatim",
+    "body": [
+      "@verbatim",
+      "\t$0",
+      "@endverbatim"
+    ]
+  },
+  "@error": {
+    "prefix": "@error",
+    "description": "@error … @enderror",
+    "body": [
+      "@error('${1:field}')",
+      "\t{{ \\$message }}$0",
+      "@enderror"
+    ]
+  },
+  "@csrf": {
+    "prefix": "@csrf",
+    "description": "@csrf",
+    "body": [
+      "@csrf"
+    ]
+  },
+  "@method": {
+    "prefix": "@method",
+    "description": "@method",
+    "body": [
+      "@method('${1|PUT,PATCH,DELETE|}')"
+    ]
+  },
+  "@props": {
+    "prefix": "@props",
+    "description": "@props",
+    "body": [
+      "@props(['${1:name}'${2: => ${3:null}}])"
+    ]
+  },
+  "@class": {
+    "prefix": "@class",
+    "description": "@class",
+    "body": [
+      "@class(['${1:class}'${2:, '${3:other}' => ${4:\\$condition}}])"
+    ]
+  },
+  "@vite": {
+    "prefix": "@vite",
+    "description": "@vite",
+    "body": [
+      "@vite(['${1:resources/css/app.css}', '${2:resources/js/app.js}'])"
+    ]
+  },
+  "Echo": {
+    "prefix": "{{",
+    "description": "{{ … }}",
+    "body": [
+      "{{ $0 }}"
+    ]
+  },
+  "Raw echo": {
+    "prefix": "{!!",
+    "description": "{!! … !!}",
+    "body": [
+      "{!! $0 !!}"
+    ]
+  },
+  "Comment": {
+    "prefix": "{{--",
+    "description": "{{-- … --}}",
+    "body": [
+      "{{-- $0 --}}"
+    ]
+  },
+  "Component": {
+    "prefix": "x-",
+    "description": "<x-component> … </x-component>",
+    "body": [
+      "<x-${1:component}>",
+      "\t$0",
+      "</x-${1:component}>"
+    ]
+  },
+  "Slot": {
+    "prefix": "x-slot",
+    "description": "<x-slot:name> … </x-slot>",
+    "body": [
+      "<x-slot:${1:name}>",
+      "\t$0",
+      "</x-slot>"
+    ]
+  }
+}

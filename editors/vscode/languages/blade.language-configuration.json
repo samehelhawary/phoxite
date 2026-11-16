@@ -1,34 +1,164 @@
 {
   "comments": {
-    "blockComment": ["{{--", "--}}"]
+    "blockComment": [
+      "{{--",
+      "--}}"
+    ]
   },
   "brackets": [
-    ["<!--", "-->"],
-    ["<", ">"],
-    ["{", "}"],
-    ["[", "]"],
-    ["(", ")"]
+    [
+      "<!--",
+      "-->"
+    ],
+    [
+      "{{--",
+      "--}}"
+    ],
+    [
+      "{!!",
+      "!!}"
+    ],
+    [
+      "{{",
+      "}}"
+    ],
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
   ],
   "autoClosingPairs": [
-    { "open": "{", "close": "}" },
-    { "open": "[", "close": "]" },
-    { "open": "(", "close": ")" },
-    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
-    { "open": "\"", "close": "\"", "notIn": ["string"] },
-    { "open": "{{--", "close": " --}}", "notIn": ["string", "comment"] },
-    { "open": "<!--", "close": " -->", "notIn": ["comment", "string"] }
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "'",
+      "close": "'",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string"
+      ]
+    },
+    {
+      "open": "{{--",
+      "close": " --}}",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "{!!",
+      "close": " !!}",
+      "notIn": [
+        "comment"
+      ]
+    },
+    {
+      "open": "<!--",
+      "close": " -->",
+      "notIn": [
+        "comment",
+        "string"
+      ]
+    }
   ],
   "surroundingPairs": [
-    { "open": "'", "close": "'" },
-    { "open": "\"", "close": "\"" },
-    { "open": "{", "close": "}" },
-    { "open": "[", "close": "]" },
-    { "open": "(", "close": ")" },
-    { "open": "<", "close": ">" }
+    {
+      "open": "'",
+      "close": "'"
+    },
+    {
+      "open": "\"",
+      "close": "\""
+    },
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "<",
+      "close": ">"
+    }
   ],
   "wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\%\\^\\&\\*\\(\\)\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\'\\\"\\,\\.\\<\\>\\/\\?\\s]+)",
   "indentationRules": {
     "increaseIndentPattern": "<(?!\\?|(?:area|base|br|col|frame|hr|html|img|input|link|meta|param)\\b|[^>]*\\/>)([-_\\.A-Za-z0-9]+)(?=\\s|>)\\b[^>]*>(?!.*<\\/\\1>)|<!--(?!.*-->)|\\{[^}\"']*$|^\\s*@(if|elseif|else|unless|isset|empty|auth|guest|env|production|hasSection|sectionMissing|section|push|prepend|once|for|foreach|forelse|empty|while|switch|case|default|php|verbatim|component|slot|fragment|error|can|cannot|canany|session|context|teleport)\\b(?!.*@(end\\w+|stop|show|overwrite|append)\\b)",
     "decreaseIndentPattern": "^\\s*(<\\/(?!html)[-_\\.A-Za-z0-9]+\\b[^>]*>|-->|\\}|@(end\\w+|else|elseif|empty|case|default|stop|show|overwrite|append)\\b)"
-  }
+  },
+  "colorizedBracketPairs": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
+  ],
+  "autoCloseBefore": ";:.,=}])>` \n\t",
+  "folding": {
+    "markers": {
+      "start": "^\\s*(<!--\\s*#region\\b.*-->|\\{\\{--\\s*#region\\b.*--\\}\\})",
+      "end": "^\\s*(<!--\\s*#endregion\\b.*-->|\\{\\{--\\s*#endregion\\b.*--\\}\\})"
+    }
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "<(?!(?:area|base|br|col|embed|hr|img|input|keygen|link|menuitem|meta|param|source|track|wbr)\\b)([_:\\w][_:\\w.-]*)(?:(?!\\/)[^<>])*>[^<]*$",
+      "afterText": "^<\\/([_:\\w][_:\\w.-]*)\\s*>",
+      "action": {
+        "indent": "indentOutdent"
+      }
+    },
+    {
+      "beforeText": "<(?!(?:area|base|br|col|embed|hr|img|input|keygen|link|menuitem|meta|param|source|track|wbr)\\b)([_:\\w][_:\\w.-]*)(?:(?!\\/)[^<>])*>[^<]*$",
+      "action": {
+        "indent": "indent"
+      }
+    },
+    {
+      "beforeText": "\\{\\{--\\s*$",
+      "afterText": "^\\s*--\\}\\}",
+      "action": {
+        "indent": "indentOutdent"
+      }
+    }
+  ]
 }
