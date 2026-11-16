@@ -47,7 +47,7 @@ jobs:
           fi
       - name: Publish to the VS Code Marketplace
         if: vars.MARKETPLACE_PUBLISH == 'true'
-        run: npx @vscode/vsce@3.9.2 publish --oidc --skip-duplicate $CHANNEL --packagePath dist/*.vsix
+        run: npx @vscode/vsce@4.1.1 publish --oidc --skip-duplicate $CHANNEL --packagePath dist/*.vsix
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
         run: for vsix in dist/*.vsix; do npx ovsx@1.4.0 publish "$vsix" --skip-duplicate $CHANNEL -p "$OVSX_PAT"; done
