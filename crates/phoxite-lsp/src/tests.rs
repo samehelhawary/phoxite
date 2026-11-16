@@ -374,7 +374,11 @@ fn laravel_requests_for_the_client_ui() {
     assert_eq!(context["namespace"], "App\\");
 
     // The model view.
-    let view = c.call(l::MODEL_VIEW, json!({ "class": "App\\Models\\Post" })).unwrap();
+    // The migrations and the model are indexed after the routes: ask until both are there.
+    let view = c.call_until(l::MODEL_VIEW, json!({ "class": "App\\Models\\Post" }), |v| {
+        let has_title = v["columns"].as_array().is_some_and(|c| c.iter().any(|c| c["name"] == "title"));
+        has_title && v["relations"].as_array().is_some_and(|r| !r.is_empty())
+    });
     assert_eq!(view["table"], "posts");
     let columns: Vec<&str> = view["columns"].as_array().unwrap().iter().filter_map(|c| c["name"].as_str()).collect();
     assert!(columns.contains(&"title"), "{columns:?}");
