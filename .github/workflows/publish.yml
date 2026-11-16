@@ -21,6 +21,9 @@ permissions:
 
 jobs:
   publish:
+    # Only the releases of the server and the extension (`v0.2.1`): the OpenIDEA plugin has
+    # its own (`openidea-plugin-v0.1.0`), which carry no extension packages.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}

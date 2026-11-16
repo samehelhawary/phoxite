@@ -70,6 +70,30 @@ mkdir -p dist && cp target/wasm32-wasip2/release/phoxite_openidea.wasm dist/plug
 
 Then install this folder as a plugin from **Settings › Plugins** in OpenIDEA.
 
+## Releasing
+
+The plugin is listed in OpenIDEA's marketplace through
+[l0ng-ai/openidea-plugins](https://github.com/l0ng-ai/openidea-plugins), under the
+publisher `phoxite`. Its releases are separate from the server's: the tag is
+`openidea-plugin-v<version>`, and the release must **not** be marked latest, because
+OpenIDEA installs `phoxite-lsp` from this repository's latest release.
+
+```sh
+# openidea-plugin: from an OpenIDEA release, or
+# cargo install --locked --git https://github.com/l0ng-ai/openidea ide-host --bin openidea-plugin
+openidea-plugin build
+openidea-plugin pack . --key <the publisher key> --publisher phoxite
+gh release create openidea-plugin-v0.1.0 phoxite.laravel-0.1.0.oiplugin --latest=false   --title "Laravel (Phoxite) for OpenIDEA 0.1.0"
+```
+
+Then a pull request to the registry adds a `[[versions]]` table with the package's URL
+and SHA-256 to `plugins/phoxite.laravel.toml`. The registry checks a package with the
+`openidea-plugin` of the latest OpenIDEA release, so a version can be listed only once
+an OpenIDEA release has the plugin API it needs (1.9 for this one).
+
+The publisher key is not in this repository. Its public key is
+`DW0IGr83RQIIUkA2knXK+khG/erALjvNtHoO03ovK+Y=`.
+
 ## Tests
 
 `cargo test` runs against the SDK's mock host. The tests in `src/real_answers.rs` replay
