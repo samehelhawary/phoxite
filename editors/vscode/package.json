@@ -169,6 +169,11 @@
         "category": "Laravel"
       },
       {
+        "command": "phoxite.laravel.artisanLast",
+        "title": "Run Last Artisan Command",
+        "category": "Laravel"
+      },
+      {
         "command": "phoxite.laravel.routes.goto",
         "title": "Go to Route…",
         "category": "Laravel",
@@ -574,6 +579,10 @@
         {
           "command": "phoxite.laravel.routes.clearFilter",
           "when": "phoxite.laravel && phoxite.laravel.routes.filter"
+        },
+        {
+          "command": "phoxite.laravel.artisanLast",
+          "when": "phoxite.laravel"
         }
       ],
       "editor/context": [

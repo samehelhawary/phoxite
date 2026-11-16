@@ -279,6 +279,33 @@ const checks = [
     assert.equal(task.execution.commandLine, "php artisan posts:publish");
     return `${commands.length} commands; lens "${lens.command.title}"; ${tasks.length} tasks`;
   }],
+  ["Laravel: an Artisan command runs as it is set up, and Run Last runs it again", async () => {
+    // `echo` stands in for PHP: what matters is the command line and where it runs.
+    const settings = vscode.workspace.getConfiguration("phoxite");
+    await settings.update("laravel.artisanCommand", "echo artisan", vscode.ConfigurationTarget.Workspace);
+    const started = [];
+    let ended = 0;
+    const listener = vscode.Disposable.from(
+      vscode.tasks.onDidStartTask((e) => started.push(e.execution.task)),
+      vscode.tasks.onDidEndTask(() => ended++),
+    );
+    try {
+      await open("app/Console/Commands/PublishScheduledPosts.php");
+      await vscode.commands.executeCommand("phoxite.server.laravel.runArtisan", "posts:publish");
+      // A task that still runs is not started a second time: VS Code asks first.
+      await until("the task", async () => ended, (n) => n === 1, 20_000);
+      await vscode.commands.executeCommand("phoxite.laravel.artisanLast");
+      await until("the task again", async () => started.length, (n) => n === 2, 20_000);
+    } finally {
+      listener.dispose();
+      await settings.update("laravel.artisanCommand", undefined, vscode.ConfigurationTarget.Workspace);
+    }
+    for (const task of started) {
+      assert.equal(task.execution.commandLine, "echo artisan posts:publish");
+      assert.equal(path.normalize(task.execution.options.cwd).toLowerCase(), path.normalize(project).toLowerCase());
+    }
+    return `${started.length} runs of "${started[0].execution.commandLine}"`;
+  }],
   ["Laravel: Create translation key, the action and the edit", async () => {
     const uri = file("app/Translated.php");
     await vscode.workspace.fs.writeFile(uri, Buffer.from("<?php\nnamespace App;\n\nfunction translated(): string {\n    return __('messages.from_the_test');\n}\n"));

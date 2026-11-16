@@ -76,6 +76,9 @@ The commands below are in the Command Palette under **Laravel** once a Laravel p
   **Run artisan …** lens. The project's own commands are also in **Tasks: Run Task**, and
   `tasks.json` can keep one with its arguments:
   `{ "type": "artisan", "command": "migrate", "arguments": "--seed" }`.
+  **Run Last Artisan Command** repeats the last one with its arguments. Commands run
+  as `phoxite.laravel.artisanCommand` says (`php artisan` by default); in a project set
+  up for Laravel Sail the extension asks once whether to run them through Sail.
 - **Create translation key…** (the lightbulb on a translation key some locale lacks) asks
   which locales get the key and their texts.
 - **Edit Generator Template…** opens the project's copy of a generator's template

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { messagePage, modelErrorPage, newModelPage } from "../src/laravel/html.ts";
-import { chosenFolder, emptyModelForm } from "../src/laravel/model.ts";
+import { chosenFolder, emptyModelForm, offersSail, ranArtisanOf } from "../src/laravel/model.ts";
 import { changeSignaturePage } from "../src/refactor/html.ts";
 import { type Route, routeMatches, routesState } from "../src/routes.ts";
 import { type Outcome, runSteps } from "../src/steps.ts";
@@ -93,4 +93,29 @@ test("a page that only says something runs no script", () => {
   const page = messagePage("New Eloquent Model", "Waiting for <the server>…", resources);
   assert.doesNotMatch(page, /<script/);
   assert.match(page, /Waiting for &lt;the server&gt;…/);
+});
+
+test("Sail is offered once, to a Sail project whose Artisan command nobody set", () => {
+  const project = { sail: true, compose: true, configured: false, offered: false, platform: "linux" };
+  assert.ok(offersSail(project));
+  assert.ok(offersSail({ ...project, platform: "darwin" }));
+  assert.ok(!offersSail({ ...project, sail: false }));
+  assert.ok(!offersSail({ ...project, compose: false }));
+  // Someone chose how Artisan runs, even if they chose the default.
+  assert.ok(!offersSail({ ...project, configured: true }));
+  assert.ok(!offersSail({ ...project, offered: true }));
+  // Sail's script is a shell script: on Windows it runs inside WSL, where the platform is Linux.
+  assert.ok(!offersSail({ ...project, platform: "win32" }));
+});
+
+test("the last Artisan command is read back from what was kept", () => {
+  assert.deepEqual(ranArtisanOf({ folder: "file:///w/app", name: "migrate", arguments: "--seed" }), {
+    folder: "file:///w/app",
+    name: "migrate",
+    arguments: "--seed",
+  });
+  assert.deepEqual(ranArtisanOf({ name: "inspire" }), { folder: undefined, name: "inspire", arguments: "" });
+  assert.equal(ranArtisanOf(undefined), undefined);
+  assert.equal(ranArtisanOf({ name: " " }), undefined);
+  assert.equal(ranArtisanOf("migrate"), undefined);
 });

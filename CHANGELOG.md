@@ -41,6 +41,9 @@
   so a per-folder one was never honoured).
 - VS Code: the commands of the server's lenses run under the extension's own names, so
   another extension registering `laravel.modelView` can't break them.
+- VS Code, Artisan: **Run Last Artisan Command**; the arguments prompt shows the command
+  that really runs (not always `php artisan`); a project set up for Laravel Sail is
+  asked once whether Artisan should run through Sail.
 - VS Code: the package carries `NOTICE` and the third-party licences; the Marketplace
   page links the issues and has a quick start and a troubleshooting section.
 - Packaging is `node scripts/package_vscode.mjs` (it was a Python script). CI runs the

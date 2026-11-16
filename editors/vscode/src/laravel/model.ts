@@ -549,6 +549,42 @@ export function artisanCommandLine(artisan: string, name: string, args = ""): st
   return [artisan.trim() || "php artisan", name.trim(), args.trim()].filter(Boolean).join(" ");
 }
 
+/** How Artisan runs through Laravel Sail, from the project folder. */
+export const SAIL_ARTISAN = "./vendor/bin/sail artisan";
+
+/** The compose files Sail starts the project with. */
+export const COMPOSE_FILES = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
+
+/**
+ * Whether to offer running Artisan through Sail: the project has Sail and a compose
+ * file, nobody chose how Artisan runs (`configured`), it wasn't offered before, and the
+ * shell can run Sail's script (on Windows Sail runs inside WSL, where the platform is Linux).
+ */
+export function offersSail(project: {
+  sail: boolean;
+  compose: boolean;
+  configured: boolean;
+  offered: boolean;
+  platform: string;
+}): boolean {
+  return project.sail && project.compose && !project.configured && !project.offered && project.platform !== "win32";
+}
+
+/** An Artisan command that was run: enough to run it again. */
+export interface RanArtisan {
+  folder?: string;
+  name: string;
+  arguments: string;
+}
+
+/** What was kept as the last Artisan command, when it is one. */
+export function ranArtisanOf(kept: unknown): RanArtisan | undefined {
+  if (!kept || typeof kept !== "object") return undefined;
+  const { folder, name, arguments: args } = kept as Record<string, unknown>;
+  if (typeof name !== "string" || !name.trim()) return undefined;
+  return { folder: typeof folder === "string" ? folder : undefined, name, arguments: typeof args === "string" ? args : "" };
+}
+
 // ---------------------------------------------------------------------------
 // "Create translation key…".
 

@@ -14,7 +14,9 @@ import {
   type GenerationContext,
   type Generator,
   type NewClassSpec,
+  COMPOSE_FILES,
   MODEL_GENERATOR,
+  SAIL_ARTISAN,
   argumentsHelp,
   artisanCommandLine,
   emptyClassSpec,
@@ -25,6 +27,8 @@ import {
   nameKind,
   namePlaceholder,
   needsArguments,
+  offersSail,
+  ranArtisanOf,
   shortName,
   statusError,
   translationRequestOf,
@@ -262,6 +266,58 @@ function projectFolder(folder: string | undefined): vscode.WorkspaceFolder | und
   return (uri && vscode.workspace.getWorkspaceFolder(uri)) ?? vscode.workspace.workspaceFolders?.[0];
 }
 
+/** How Artisan runs in `folder`: `phoxite.laravel.artisanCommand`. */
+function artisanCommand(folder: vscode.WorkspaceFolder | undefined): string {
+  return vscode.workspace.getConfiguration("phoxite", folder).get<string>("laravel.artisanCommand", "php artisan").trim() || "php artisan";
+}
+
+/** Where the last Artisan command and the folders Sail was offered for are kept (the workspace's state). */
+const LAST_ARTISAN = "phoxite.laravel.lastArtisan";
+const SAIL_OFFERED = "phoxite.laravel.sailOffered";
+
+const exists = (uri: vscode.Uri) =>
+  vscode.workspace.fs.stat(uri).then(
+    () => true,
+    () => false,
+  );
+
+/**
+ * A project set up for Laravel Sail whose `phoxite.laravel.artisanCommand` nobody set:
+ * asks, once for the folder, whether Artisan should run through Sail. `php artisan` on
+ * the host is not the PHP (nor the database) the project runs with.
+ */
+async function offerSail(context: vscode.ExtensionContext, folder: vscode.WorkspaceFolder | undefined): Promise<void> {
+  if (!folder) return;
+  const offered = context.workspaceState.get<string[]>(SAIL_OFFERED, []);
+  const key = folder.uri.toString();
+  const setting = vscode.workspace.getConfiguration("phoxite", folder).inspect<string>("laravel.artisanCommand");
+  const configured =
+    setting?.globalValue !== undefined || setting?.workspaceValue !== undefined || setting?.workspaceFolderValue !== undefined;
+  // The cheap answers first: the files are looked at for a project that could get the offer.
+  if (!offersSail({ sail: true, compose: true, configured, offered: offered.includes(key), platform: process.platform })) return;
+  const sail = await exists(vscode.Uri.joinPath(folder.uri, "vendor", "bin", "sail"));
+  const compose = (await Promise.all(COMPOSE_FILES.map((name) => exists(vscode.Uri.joinPath(folder.uri, name))))).some(Boolean);
+  if (!sail || !compose) return;
+  await context.workspaceState.update(SAIL_OFFERED, [...offered, key]);
+  // Asked in a dialog: the command that was asked for waits for the answer, and a
+  // notification can be left unanswered.
+  const choice = await vscode.window.showInformationMessage(
+    "This project is set up for Laravel Sail. Run Artisan commands through Sail?",
+    {
+      modal: true,
+      detail: `"Use Sail" sets phoxite.laravel.artisanCommand to "${SAIL_ARTISAN}" for this project. Otherwise "php artisan" runs on this machine, as before. You are asked once.`,
+    },
+    "Use Sail",
+  );
+  if (choice === "Use Sail") {
+    const target =
+      (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+        ? vscode.ConfigurationTarget.WorkspaceFolder
+        : vscode.ConfigurationTarget.Workspace;
+    await vscode.workspace.getConfiguration("phoxite", folder).update("laravel.artisanCommand", SAIL_ARTISAN, target);
+  }
+}
+
 /** The type of the Artisan tasks (`taskDefinitions` in `package.json`). */
 const ARTISAN_TASK = "artisan";
 
@@ -274,8 +330,7 @@ interface ArtisanTaskDefinition extends vscode.TaskDefinition {
 /** The task running `artisan <command> <arguments>` in `scope`, in the terminal panel. */
 function artisanTask(definition: ArtisanTaskDefinition, scope: vscode.WorkspaceFolder | vscode.TaskScope): vscode.Task {
   const folder = typeof scope === "object" ? scope : undefined;
-  const artisan = vscode.workspace.getConfiguration("phoxite", folder).get<string>("laravel.artisanCommand", "php artisan");
-  const line = artisanCommandLine(artisan, definition.command, definition.arguments ?? "");
+  const line = artisanCommandLine(artisanCommand(folder), definition.command, definition.arguments ?? "");
   const task = new vscode.Task(
     definition,
     scope,
@@ -287,10 +342,35 @@ function artisanTask(definition: ArtisanTaskDefinition, scope: vscode.WorkspaceF
   return task;
 }
 
-async function runArtisan(project: Project, name: string, args: string): Promise<void> {
+async function runArtisan(context: vscode.ExtensionContext, project: Project, name: string, args: string): Promise<void> {
   const definition: ArtisanTaskDefinition = { type: ARTISAN_TASK, command: name };
   if (args.trim()) definition.arguments = args.trim();
+  // "Run Last Artisan Command" runs this one again.
+  await context.workspaceState.update(LAST_ARTISAN, { folder: project.folder, name, arguments: args.trim() });
   await vscode.tasks.executeTask(artisanTask(definition, projectFolder(project.folder) ?? vscode.TaskScope.Workspace));
+}
+
+/** Tells that Artisan is off in a workspace that isn't trusted (it runs the project's code); whether it is. */
+function artisanIsOff(): boolean {
+  if (vscode.workspace.isTrusted) return false;
+  void vscode.window
+    .showWarningMessage(
+      "Phoxite: Artisan runs code of the project, so it is off until you trust this workspace.",
+      "Manage Workspace Trust",
+    )
+    .then((choice) => choice && vscode.commands.executeCommand("workbench.trust.manage"));
+  return true;
+}
+
+/** "Run Last Artisan Command": the command run last in this workspace, with its arguments, where it ran. */
+async function artisanAgain(context: vscode.ExtensionContext, laravel: Laravel): Promise<void> {
+  if (artisanIsOff()) return;
+  const last = ranArtisanOf(context.workspaceState.get(LAST_ARTISAN));
+  if (!last) {
+    void vscode.window.showInformationMessage("No Artisan command was run in this workspace yet.");
+    return;
+  }
+  await runArtisan(context, laravel.in(last.folder), last.name, last.arguments);
 }
 
 /**
@@ -326,10 +406,11 @@ function artisanTasks(laravel: Laravel): vscode.TaskProvider {
   };
 }
 
-/** Asks for the arguments of `command`; `undefined` when the user backs out. */
-function askArguments(command: ArtisanCommand): Thenable<string | undefined> {
+/** Asks for the arguments of `command`, run as `artisan`; `undefined` when the user backs out. */
+function askArguments(artisan: string, command: ArtisanCommand): Thenable<string | undefined> {
   return vscode.window.showInputBox({
-    title: `php artisan ${command.synopsis}`,
+    // The command that will really run: `php artisan`, Sail, a container…
+    title: `${artisan} ${command.synopsis}`,
     prompt: argumentsHelp(command) || "Arguments and options",
     placeHolder: "Arguments and options",
     validateInput: (value) => (needsArguments(command) && !value.trim() ? "This command has required arguments" : null),
@@ -348,19 +429,13 @@ const SOURCES: Record<ArtisanCommand["source"], string> = {
  * With `name` (the lens on a console command class) the command runs at once unless
  * it has required arguments.
  */
-async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
-  // Artisan runs the project's code.
-  if (!vscode.workspace.isTrusted) {
-    void vscode.window
-      .showWarningMessage(
-        "Phoxite: Artisan runs code of the project, so it is off until you trust this workspace.",
-        "Manage Workspace Trust",
-      )
-      .then((choice) => choice && vscode.commands.executeCommand("workbench.trust.manage"));
-    return;
-  }
+async function artisan(context: vscode.ExtensionContext, laravel: Laravel, name?: unknown): Promise<void> {
+  if (artisanIsOff()) return;
   // The project is settled here: the command runs where its list was read.
   const project = laravel.in();
+  const folder = projectFolder(project.folder);
+  await offerSail(context, folder);
+  const how = artisanCommand(folder);
   const commands = await shown(project.artisanCommands());
   if (commands === FAILED) return;
   if (!commands) {
@@ -370,11 +445,11 @@ async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
   if (typeof name === "string" && name) {
     const command = commands.find((c) => c.name === name);
     if (!command || !needsArguments(command)) {
-      await runArtisan(project, name, "");
+      await runArtisan(context, project, name, "");
       return;
     }
-    const args = await askArguments(command);
-    if (args !== undefined) await runArtisan(project, name, args);
+    const args = await askArguments(how, command);
+    if (args !== undefined) await runArtisan(context, project, name, args);
     return;
   }
   // The project's own commands first.
@@ -395,8 +470,8 @@ async function artisan(laravel: Laravel, name?: unknown): Promise<void> {
     matchOnDescription: true,
   });
   if (!picked?.value) return;
-  const args = await askArguments(picked.value);
-  if (args !== undefined) await runArtisan(project, picked.value.name, args);
+  const args = await askArguments(how, picked.value);
+  if (args !== undefined) await runArtisan(context, project, picked.value.name, args);
 }
 
 // ---------------------------------------------------------------------------
@@ -486,10 +561,14 @@ export function registerCommands(context: vscode.ExtensionContext, laravel: Lara
     ),
     vscode.commands.registerCommand(
       "phoxite.laravel.artisan",
-      guarded(() => artisan(laravel)),
+      guarded(() => artisan(context, laravel)),
+    ),
+    vscode.commands.registerCommand(
+      "phoxite.laravel.artisanLast",
+      guarded(() => artisanAgain(context, laravel)),
     ),
     // The lens on a console command class: its argument is the command's name.
-    registerServerCommand("laravel.runArtisan", (name?: unknown) => artisan(laravel, name)),
+    registerServerCommand("laravel.runArtisan", (name?: unknown) => artisan(context, laravel, name)),
     // The action on a translation key: its argument is the request's JSON.
     registerServerCommand("laravel.createTranslation", (arg?: unknown) => createTranslation(laravel, arg)),
     vscode.commands.registerCommand(
