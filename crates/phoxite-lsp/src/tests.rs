@@ -15,6 +15,8 @@ struct Client {
     next: i32,
     /// Notifications that arrived while waiting for a response.
     notifications: Vec<Notification>,
+    /// What the server asked the client (progress tokens, registrations).
+    requests: Vec<Request>,
     _cache: tempfile::TempDir,
 }
 
@@ -29,12 +31,27 @@ impl Client {
 
     /// Starts the server for a client declaring `experimental` capabilities.
     fn start_with(root: &Path, experimental: Value) -> Self {
+        Self::start_as(root, experimental, true)
+    }
+
+    /// The same for a client that does (or doesn't) watch files for the server.
+    fn start_as(root: &Path, experimental: Value, watches_files: bool) -> Self {
         let (client, server) = Connection::memory();
         let handle = std::thread::spawn(move || crate::server::run(server).unwrap());
         let cache = tempfile::tempdir().unwrap();
-        let mut c = Self { conn: client, server: Some(handle), next: 0, notifications: Vec::new(), _cache: cache };
+        let mut c = Self {
+            conn: client,
+            server: Some(handle),
+            next: 0,
+            notifications: Vec::new(),
+            requests: Vec::new(),
+            _cache: cache,
+        };
         let caps = json!({
-            "workspace": { "workspaceEdit": { "documentChanges": true, "resourceOperations": ["create", "rename", "delete"] } },
+            "workspace": {
+                "workspaceEdit": { "documentChanges": true, "resourceOperations": ["create", "rename", "delete"] },
+                "didChangeWatchedFiles": { "dynamicRegistration": watches_files }
+            },
             "textDocument": {
                 "completion": { "completionItem": { "snippetSupport": true, "insertReplaceSupport": true } },
                 "hover": { "contentFormat": ["markdown"] }
@@ -76,7 +93,9 @@ impl Client {
                 Message::Notification(notification) => self.notifications.push(notification),
                 // The server asking us something (progress tokens): answer it.
                 Message::Request(request) => {
-                    let _ = self.conn.sender.send(Message::Response(lsp_server::Response::new_ok(request.id, ())));
+                    let _ =
+                        self.conn.sender.send(Message::Response(lsp_server::Response::new_ok(request.id.clone(), ())));
+                    self.requests.push(request);
                 }
                 Message::Response(_) => {}
             }
@@ -824,4 +843,49 @@ fn capabilities_name_every_feature() {
         assert!(command.starts_with("phoxite.server."), "{command}");
         assert!(!extension.contains(&command), "{command} is also an extension command");
     }
+}
+
+/// The index is built from files on disk, and a client reports their changes only for the
+/// patterns a server registers: without the registration, what a generator writes (or a
+/// `git checkout` brings) is never seen.
+#[test]
+fn the_server_asks_the_client_to_watch_the_files_it_indexes() {
+    use crate::laravel as l;
+    let (_dir, root) = laravel_project();
+    let mut c = Client::start(&root);
+    let model = json!({ "class": "App\\Models\\Post" });
+    let column =
+        |view: &Value, name: &str| view["columns"].as_array().is_some_and(|c| c.iter().any(|c| c["name"] == name));
+    c.call_until(l::MODEL_VIEW, model.clone(), |v| column(v, "title"));
+
+    let registration =
+        c.requests.iter().find(|r| r.method == "client/registerCapability").expect("a registration").params.clone();
+    let registration = &registration["registrations"][0];
+    assert_eq!(registration["method"], "workspace/didChangeWatchedFiles");
+    let globs: Vec<&str> = registration["registerOptions"]["watchers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|w| w["globPattern"].as_str())
+        .collect();
+    assert_eq!(globs, crate::server::WATCHED_FILES);
+
+    // A migration written outside the editor: the client reports it, the model has the column.
+    let migration = root.join("database/migrations/2030_01_01_000000_add_votes_to_posts_table.php");
+    let text = "<?php\nuse Illuminate\\Database\\Migrations\\Migration;\nuse Illuminate\\Database\\Schema\\Blueprint;\n\
+                use Illuminate\\Support\\Facades\\Schema;\nreturn new class extends Migration {\n\
+                public function up(): void { Schema::table('posts', function (Blueprint $table) { $table->integer('votes'); }); }\n};\n";
+    std::fs::write(&migration, text).unwrap();
+    c.notify::<n::DidChangeWatchedFiles>(
+        json!({ "changes": [{ "uri": Url::from_file_path(&migration).unwrap(), "type": 1 }] }),
+    );
+    c.call_until(l::MODEL_VIEW, model.clone(), |v| column(v, "votes"));
+    assert!(column(&c.call(l::MODEL_VIEW, model).unwrap(), "votes"));
+    c.shutdown();
+
+    // A client that doesn't take registrations is not asked.
+    let mut c = Client::start_as(&root, Value::Null, false);
+    c.call_until(l::ROUTES, json!({}), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    assert!(c.requests.iter().all(|r| r.method != "client/registerCapability"));
+    c.shutdown();
 }

@@ -104,20 +104,9 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
       { scheme: "file", pattern: "**/.env*" },
       { scheme: "file", pattern: "**/lang/**/*.json" },
     ],
-    synchronize: {
-      configurationSection: "phoxite",
-      fileEvents: [
-        vscode.workspace.createFileSystemWatcher("**/*.php"),
-        vscode.workspace.createFileSystemWatcher("**/composer.{json,lock}"),
-        vscode.workspace.createFileSystemWatcher("**/vendor/composer/installed.json"),
-        vscode.workspace.createFileSystemWatcher("**/.env*"),
-        // The database of `phoxite.laravel.database`.
-        vscode.workspace.createFileSystemWatcher("**/*.{sqlite,sqlite3,db}"),
-        vscode.workspace.createFileSystemWatcher("**/lang/**/*.json"),
-        vscode.workspace.createFileSystemWatcher("**/ide.json"),
-        vscode.workspace.createFileSystemWatcher("**/.phpstorm.meta.php"),
-      ],
-    },
+    // The server registers the files it wants watched itself
+    // (`workspace/didChangeWatchedFiles`), as for every other editor.
+    synchronize: { configurationSection: "phoxite" },
     initializationOptions: {
       cacheDir: path.join(context.globalStorageUri.fsPath, "index"),
       settings: settings(),

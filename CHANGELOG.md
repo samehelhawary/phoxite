@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The server asks the client to watch the files it indexes
+  (`workspace/didChangeWatchedFiles`). Editors that report changes only for registered
+  patterns (OpenIDEA among them) never told it about files written outside the editor:
+  a generator's files, a `git checkout`, `composer install`.
+- The "Indexing PHP" progress is reported: the server waited for a notification its own
+  start-up had already read.
+- Pull Members Up and the Generate actions add several imports to a file without
+  imports as one block, not one blank line apart.
+- The VS Code extension has an icon, and leaves watching files to the server.
 - The engine is developed in this repository now; it is no longer copied from OpenIDEA,
   which offers Phoxite as a selectable PHP language server (`docs/openidea.md`).
 - In OpenIDEA (after 0.1.45), Pull Members Up and Push Members Down work for PHP with

@@ -629,13 +629,21 @@ fn import_edits(dest: &Destination, imports: &[String]) -> Vec<(u32, u32, String
 pub(super) fn class_imports(parsed: &ParsedFile, at: u32, imports: &[String]) -> Vec<(u32, u32, String)> {
     let mut sorted: Vec<&String> = imports.iter().collect();
     sorted.sort_by_key(|fqn| fqn.to_ascii_lowercase());
-    sorted
-        .into_iter()
-        .map(|fqn| {
-            let (at, text) = import_insertion(parsed, at, NameKind::ClassLike, fqn);
-            (at, at, text)
-        })
-        .collect()
+    let nl = if parsed.text().contains("\r\n") { "\r\n" } else { "\n" };
+    let blank_line = format!("{nl}{nl}");
+    let mut edits: Vec<(u32, u32, String)> = Vec::new();
+    for fqn in sorted {
+        let (at, mut text) = import_insertion(parsed, at, NameKind::ClassLike, fqn);
+        // In a file without imports each one is placed on its own, a blank line after
+        // what precedes it. Several at that place are one block: only the first keeps
+        // the blank line.
+        let follows = edits.iter().any(|(start, _, earlier)| *start == at && earlier.starts_with(&blank_line));
+        if follows && text.starts_with(&blank_line) {
+            text.replace_range(..nl.len(), "");
+        }
+        edits.push((at, at, text));
+    }
+    edits
 }
 
 /// Declarations to add to a class, by kind, in the order given.

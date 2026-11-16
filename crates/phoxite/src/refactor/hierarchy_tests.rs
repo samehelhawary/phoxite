@@ -381,6 +381,48 @@ class Base
     );
 }
 
+#[test]
+fn several_names_imported_into_a_file_without_imports_are_one_block() {
+    let base = "<?php\nnamespace App\\Model;\n\nclass Base\n{\n}\n";
+    let child = "<?php
+namespace App\\Shop;
+
+use App\\Model\\Base;
+use App\\Money\\Price;
+use App\\Money\\Tax;
+
+class Item extends Base
+{
+    public function /*|*/price(Tax $tax): Price
+    {
+        return new Price(1);
+    }
+}
+";
+    let price = "<?php\nnamespace App\\Money;\n\nclass Price\n{\n    public function __construct(int $v) {}\n}\n";
+    let tax = "<?php\nnamespace App\\Money;\n\nclass Tax\n{\n}\n";
+    let f = fixture(&[("Base.php", base), ("Item.php", child), ("Price.php", price), ("Tax.php", tax)]);
+    let moved = f.pull_up("App\\Model\\Base", &choose(&["method:price"]));
+    let after = f.after(&moved);
+    assert_eq!(
+        after["Base.php"],
+        "<?php
+namespace App\\Model;
+
+use App\\Money\\Price;
+use App\\Money\\Tax;
+
+class Base
+{
+    public function price(Tax $tax): Price
+    {
+        return new Price(1);
+    }
+}
+"
+    );
+}
+
 const SHAPE: &str = "<?php
 namespace App;
 

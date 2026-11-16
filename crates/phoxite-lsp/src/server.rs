@@ -149,6 +149,12 @@ fn client_support(caps: &lsp::ClientCapabilities) -> ClientSupport {
         insert_replace: completion.and_then(|c| c.insert_replace_support).unwrap_or(false),
         snippets: completion.and_then(|c| c.snippet_support).unwrap_or(false),
         work_done_progress: caps.window.as_ref().and_then(|w| w.work_done_progress).unwrap_or(false),
+        watched_files: caps
+            .workspace
+            .as_ref()
+            .and_then(|w| w.did_change_watched_files.as_ref())
+            .and_then(|w| w.dynamic_registration)
+            .unwrap_or(false),
         markdown: hover_markdown,
         dialogs: caps
             .experimental
@@ -192,8 +198,10 @@ pub fn run(connection: Connection) -> Result<(), String> {
             state.add_workspace(&path);
         }
     }
-    let mut server =
-        Server { state, pending: Arc::default(), initialized: false, progress_open: false, shutting_down: false };
+    // `initialize_finish` returned, so the client's `initialized` has come (it reads the
+    // notification itself): the server may ask the client things from here on.
+    let mut server = Server { state, pending: Arc::default(), progress_open: false, shutting_down: false };
+    server.watch_files();
     server.main_loop(&connection, &events_rx)?;
     server.state.shutdown();
     Ok(())
@@ -203,8 +211,6 @@ struct Server {
     state: Arc<State>,
     /// The cancellation tokens of running requests.
     pending: Arc<Mutex<HashMap<RequestId, CancellationToken>>>,
-    /// The client sent `initialized`: the server may ask it things.
-    initialized: bool,
     /// An indexing progress began and hasn't ended.
     progress_open: bool,
     /// `shutdown` came; only `exit` is left.
@@ -262,7 +268,7 @@ impl Server {
     /// Indexing as a work-done progress, when the client shows them.
     fn progress(&mut self, indexing: bool, files: u32, symbols: u32) {
         // Nothing before `initialized`: the client may not take requests yet.
-        if !self.state.support.work_done_progress || !self.initialized || indexing == self.progress_open {
+        if !self.state.support.work_done_progress || indexing == self.progress_open {
             return;
         }
         self.progress_open = indexing;
@@ -292,7 +298,8 @@ impl Server {
     fn notification(&mut self, notification: Notification) {
         let state = &self.state;
         match notification.method.as_str() {
-            n::Initialized::METHOD => self.initialized = true,
+            // Read by `initialize_finish`; a client that repeats it changes nothing.
+            n::Initialized::METHOD => {}
             n::DidOpenTextDocument::METHOD => {
                 if let Some(p) = params::<lsp::DidOpenTextDocumentParams>(notification.params) {
                     let doc = p.text_document;
@@ -400,6 +407,46 @@ impl Server {
                 let _ = state.sender.send(Message::Response(response));
             })
             .expect("spawn a request thread");
+    }
+}
+
+/// The files on disk the index is built from, as glob patterns: what a client watches
+/// for the server.
+pub const WATCHED_FILES: [&str; 8] = [
+    "**/*.php",
+    "**/composer.{json,lock}",
+    "**/vendor/composer/installed.json",
+    "**/.env*",
+    // The database of `laravel.database`.
+    "**/*.{sqlite,sqlite3,db}",
+    "**/lang/**/*.json",
+    "**/ide.json",
+    "**/.phpstorm.meta.php",
+];
+
+impl Server {
+    /// Asks the client to report changes of the files the index is built from. Without
+    /// it the index goes stale for whatever is written outside the editor: a generator's
+    /// files, a `git checkout`, `composer install`.
+    fn watch_files(&self) {
+        if !self.state.support.watched_files {
+            return;
+        }
+        let watchers = WATCHED_FILES
+            .iter()
+            .map(|glob| lsp::FileSystemWatcher { glob_pattern: lsp::GlobPattern::String((*glob).into()), kind: None })
+            .collect();
+        let registration = lsp::Registration {
+            id: "phoxite/watched-files".into(),
+            method: n::DidChangeWatchedFiles::METHOD.into(),
+            register_options: serde_json::to_value(lsp::DidChangeWatchedFilesRegistrationOptions { watchers }).ok(),
+        };
+        let request = Request::new(
+            RequestId::from("phoxite/watched-files".to_owned()),
+            r::RegisterCapability::METHOD.to_owned(),
+            lsp::RegistrationParams { registrations: vec![registration] },
+        );
+        let _ = self.state.sender.send(Message::Request(request));
     }
 }
 

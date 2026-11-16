@@ -47,8 +47,9 @@ Compared with the VS Code extension:
 
 - `lsp:phoxite` (required): send the running server its own requests, and run the
   commands its lenses carry.
-- `project.read`, `storage` (required): name files relative to the project; remember
-  which model each project's view shows.
+- `project.read`, `storage`, `events` (required): name files relative to the project;
+  remember which model each project's view shows; read the views again when PHP files
+  of the project change.
 - `project.write` (optional): the generators, Add Columns and Create translation key
   write files.
 - `editor.read`, `editor.write` (optional): a file with unsaved changes is edited in its

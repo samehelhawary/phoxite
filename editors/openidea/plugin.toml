@@ -8,12 +8,13 @@ homepage = "https://github.com/samehelhawary/phoxite/tree/main/editors/openidea"
 categories = ["frameworks"]
 engines.openidea = "^1.9"
 wasm = "dist/plugin.wasm"
-activation = ["on-command:*"]
+activation = ["on-command:*", "on-event:files-changed"]
 
 [capabilities]
 # Everything comes from phoxite-lsp's own `phoxite/laravel/*` requests. The view names
-# files relative to the project, and remembers which model it shows.
-required = ["lsp:phoxite", "project.read", "storage"]
+# files relative to the project, and remembers which model it shows. The views follow
+# the project's PHP files as they change.
+required = ["lsp:phoxite", "project.read", "storage", "events"]
 # project.write: the generators, Add Columns and Create translation key write files.
 # editor.read / editor.write: a file with unsaved changes is edited in its editor.
 # process:php: Run Artisan Command.

@@ -95,6 +95,9 @@ pub struct ClientSupport {
     pub insert_replace: bool,
     pub snippets: bool,
     pub work_done_progress: bool,
+    /// The client watches files for a server that registers for it
+    /// (`workspace.didChangeWatchedFiles.dynamicRegistration`).
+    pub watched_files: bool,
     pub markdown: bool,
     /// The client has the dialogs of the refactorings that ask something first
     /// (`experimental.phoxite.dialogs`).

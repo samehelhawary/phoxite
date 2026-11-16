@@ -12,7 +12,7 @@ mod server;
 mod translation;
 
 use openidea_plugin::views::{View, ViewEvent, Viewport, Views};
-use openidea_plugin::{Error, Invocation, Plugin, host, register_plugin};
+use openidea_plugin::{Error, Event, Invocation, Plugin, host, register_plugin};
 
 #[derive(Default)]
 pub struct Laravel;
@@ -35,6 +35,20 @@ impl Plugin for Laravel {
             _ => return Err(Error::NotFound(id.into())),
         }
         Ok(None)
+    }
+
+    /// Files of the project changed (a save, a generator, a checkout): what the views
+    /// show comes from its PHP files, so both are read again.
+    fn handle_events(&mut self, events: &[Event], _ctx: &Invocation) {
+        let php = |paths: &[String]| paths.iter().any(|p| p.ends_with(".php"));
+        let changed = events.iter().any(|event| match event {
+            Event::FilesChanged(batch) => php(&batch.created) || php(&batch.modified) || php(&batch.removed),
+            _ => false,
+        });
+        if changed {
+            host::refresh_view(routes::VIEW);
+            host::refresh_view(model::VIEW);
+        }
     }
 }
 
@@ -75,6 +89,7 @@ mod tests {
             "editor.read",
             "editor.write",
             "storage",
+            "events",
             "process:php",
         ]);
         mock.set_project_root(Some("/project"));
@@ -96,6 +111,20 @@ mod tests {
         assert!(
             matches!(Laravel.run_command("go-to-route", &mock.invocation(), None), Err(Error::Denied(c)) if c == "lsp:phoxite")
         );
+    }
+
+    #[test]
+    fn the_views_are_read_again_when_php_files_of_the_project_change() {
+        use openidea_plugin::FilesChanged;
+        let mock = mock();
+        let batch = |path: &str| {
+            Event::FilesChanged(FilesChanged { created: vec![path.to_owned()], modified: vec![], removed: vec![] })
+        };
+        Laravel.handle_events(&[batch("/project/storage/logs/laravel.log")], &mock.invocation());
+        assert!(mock.refreshed_views().is_empty(), "a log file changes nothing the views show");
+        Laravel.handle_events(&[batch("/project/database/migrations/2030_add_votes.php")], &mock.invocation());
+        assert_eq!(mock.refreshed_views(), [routes::VIEW, model::VIEW]);
+        assert!(include_str!("../plugin.toml").contains("on-event:files-changed"));
     }
 
     #[test]
