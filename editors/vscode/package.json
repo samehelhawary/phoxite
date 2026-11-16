@@ -8,7 +8,17 @@
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/samehelhawary/phoxite"
+    "url": "https://github.com/samehelhawary/phoxite",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://github.com/samehelhawary/phoxite#readme",
+  "bugs": {
+    "url": "https://github.com/samehelhawary/phoxite/issues"
+  },
+  "qna": "https://github.com/samehelhawary/phoxite/issues",
+  "galleryBanner": {
+    "color": "#312E81",
+    "theme": "dark"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -23,7 +33,15 @@
     "laravel",
     "blade",
     "intellisense",
-    "refactoring"
+    "refactoring",
+    "language server",
+    "eloquent",
+    "artisan",
+    "formatter",
+    "phpstan",
+    "psalm",
+    "livewire",
+    "inertia"
   ],
   "activationEvents": [
     "onLanguage:php",
@@ -676,8 +694,9 @@
     "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --sourcemap",
     "watch": "npm run build -- --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "test": "npm run build && node --test --experimental-strip-types test/*.test.mts",
-    "package": "vsce package",
+    "package": "node ../../scripts/package_vscode.mjs",
     "vscode:prepublish": "npm run build -- --minify",
     "test:e2e": "npm run build && node test/e2e/run.js"
   },
@@ -685,12 +704,15 @@
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20.11.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "1.85.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.24.0",
+    "eslint": "^10.15.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.72.2",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"
   }

@@ -5,6 +5,8 @@ editors/vscode/node_modules
 editors/vscode/dist
 editors/vscode/server
 editors/vscode/CHANGELOG.md
+editors/vscode/NOTICE
+editors/vscode/THIRD_PARTY_LICENSES.md
 editors/vscode/*.vsix
 editors/vscode/.vscode-test
 editors/openidea/target

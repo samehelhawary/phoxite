@@ -13,7 +13,22 @@ permissions:
   contents: write
 
 jobs:
+  # A tag that doesn't state the version of the manifests, or a version the changelog
+  # doesn't describe, builds nothing.
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - if: github.ref_type == 'tag'
+        run: node scripts/check_versions.mjs "$GITHUB_REF_NAME"
+      - if: github.ref_type != 'tag'
+        run: node scripts/check_versions.mjs
+
   build:
+    needs: versions
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +60,7 @@ jobs:
         shell: bash
         run: |
           cd editors/vscode && npm ci && npm run vscode:prepublish && cd ../..
-          python scripts/package_vscode.py \
+          node scripts/package_vscode.mjs \
             --server target/${{ matrix.target }}/release/phoxite-lsp${{ matrix.exe }} \
             --target ${{ matrix.target }}
           mkdir -p dist

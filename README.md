@@ -55,7 +55,7 @@ npm install
 npm run build
 # Point "phoxite.server.path" at target/release/phoxite-lsp, then press F5
 # in VS Code with this folder open, or package it:
-python ../../scripts/package_vscode.py --server ../../target/release/phoxite-lsp
+node ../../scripts/package_vscode.mjs --server ../../target/release/phoxite-lsp
 ```
 
 ## Configuration

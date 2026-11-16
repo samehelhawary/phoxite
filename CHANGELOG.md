@@ -41,6 +41,11 @@
   so a per-folder one was never honoured).
 - VS Code: the commands of the server's lenses run under the extension's own names, so
   another extension registering `laravel.modelView` can't break them.
+- VS Code: the package carries `NOTICE` and the third-party licences; the Marketplace
+  page links the issues and has a quick start and a troubleshooting section.
+- Packaging is `node scripts/package_vscode.mjs` (it was a Python script). CI runs the
+  extension end to end in VS Code on Linux, lints it, packages it as a dry run and
+  checks that the tag, the manifests and the changelog state one version.
 - The server tells the client when a folder is (or stops being) a Laravel project
   (`phoxite/laravel/statusChanged`), so clients no longer ask repeatedly at start.
 

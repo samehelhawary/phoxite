@@ -3,6 +3,20 @@
 PHP and Laravel code intelligence from a native engine written in Rust: no PHP, Node.js or
 licence needed for any feature.
 
+## Quick start
+
+1. Install the extension and open a folder with PHP in it. The server is part of the
+   extension: there is nothing else to install or configure.
+2. Open a PHP or Blade file. **Phoxite** in the language status (the `{}` in the status
+   bar) shows the project being read, then says **Phoxite**, or **Phoxite: Laravel** in a
+   Laravel project.
+3. If Intelephense or another PHP language server is enabled, disable it for the
+   workspace: see [Other PHP extensions](#other-php-extensions).
+
+**Requirements.** VS Code 1.85 or newer, on Windows, macOS or Linux (x64 and arm64;
+Alpine x64). PHP itself is needed for two things only, both optional: running Artisan
+commands, and PHPStan or Psalm on save.
+
 ## PHP
 
 - Completion with auto-import, named arguments, array keys and enum cases
@@ -113,6 +127,20 @@ Blade file) says what the server is doing: starting, indexing, ready, or not run
 and whether the project is a Laravel one. Click it for **Restart the Language Server**,
 **Show the Server Log** and **Index the Project Again**; the same commands are in the
 Command Palette under **Phoxite**.
+
+- **Nothing completes, or "the language server is not running".** Open the log (**Show
+  the Server Log**): it says why the server didn't start. If `phoxite.server.path` is
+  set, it has to name a `phoxite-lsp` that exists; empty uses the bundled one.
+- **A class or a route that exists is reported missing.** **Index the Project Again**
+  reads every file anew. Code outside the workspace folder is found through
+  `phoxite.includePaths`.
+- **Completions and problems show twice.** Another PHP extension answers too: see below.
+- **Laravel features are missing.** The status says **Phoxite: Laravel** when the folder
+  is recognised as one (`composer.json` requires `laravel/framework`, the lock file lists
+  it, or an `artisan` file exists); `phoxite.laravel.detection` can force it.
+- **To report a problem**, set `phoxite.server.logLevel` to `debug`, restart the server,
+  reproduce it, and attach the log to an
+  [issue](https://github.com/samehelhawary/phoxite/issues).
 
 ## Other PHP extensions
 
