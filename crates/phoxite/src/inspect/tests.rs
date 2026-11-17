@@ -384,6 +384,8 @@ fn replacing_the_inspections_runs_them_again() {
             "PhpParams",
             "PhpIncompatibleReturnType",
             "PhpFieldAssignmentTypeMismatch",
+            "PhpInaccessibleMember",
+            "PhpReadonlyPropertyWrittenOutsideDeclarationScope",
             "PhpUnusedAlias",
             "PhpUnusedPrivateMethod",
             "PhpUnusedPrivateField",
@@ -467,3 +469,6 @@ mod fixes_tests;
 
 #[path = "settings_tests.rs"]
 mod settings_tests;
+
+#[path = "access_tests.rs"]
+mod access_tests;

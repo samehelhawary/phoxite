@@ -67,6 +67,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use super::access::{self, Blocked, Use};
 use crate::base::Severity;
 use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
@@ -164,16 +165,17 @@ fn report(cx: &InspectionContext<'_>, kind: Kind, out: &mut Problems) {
     }
 }
 
-/// Every undefined member of the file (computed once for the three
-/// inspections).
-pub(crate) fn find(cx: &InspectionContext<'_>) -> Vec<Found> {
+/// Every undefined member of the file, and every member used where it
+/// isn't accessible ([`super::access`]): computed once for the member
+/// inspections.
+pub(crate) fn find(cx: &InspectionContext<'_>) -> (Vec<Found>, Vec<access::Found>) {
     // In dumb mode every class would look incomplete anyway; stay quiet.
     if cx.engine.status().state != EngineState::Ready || is_meta_path(cx.path) {
-        return Vec::new();
+        return Default::default();
     }
     let text = cx.text();
     if !(text.contains("->") || text.contains("::")) {
-        return Vec::new();
+        return Default::default();
     }
     let resolver = cx.resolver();
     let types = cx.types();
@@ -193,13 +195,17 @@ pub(crate) fn find(cx: &InspectionContext<'_>) -> Vec<Found> {
         narrowed: Vec::new(),
         subtype_models: HashMap::new(),
         candidates: Vec::new(),
+        inaccessible: Vec::new(),
+        proxied: false,
     };
     ScanWalker.walk_program(cx.parsed.program(), &mut scan);
     if cx.is_cancelled() {
-        return Vec::new();
+        return Default::default();
     }
-    let Scan { candidates, written, guards, .. } = scan;
-    candidates
+    let Scan { candidates, written, guards, mut inaccessible, .. } = scan;
+    inaccessible.sort_by_key(|found| (found.start, found.end));
+    inaccessible.dedup_by_key(|found| (found.start, found.end));
+    let undefined = candidates
         .into_iter()
         .filter(|found| {
             let name = found.name.to_ascii_lowercase();
@@ -236,7 +242,8 @@ pub(crate) fn find(cx: &InspectionContext<'_>) -> Vec<Found> {
                 fix,
             }
         })
-        .collect()
+        .collect();
+    (undefined, inaccessible)
 }
 
 /// A member not found, before the file-wide filters.
@@ -294,6 +301,11 @@ struct Scan<'a, 'r> {
     /// Lower-case class name → the models of its subtypes.
     subtype_models: HashMap<String, Arc<Vec<Arc<ClassModel>>>>,
     candidates: Vec<Candidate>,
+    /// Members that exist and can't be used where they are.
+    inaccessible: Vec<access::Found>,
+    /// The receiver being checked is a proxy for the object it is typed as:
+    /// what is accessible on it isn't known.
+    proxied: bool,
 }
 
 /// Classes whose objects take any member: `stdClass`, and FFI's (C
@@ -484,6 +496,7 @@ impl<'a> Scan<'a, '_> {
         let context = self.context();
         let Some(models) = self.models(receiver, &context) else { return };
         if self.answers(&models, kind, is_static, name) {
+            self.access(kind, is_static, &models, name, span, Use::Read);
             return;
         }
         // Polymorphic code: a subtype has it.
@@ -526,6 +539,90 @@ impl<'a> Scan<'a, '_> {
         });
     }
 
+    /// The class the code is in for the access rules, and whether the code is
+    /// in a closure or arrow function. `None` where the rules can't say
+    /// which class it runs in: in a trait (the classes using it), in an
+    /// anonymous class, and in a closure outside any class (`Closure::bind`
+    /// and Pest give those one).
+    fn access_scope(&self) -> Option<(Option<Arc<ClassModel>>, bool)> {
+        let class = self.frames.iter().rposition(|frame| matches!(frame, Frame::Class(_)));
+        let inner = &self.frames[class.map_or(0, |i| i + 1)..];
+        let in_closure = inner.iter().any(|frame| matches!(frame, Frame::Closure(_) | Frame::Arrow(_)));
+        let scope = match class.map(|i| &self.frames[i]) {
+            Some(Frame::Class(Some(fqn))) => {
+                let model = self.resolver.class_model(fqn)?;
+                if model.kind() == ClassKind::Trait {
+                    return None;
+                }
+                Some(model)
+            }
+            Some(_) => return None,
+            None if in_closure => return None,
+            None => None,
+        };
+        Some((scope, in_closure))
+    }
+
+    /// Checks that member `name`, which `models` have, can be used here
+    /// ([`super::access`]).
+    fn access(&mut self, kind: Kind, is_static: bool, models: &[Arc<ClassModel>], name: &str, span: Span, usage: Use) {
+        let Some((scope, in_closure)) = self.access_scope() else { return };
+        if self.proxied || access::magic_answers(models, kind, is_static, usage) {
+            return;
+        }
+        let site =
+            access::Site { resolver: self.resolver, scope: scope.as_deref(), level: self.cx.engine.language_level() };
+        let blocked: Vec<Option<Blocked>> =
+            models.iter().map(|model| access::blocked(&site, model, kind, name, usage)).collect();
+        let Some(first) = blocked.iter().flatten().next().cloned() else { return };
+        // A subtype may have the member accessible (a protected method made
+        // public), and the object may be one of it.
+        let has = |model: &ClassModel| match kind {
+            Kind::Method => model.method(name).is_some(),
+            Kind::Property => model.property(name).is_some(),
+            Kind::Constant => model.constant(name).is_some(),
+        };
+        for model in models.iter().zip(&blocked).filter(|(_, blocked)| blocked.is_some()).map(|(model, _)| model) {
+            if self.cx.is_cancelled() {
+                return;
+            }
+            let subtypes = self.subtype_models(model);
+            let site = access::Site { resolver: self.resolver, scope: scope.as_deref(), level: site.level };
+            if subtypes.iter().any(|sub| has(sub) && access::blocked(&site, sub, kind, name, usage).is_none()) {
+                return;
+            }
+        }
+        self.inaccessible.push(access::Found {
+            rule: first.rule,
+            certain: !in_closure && blocked.iter().all(Option::is_some),
+            start: span.start.offset,
+            end: span.end.offset,
+            message: first.message,
+        });
+    }
+
+    /// An assignment to `$object->name`: whether the property can be
+    /// written here.
+    fn property_write(&mut self, object: &'a Expression<'a>, selector: &ClassLikeMemberSelector<'_>) {
+        let ClassLikeMemberSelector::Identifier(name) = selector else { return };
+        if chain_depth(object) > MAX_CHAIN || self.cx.is_cancelled() {
+            return;
+        }
+        let receiver = self.types.type_of(object, &self.frames);
+        let context = self.context();
+        let Some(models) = self.models(&receiver, &context) else { return };
+        self.access(Kind::Property, false, &models, &lossy(name.value), name.span, Use::Write);
+    }
+
+    /// The same for `Foo::$name`.
+    fn static_property_write(&mut self, class: &'a Expression<'a>, variable: &Variable<'_>) {
+        let Variable::Direct(variable) = variable else { return };
+        let receiver = self.types.class_ref(class, &self.frames);
+        let context = self.context();
+        let Some(models) = self.models(&receiver, &context) else { return };
+        self.access(Kind::Property, true, &models, &lossy(variable.name), variable.span, Use::Write);
+    }
+
     /// Whether `object` is `$this` inside a closure or arrow function.
     fn is_bound_this(&self, object: &Expression<'_>) -> bool {
         let Expression::Variable(Variable::Direct(variable)) = object else { return false };
@@ -563,7 +660,11 @@ impl<'a> Scan<'a, '_> {
             return;
         }
         receiver = self.with_narrowed(receiver, &text, at);
+        // Pest's `test()` is typed as the test case it stands for, but is a
+        // proxy that reaches the test case's protected methods too.
+        self.proxied = text.rsplit('\\').next() == Some("test()");
         self.check(kind, false, &receiver, &lossy(name.value), name.span, args);
+        self.proxied = false;
     }
 
     fn static_member(
@@ -683,8 +784,11 @@ impl<'a> Scan<'a, '_> {
                 if let ClassLikeMemberSelector::Identifier(name) = &access.property {
                     self.written.insert(lossy(name.value));
                 }
+                self.property_write(access.object, &access.property);
             }
-            Expression::Access(Access::StaticProperty(_)) => {}
+            Expression::Access(Access::StaticProperty(access)) => {
+                self.static_property_write(access.class, &access.property);
+            }
             Expression::ArrayAccess(access) => self.write(access.array),
             Expression::ArrayAppend(append) => self.write(append.array),
             Expression::Array(array) => array.elements.iter().for_each(|element| self.write_element(element)),

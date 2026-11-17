@@ -114,6 +114,8 @@ function f(Book $b, Item $i, ?Plain $n, Book|Shelf $u, Genre $g)
         messages(&found),
         [
             ("PhpUndefinedMethod", "Undefined method 'missing' in 'App\\Model\\Book'".to_owned()),
+            // It exists and is private: the access inspection's.
+            ("PhpInaccessibleMember", "Private method 'secret' of 'App\\Model\\Item' is not accessible here".into()),
             ("PhpUndefinedMethod", "Undefined method 'secret' in 'App\\Model\\Book'".into()),
             ("PhpUndefinedMethod", "Undefined method 'gone' in 'App\\Model\\Plain'".into()),
             ("PhpUndefinedMethod", "Undefined method 'neither' in 'App\\Model\\Book|App\\Model\\Shelf'".into()),

@@ -49,6 +49,7 @@
 //! (`https://plugins.jetbrains.com/docs/intellij/code-inspections.html`):
 //! a short name, a default level, a visitor and quick-fixes.
 
+pub mod access;
 pub mod calls;
 pub mod control;
 pub(crate) mod fixes;
@@ -139,6 +140,8 @@ impl Inspections {
             Arc::new(calls::ArgumentType { mode: mode("PhpParams") }),
             Arc::new(calls::ReturnType { mode: mode("PhpIncompatibleReturnType") }),
             Arc::new(calls::PropertyType { mode: mode("PhpFieldAssignmentTypeMismatch") }),
+            Arc::new(access::InaccessibleMember { mode: mode("PhpInaccessibleMember") }),
+            Arc::new(access::ReadonlyWrite { mode: mode("PhpReadonlyPropertyWrittenOutsideDeclarationScope") }),
             Arc::new(unused::UnusedImport),
             Arc::new(unused::UnusedPrivateMethod),
             Arc::new(unused::UnusedPrivateField),
@@ -361,7 +364,7 @@ pub struct InspectionContext<'a> {
     /// The file's expression types and flows, shared by all inspections
     /// (with the names and summary they were built on).
     types: &'a ExprTypes<'a, 'a>,
-    members: OnceLock<Vec<members::Found>>,
+    members: OnceLock<(Vec<members::Found>, Vec<access::Found>)>,
     variables: OnceLock<Vec<variables::Found>>,
     calls: OnceLock<Vec<calls::Found>>,
     unused: OnceLock<Vec<unused::Found>>,
@@ -409,7 +412,13 @@ impl<'a> InspectionContext<'a> {
     /// The file's undefined members (computed once for the three member
     /// inspections).
     pub(crate) fn undefined_members(&self) -> &[members::Found] {
-        self.members.get_or_init(|| members::find(self))
+        &self.members.get_or_init(|| members::find(self)).0
+    }
+
+    /// The file's members used where they aren't accessible (found with
+    /// the undefined ones: both need each receiver's classes).
+    pub(crate) fn inaccessible_members(&self) -> &[access::Found] {
+        &self.members.get_or_init(|| members::find(self)).1
     }
 
     /// The file's variable problems (computed once for the variable

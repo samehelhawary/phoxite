@@ -21,6 +21,14 @@
   go to definition work in a hook's body, undefined and unused variables are reported
   there, and what a `get` hook returns is checked against the property's type. Before,
   a hook's body was read as part of whatever was around the class.
+- Two inspections for members that exist but can't be used where they are. **Inaccessible
+  member** (`PhpInaccessibleMember`): a private or protected method, property or class
+  constant used from outside the classes allowed to, and a write to a `private(set)` or
+  `protected(set)` property (PHP 8.4). **Readonly property written outside its scope**
+  (`PhpReadonlyPropertyWrittenOutsideDeclarationScope`): its class, and from PHP 8.4
+  its subclasses. They report what fails for certain and stay quiet where magic methods,
+  a trait, a bound closure or a subclass that widens the member could make it work;
+  `"strict": true` adds union receivers and closures inside classes.
 - `phoxite-lsp check [PATH...]` inspects a project from the command line: the problems of
   its own PHP files and Blade templates as text, JSON, SARIF 2.1.0 or GitHub annotations
   (`--format`), and an exit code for CI (`--fail-on error|warning|never`). It reads the
