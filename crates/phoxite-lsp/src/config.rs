@@ -27,6 +27,7 @@ use phoxite::base::inspection_settings::InspectionOverride;
 use phoxite::base::settings::{LaravelSettings, PhpConfig};
 use phoxite::inspect::{PROFILE_ID, STRICT_OPTION};
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 /// Folders nobody wants indexed, unless the user lists their own.
@@ -95,16 +96,22 @@ impl Default for FormatSettings {
 
 impl Settings {
     /// Settings from the client's JSON: the object itself, or its
-    /// `phoxite` member. Invalid parts fall back to the defaults.
-    pub fn from_json(value: &Value) -> Self {
+    /// `phoxite` member. A setting whose value doesn't fit keeps its default,
+    /// the others apply; the second value names those left out
+    /// (`laravel.modules`).
+    pub fn from_json(value: &Value) -> (Self, Vec<String>) {
         let value = value.get("phoxite").unwrap_or(value);
-        match serde_json::from_value(value.clone()) {
-            Ok(settings) => settings,
-            Err(e) => {
-                tracing::warn!("invalid settings, using the defaults: {e}");
-                Self::default()
+        let (mut settings, mut rejected): (Self, _) = lenient(value);
+        for (id, setting) in &mut settings.inspections {
+            if setting.severity.as_deref().is_some_and(|name| severity_named(name).is_none()) {
+                setting.severity = None;
+                rejected.push(format!("inspections.{id}.severity"));
             }
         }
+        if !rejected.is_empty() {
+            tracing::warn!("settings left at their defaults: {}", rejected.join(", "));
+        }
+        (settings, rejected)
     }
 
     pub fn engine_config(&self) -> PhpConfig {
@@ -133,16 +140,66 @@ impl Settings {
 
     /// The severity the user chose for inspection `code`.
     pub fn severity(&self, code: &str) -> Option<Severity> {
-        match self.inspections.get(code)?.severity.as_deref()? {
-            "error" => Some(Severity::Error),
-            "warning" => Some(Severity::Warning),
-            "information" | "info" | "weakWarning" => Some(Severity::Info),
-            "hint" => Some(Severity::Hint),
-            other => {
-                tracing::warn!("unknown severity {other:?} for {code}");
-                None
+        severity_named(self.inspections.get(code)?.severity.as_deref()?)
+    }
+}
+
+fn severity_named(name: &str) -> Option<Severity> {
+    match name {
+        "error" => Some(Severity::Error),
+        "warning" => Some(Severity::Warning),
+        "information" | "info" | "weakWarning" => Some(Severity::Info),
+        "hint" => Some(Severity::Hint),
+        _ => None,
+    }
+}
+
+/// `value` as a `T`, without the parts that don't fit it: those keep their
+/// defaults and are named by their path (`laravel.modules`). `null` is the
+/// defaults; another value that isn't an object is left out as a whole
+/// (an empty path).
+pub fn lenient<T: DeserializeOwned + Default>(value: &Value) -> (T, Vec<String>) {
+    if value.is_null() {
+        return (T::default(), Vec::new());
+    }
+    if let Ok(whole) = serde_json::from_value(value.clone()) {
+        return (whole, Vec::new());
+    }
+    let mut rejected = Vec::new();
+    let mut kept = value.clone();
+    match &mut kept {
+        Value::Object(members) => prune::<T>(members, &mut Vec::new(), &mut rejected),
+        _ => rejected.push(String::new()),
+    }
+    (serde_json::from_value(kept).unwrap_or_default(), rejected)
+}
+
+/// Removes from `members` (the object at `path`) what a `T` can't be read
+/// from: each member is tried alone, and an object that doesn't fit is
+/// looked into before it is dropped whole.
+fn prune<T: DeserializeOwned>(
+    members: &mut serde_json::Map<String, Value>,
+    path: &mut Vec<String>,
+    rejected: &mut Vec<String>,
+) {
+    let keys: Vec<String> = members.keys().cloned().collect();
+    for key in keys {
+        path.push(key.clone());
+        let alone = path
+            .iter()
+            .rev()
+            .fold(members[&key].clone(), |inner, name| Value::Object([(name.clone(), inner)].into_iter().collect()));
+        if serde_json::from_value::<T>(alone).is_err() {
+            let before = rejected.len();
+            if let Some(Value::Object(inner)) = members.get_mut(&key) {
+                prune::<T>(inner, path, rejected);
+            }
+            if rejected.len() == before {
+                members.remove(&key);
+                rejected.push(path.join("."));
             }
         }
+        path.pop();
     }
 }
 
@@ -179,7 +236,7 @@ mod tests {
 
     #[test]
     fn settings_map_onto_the_engine_config() {
-        let settings = Settings::from_json(&json!({
+        let (settings, rejected) = Settings::from_json(&json!({
             "phoxite": {
                 "phpVersion": "8.1",
                 "inspections": {
@@ -190,6 +247,7 @@ mod tests {
                 "laravel": { "routeHints": false, "modules": "nwidart" }
             }
         }));
+        assert!(rejected.is_empty(), "{rejected:?}");
         let config = settings.engine_config();
         assert_eq!(config.language_level, "8.1");
         assert_eq!(config.excludes, DEFAULT_EXCLUDES);
@@ -202,7 +260,58 @@ mod tests {
     }
 
     #[test]
-    fn broken_settings_fall_back_to_the_defaults() {
-        assert_eq!(Settings::from_json(&json!({ "phpVersion": 8 })), Settings::default());
+    fn a_broken_setting_keeps_its_default_and_the_others_apply() {
+        let (settings, rejected) = Settings::from_json(&json!({
+            "phpVersion": 8,
+            "stubs": ["redis"],
+            "laravel": { "modules": "bogus", "routeHints": false, "generation": { "typeHints": "no", "module": "Blog" } },
+            "inspections": {
+                "PhpUndefinedMethod": { "enabled": "off", "strict": true },
+                "PhpParams": { "enabled": false, "severity": "loud" }
+            },
+            "format": "wide",
+            "somethingNew": { "ignored": true }
+        }));
+        assert_eq!(
+            rejected,
+            [
+                "phpVersion",
+                "laravel.modules",
+                "laravel.generation.typeHints",
+                "inspections.PhpUndefinedMethod.enabled",
+                "format",
+                "inspections.PhpParams.severity",
+            ]
+        );
+        assert_eq!(settings.php_version, "");
+        assert_eq!(settings.stubs, ["redis"]);
+        assert!(!settings.laravel.route_hints);
+        assert_eq!(settings.laravel.modules, LaravelSettings::default().modules);
+        assert_eq!(settings.laravel.generation.module, "Blog");
+        assert!(settings.laravel.generation.type_hints);
+        assert_eq!(
+            settings.inspections["PhpUndefinedMethod"],
+            InspectionSetting { strict: Some(true), ..Default::default() }
+        );
+        assert_eq!(settings.inspections["PhpParams"], InspectionSetting { enabled: Some(false), ..Default::default() });
+        assert_eq!(settings.format, FormatSettings::default());
+    }
+
+    #[test]
+    fn settings_that_are_no_object() {
+        assert_eq!(Settings::from_json(&Value::Null), (Settings::default(), vec![]));
+        assert_eq!(Settings::from_json(&json!({ "phoxite": null })), (Settings::default(), vec![]));
+        assert_eq!(Settings::from_json(&json!("on")), (Settings::default(), vec![String::new()]));
+        // An object where a text is expected is left out as a whole.
+        assert_eq!(Settings::from_json(&json!({ "phpVersion": {} })), (Settings::default(), vec!["phpVersion".into()]));
+    }
+
+    #[test]
+    fn a_broken_initialization_option_keeps_the_others() {
+        let (options, rejected): (InitOptions, _) =
+            lenient(&json!({ "cacheDir": 7, "trusted": false, "settings": { "phpVersion": "8.2" } }));
+        assert_eq!(rejected, ["cacheDir"]);
+        assert_eq!(options.trusted, Some(false));
+        assert_eq!(options.settings, Some(json!({ "phpVersion": "8.2" })));
     }
 }

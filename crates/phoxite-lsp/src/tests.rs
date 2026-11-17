@@ -258,6 +258,38 @@ fn problems_are_published_and_fixed() {
 }
 
 #[test]
+fn a_setting_that_does_not_fit_is_named_and_the_others_apply() {
+    let root = fixture("php-library");
+    let dir = tempfile::tempdir().unwrap();
+    copy_dir(&root, dir.path());
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let mut c = Client::start(&root);
+    let file = root.join("src/Broken.php");
+    std::fs::write(&file, "<?php\nnamespace App;\n\nfunction f(): void {\n    new UnknownThing();\n}\n").unwrap();
+    let uri = c.open(&file, "php");
+    c.diagnostics(&uri, |d| !d.is_empty());
+
+    let settings = json!({ "phpVersion": 8, "inspections": { "PhpUndefinedClass": { "enabled": false } } });
+    c.notify::<n::DidChangeConfiguration>(json!({ "settings": { "phoxite": settings } }));
+    // The inspection is off although the PHP version next to it is no text.
+    c.diagnostics(&uri, |d| d.is_empty());
+    let warnings = |c: &Client| -> Vec<String> {
+        c.notifications
+            .iter()
+            .filter(|n| n.method == n::ShowMessage::METHOD)
+            .map(|n| n.params["message"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(warnings(&c), ["Phoxite left `phpVersion` at the default: the value isn't one it understands."]);
+
+    // The same settings again: the user isn't told twice.
+    c.notify::<n::DidChangeConfiguration>(json!({ "settings": { "phoxite": settings } }));
+    c.request::<r::DocumentSymbolRequest>(json!({ "textDocument": { "uri": uri } }));
+    assert_eq!(warnings(&c).len(), 1);
+    c.shutdown();
+}
+
+#[test]
 fn laravel_routes_views_and_blade() {
     // The app with the Laravel framework stubs as its `vendor`.
     let dir = tempfile::tempdir().unwrap();

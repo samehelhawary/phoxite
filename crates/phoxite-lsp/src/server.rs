@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::analyzers;
 use crate::commands;
-use crate::config::{InitOptions, Settings, default_cache_dir};
+use crate::config::{InitOptions, Settings, default_cache_dir, lenient};
 use crate::convert::{self, EditSupport};
 use crate::handlers::{self as h, Goto};
 use crate::laravel;
@@ -176,9 +176,10 @@ pub fn run(connection: Connection) -> Result<(), String> {
     });
     connection.initialize_finish(id, result).map_err(|e| e.to_string())?;
 
-    let options: InitOptions =
-        params.initialization_options.clone().and_then(|o| serde_json::from_value(o).ok()).unwrap_or_default();
-    let settings = options.settings.as_ref().map(Settings::from_json).unwrap_or_default();
+    let (options, mut rejected): (InitOptions, _) =
+        lenient(params.initialization_options.as_ref().unwrap_or(&Value::Null));
+    let (settings, more) = options.settings.as_ref().map(Settings::from_json).unwrap_or_default();
+    rejected.extend(more);
     let (events_tx, events_rx) = crossbeam_channel::unbounded();
     let state = Arc::new(State::new(
         connection.sender.clone(),
@@ -188,6 +189,7 @@ pub fn run(connection: Connection) -> Result<(), String> {
         events_tx,
     ));
     state.set_trusted(options.trusted.unwrap_or(true));
+    state.settings_rejected(rejected);
     #[allow(deprecated)]
     let folders: Vec<Url> = match (&params.workspace_folders, &params.root_uri) {
         (Some(folders), _) if !folders.is_empty() => folders.iter().map(|f| f.uri.clone()).collect(),
@@ -387,7 +389,9 @@ impl Server {
             }
             n::DidChangeConfiguration::METHOD => {
                 if let Some(p) = params::<lsp::DidChangeConfigurationParams>(notification.params) {
-                    state.apply_settings(Settings::from_json(&p.settings));
+                    let (settings, rejected) = Settings::from_json(&p.settings);
+                    state.apply_settings(settings);
+                    state.settings_rejected(rejected);
                 }
             }
             n::DidChangeWorkspaceFolders::METHOD => {

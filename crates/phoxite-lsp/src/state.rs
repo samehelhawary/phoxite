@@ -119,6 +119,9 @@ pub struct State {
     pub analyzers: Mutex<crate::analyzers::Analyzers>,
     /// The user trusts the workspace: programs of the project may run.
     trusted: AtomicBool,
+    /// The settings last left at their defaults for a value that didn't fit,
+    /// as the user was told.
+    rejected_settings: Mutex<Vec<String>>,
     next_doc: AtomicU32,
 }
 
@@ -141,6 +144,7 @@ impl State {
             problems: Mutex::new(HashMap::new()),
             analyzers: Mutex::default(),
             trusted: AtomicBool::new(true),
+            rejected_settings: Mutex::default(),
             next_doc: AtomicU32::new(1),
         }
     }
@@ -204,6 +208,29 @@ impl State {
             crate::laravel::load_templates(self, &w.root, &w.engine);
             crate::schema::refresh_quietly(self, &w.root, &w.engine);
         }
+    }
+
+    /// Tells the user which settings were left at their defaults because
+    /// their value doesn't fit, unless they are the ones named last time.
+    pub fn settings_rejected(&self, rejected: Vec<String>) {
+        let mut last = self.rejected_settings.lock();
+        if *last == rejected {
+            return;
+        }
+        if !rejected.is_empty() {
+            let names: Vec<String> = rejected
+                .iter()
+                .map(|path| if path.is_empty() { "the settings".into() } else { format!("`{path}`") })
+                .collect();
+            self.notify::<lsp::notification::ShowMessage>(lsp::ShowMessageParams {
+                typ: lsp::MessageType::WARNING,
+                message: format!(
+                    "Phoxite left {} at the default: the value isn't one it understands.",
+                    names.join(", ")
+                ),
+            });
+        }
+        *last = rejected;
     }
 
     pub fn is_trusted(&self) -> bool {
