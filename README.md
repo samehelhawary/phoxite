@@ -95,7 +95,7 @@ The server reads its settings from `initializationOptions.settings` and from
 ```json
 {
   "phpVersion": "8.3",
-  "includePaths": ["../shared"],
+  "includePaths": ["../shared", "../../config.php"],
   "stubs": ["redis"],
   "exclude": ["node_modules", "/storage"],
   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true } },

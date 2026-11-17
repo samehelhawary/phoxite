@@ -112,7 +112,7 @@ the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
 | Setting | |
 | --- | --- |
 | `phoxite.phpVersion` | The PHP version; empty: from `composer.json`. |
-| `phoxite.includePaths` | Folders outside the project to index. |
+| `phoxite.includePaths` | Folders and single files outside the project to index (`../shared`, `../../config.php`). |
 | `phoxite.stubs` | Extra extension stubs (`redis`, `swoole`…). |
 | `phoxite.exclude` | Globs left out of the index. |
 | `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`. |
@@ -156,7 +156,7 @@ Command Palette under **Phoxite**.
   set, it has to name a `phoxite-lsp` that exists; empty uses the bundled one.
 - **A class or a route that exists is reported missing.** **Index the Project Again**
   reads every file anew. Code outside the workspace folder is found through
-  `phoxite.includePaths`: each folder is indexed whole, and when it has a `composer.json`
+  `phoxite.includePaths`, which takes folders and single files: each folder is indexed whole, and when it has a `composer.json`
   (or is the `vendor` folder of a project that has one), the folders that file autoloads
   are indexed too. After changing a `composer.json` outside the workspace, run **Index
   the Project Again**: the editor only reports changes inside it.

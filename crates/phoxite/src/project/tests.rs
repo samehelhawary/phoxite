@@ -584,3 +584,23 @@ fn manifests_an_include_path_does_not_bring() {
     let own = self::layout(&root, &[root.join("vendor")], &[]);
     assert_eq!(own.autoload().roots().len(), 1);
 }
+
+/// An include path can name one file: only it is indexed, whatever its extension.
+#[test]
+fn include_path_that_is_one_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("server/site/app");
+    write(&root, &[("index.php", PHP)]);
+    write(&tmp.path().join("server"), &[("db_config.php", PHP), ("settings.inc", PHP), ("other.php", PHP)]);
+    let include = [root.join("../../db_config.php"), tmp.path().join("server/settings.inc")];
+    let layout = layout(&root, &include, &[]);
+    assert_eq!(
+        files(&layout, &tmp.path().join("server")),
+        [
+            ("db_config.php".to_string(), Origin::IncludePath),
+            ("settings.inc".to_string(), Origin::IncludePath),
+            ("site/app/index.php".to_string(), Origin::Project),
+        ]
+    );
+    assert_origins_agree(&layout);
+}

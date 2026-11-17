@@ -7,6 +7,8 @@
   project beside it. With `../vendor` listed, a `"Services\\": "PaymentGateway/"` rule
   of `../composer.json` gets `../PaymentGateway` indexed without listing it. The PHP
   version and the `ext-*` stubs still come from the project's own `composer.json`.
+- The description of `phoxite.includePaths` says that it takes single files too
+  (`../../config.php`), not only folders.
 
 ## 0.6.0 — 2026-11-17
 
