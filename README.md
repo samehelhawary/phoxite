@@ -26,6 +26,35 @@ servers. What it does:
 - **Blade:** completion, hover, goto and usages in echoes, directives and `@php` blocks;
   directive, section, stack and component names; the template's own problems; formatting.
 
+## Performance
+
+The server is one native binary: it needs no PHP or Node.js, and it keeps its index on
+disk, so a project opened before starts in milliseconds.
+
+<!-- bench:summary:start -->
+On laravel/framework v13.40.0 (3,177 PHP files), release build, 2026-11-17, Windows x86_64, 16 threads:
+
+|  | Phoxite | Intelephense 1.18.5 |
+| --- | --- | --- |
+| Index from an empty cache | 1.5 s | 4.1 s |
+| Memory once indexed | 78 MB | 324 MB |
+| Memory after hover, completion and diagnostics in a 2,500-line file | 179 MB | not measured |
+
+| Phoxite, same project |  |
+| --- | --- |
+| Start on the index of an earlier run | 59 ms |
+| Hover right after a keystroke | 2.3 ms |
+| Completion right after a keystroke | 7.2 ms |
+| Diagnostics after an edit (120 ms of it is the debounce) | 216 ms |
+<!-- bench:summary:end -->
+
+Intelephense got no requests after indexing, so its memory is that of the index alone.
+`node scripts/bench_report.mjs` measures all of this again and rewrites the tables; it
+needs the corpus (`scripts/php-corpus.sh laravel-framework`) and
+`npm i -g intelephense`. The budgets behind the latencies, and what each one measures,
+are in [docs/engine/performance.md](docs/engine/performance.md); CI fails when one is
+exceeded.
+
 ## Layout
 
 | Path | What |

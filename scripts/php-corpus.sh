@@ -2,8 +2,9 @@
 # Shallow-clone the PHP corpora used by the engine's ignored tests and benches into
 # ${PHP_CORPUS_DIR:-../php-corpus}. Needs only git. A corpus already at its pinned tag is
 # skipped; one at another tag is reported and left alone (delete it to re-clone).
-#   scripts/php-corpus.sh           clone what is missing
-#   scripts/php-corpus.sh --check   only verify, exit 1 if anything is missing or off-tag
+#   scripts/php-corpus.sh                     clone what is missing
+#   scripts/php-corpus.sh --check             only verify, exit 1 if anything is missing or off-tag
+#   scripts/php-corpus.sh laravel-framework   only the corpora named (after --check too)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -17,14 +18,21 @@ CORPORA=(
 )
 
 check=0
-case "${1:-}" in
-    --check) check=1 ;;
-    "") ;;
-    *)
-        echo "usage: $0 [--check]" >&2
+if [[ "${1:-}" == --check ]]; then
+    check=1
+    shift
+fi
+wanted=("$@")
+for name in "${wanted[@]}"; do
+    known=0
+    for entry in "${CORPORA[@]}"; do
+        [[ "${entry%% *}" == "$name" ]] && known=1
+    done
+    if ((!known)); then
+        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress]..." >&2
         exit 2
-        ;;
-esac
+    fi
+done
 
 command -v git >/dev/null || {
     echo "git is required" >&2
@@ -35,6 +43,9 @@ mkdir -p "$DIR"
 status=0
 for entry in "${CORPORA[@]}"; do
     read -r name url tag <<<"$entry"
+    if ((${#wanted[@]})) && [[ " ${wanted[*]} " != *" $name "* ]]; then
+        continue
+    fi
     dest="$DIR/$name"
     if [[ -d "$dest/.git" ]]; then
         have=$(git -C "$dest" describe --tags --exact-match 2>/dev/null || echo "?")

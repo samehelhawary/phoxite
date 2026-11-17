@@ -13,8 +13,12 @@
 //!   is the server, not a shell), a fresh storage directory, the corpus as
 //!   its workspace; measured once it sends `indexingEnded`.
 //!
-//! Working sets are read from the OS (`Get-Process` on Windows, `/proc` on
-//! Linux); elsewhere the test only reports that it can't measure.
+//! Working sets are read from the OS: `Get-Process` on Windows, `/proc` on
+//! Linux, `ps` on macOS (which has no peak to give). Elsewhere the test only
+//! reports that it can't measure.
+//!
+//! The report goes to `target/php-memory.txt` and, for
+//! `scripts/bench_report.mjs`, `target/php-memory.json`.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -41,11 +45,11 @@ fn corpus() -> PathBuf {
     dunce::canonicalize(root).unwrap()
 }
 
-/// The working set and its peak, in bytes.
+/// The working set and its peak (where the OS keeps one), in bytes.
 #[derive(Clone, Copy, Debug)]
 struct Memory {
     current: u64,
-    peak: u64,
+    peak: Option<u64>,
 }
 
 #[cfg(windows)]
@@ -54,7 +58,7 @@ fn memory(pid: u32) -> Option<Memory> {
     let out = Command::new("powershell").args(["-NoProfile", "-Command", &script]).output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let mut parts = text.split_whitespace().map(|n| n.parse::<u64>().ok());
-    Some(Memory { current: parts.next()??, peak: parts.next()?? })
+    Some(Memory { current: parts.next()??, peak: parts.next()? })
 }
 
 #[cfg(target_os = "linux")]
@@ -64,16 +68,32 @@ fn memory(pid: u32) -> Option<Memory> {
         let line = status.lines().find(|line| line.starts_with(key))?;
         Some(line.split_whitespace().nth(1)?.parse::<u64>().ok()? * 1024)
     };
-    Some(Memory { current: kb("VmRSS:")?, peak: kb("VmHWM:")? })
+    Some(Memory { current: kb("VmRSS:")?, peak: kb("VmHWM:") })
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(target_os = "macos")]
+fn memory(pid: u32) -> Option<Memory> {
+    let out = Command::new("ps").args(["-o", "rss=", "-p", &pid.to_string()]).output().ok()?;
+    let kb = String::from_utf8_lossy(&out.stdout).trim().parse::<u64>().ok()?;
+    Some(Memory { current: kb * 1024, peak: None })
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn memory(_pid: u32) -> Option<Memory> {
     None
 }
 
 fn mb(bytes: u64) -> String {
     format!("{:.0} MB", bytes as f64 / MB)
+}
+
+fn peak(memory: Memory) -> String {
+    memory.peak.map_or_else(|| "unknown".to_owned(), mb)
+}
+
+/// Megabytes, for the JSON report.
+fn megabytes(bytes: u64) -> u64 {
+    (bytes as f64 / MB).round() as u64
 }
 
 #[test]
@@ -117,34 +137,64 @@ fn engine_memory_against_intelephense() {
 
     // ------------------------------------------------------ intelephense
     let storage = tempfile::tempdir().unwrap();
-    let (intelephense_indexed, intelephense) = intelephense(&root, storage.path());
+    let (intelephense_indexed, intelephense, intelephense_version) = intelephense(&root, storage.path());
 
     let report = format!(
         "laravel/framework ({files} files)\n\
          engine:       cold index {:.1} s; working set {} → {} ready → {} after requests (+{}), peak {}\n\
-         intelephense: index {:.1} s; working set {} after indexing, peak {}\n",
+         intelephense {intelephense_version}: index {:.1} s; working set {} after indexing, peak {}\n",
         indexed.as_secs_f64(),
         mb(before.current),
         mb(ready.current),
         mb(working.current),
         mb(working.current.saturating_sub(before.current)),
-        mb(working.peak),
+        peak(working),
         intelephense_indexed.as_secs_f64(),
         mb(intelephense.current),
-        mb(intelephense.peak),
+        peak(intelephense),
     );
     println!("{report}");
-    let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/php-memory.txt");
-    std::fs::write(out, &report).unwrap();
+    let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
+    std::fs::write(target.join("php-memory.txt"), &report).unwrap();
+    let unix_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let seconds = |d: Duration| (d.as_secs_f64() * 10.0).round() / 10.0;
+    let json = json!({
+        "unix_time": unix_time,
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "threads": std::thread::available_parallelism().map_or(0, |n| n.get()),
+        "release": !cfg!(debug_assertions),
+        "corpus": "laravel-framework",
+        "files": files,
+        "engine": {
+            "index_s": seconds(indexed),
+            "before_mb": megabytes(before.current),
+            "ready_mb": megabytes(ready.current),
+            "after_requests_mb": megabytes(working.current),
+            "peak_mb": working.peak.map(megabytes),
+        },
+        "intelephense": {
+            "version": intelephense_version,
+            "index_s": seconds(intelephense_indexed),
+            "after_indexing_mb": megabytes(intelephense.current),
+            "peak_mb": intelephense.peak.map(megabytes),
+        },
+    });
+    std::fs::write(target.join("php-memory.json"), serde_json::to_string_pretty(&json).unwrap() + "\n").unwrap();
 }
 
 /// Starts Intelephense on `root`, waits for `indexingEnded` and returns how
-/// long indexing took and the server's memory then.
-fn intelephense(root: &Path, storage: &Path) -> (Duration, Memory) {
+/// long indexing took, the server's memory then, and its version.
+fn intelephense(root: &Path, storage: &Path) -> (Duration, Memory, String) {
     let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
     let global = Command::new(npm).args(["root", "-g"]).output().expect("npm (Node 18+) on the PATH");
     let script = PathBuf::from(String::from_utf8_lossy(&global.stdout).trim()).join("intelephense/lib/intelephense.js");
     assert!(script.is_file(), "{} missing: npm i -g intelephense", script.display());
+    let version = std::fs::read_to_string(script.with_file_name("../package.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|package| package["version"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| "?".into());
 
     let mut child = Command::new("node")
         .arg(&script)
@@ -220,7 +270,7 @@ fn intelephense(root: &Path, storage: &Path) -> (Duration, Memory) {
     if child.wait_timeout_or_kill(Duration::from_secs(10)).is_none() {
         eprintln!("intelephense: killed after exit");
     }
-    (indexed, measured)
+    (indexed, measured, version)
 }
 
 trait WaitOrKill {

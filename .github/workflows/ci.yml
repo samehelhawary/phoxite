@@ -114,6 +114,21 @@ jobs:
       - run: cargo test --locked
       - run: cargo build --locked --release --target wasm32-wasip2
 
+  # The performance budgets (crates/phoxite/benches/shared/workload.rs) on the fixture and on
+  # laravel/framework. A shared machine is slower than the ones the budgets were set on, and
+  # uneven: the medians may be three times the budget before this fails.
+  budgets:
+    runs-on: ubuntu-latest
+    env:
+      PHP_CORPUS_DIR: ${{ github.workspace }}/php-corpus
+      PHOXITE_BUDGET_FACTOR: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/php-corpus.sh laravel-framework
+      - run: cargo test --locked --release -p phoxite --test budgets -- --ignored --nocapture
+
   bench:
     runs-on: ubuntu-latest
     continue-on-error: true

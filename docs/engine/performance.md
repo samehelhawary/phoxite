@@ -9,22 +9,30 @@ Final verification (phase 9.8, 2026-11-11, `cargo bench -p phoxite --bench engin
 - Everything else is within budget: Monica's Inspect Code takes 6.3 s (budget 20 s), its cold model 231 ms (400 ms), Laravel's cold index 1.8 s.
 - Memory (`memory` test, laravel/framework): the engine uses 179 MB after requests (peak 180 MB), Intelephense 333 MB.
 
-The budgets are criterion benches in `crates/phoxite/benches/engine.rs`, run with `cargo bench -p phoxite --bench engine` (means in µs).
+The budgets are in `crates/phoxite/benches/shared/workload.rs`. `crates/phoxite/tests/budgets.rs` times each operation and fails when its median is over the budget; CI runs it on every pull request, allowing three times the budget on its shared machines:
 
-| Bench                                                      | Budget | Measured (2026-11-07) |
-| ---------------------------------------------------------- | ------ | --------------------- |
-| `php_laravel/cold_index` (empty cache → ready)             | 30 s   | 1.67 s                |
-| `php_laravel/warm_start` (cache of an earlier run → ready) | 2 s    | 60 ms                 |
-| `php_laravel/hover_after_keystroke`                        | 50 ms  | 2.1 ms                |
-| `php_laravel/completion_after_keystroke`                   | 50 ms  | 5.7 ms                |
-| `php_laravel/diagnostics_after_edit`                       | 300 ms | 214 ms                |
-| `php_fixture/cold_index`                                   | 500 ms | 15 ms                 |
-| `php_fixture/warm_start`                                   | 200 ms | 8.8 ms                |
-| `php_fixture/hover_after_keystroke`                        | 50 ms  | 0.44 ms               |
-| `php_fixture/completion_after_keystroke`                   | 50 ms  | 0.24 ms               |
-| `php_fixture/diagnostics_after_edit`                       | 300 ms | 126 ms                |
+```text
+cargo test -p phoxite --release --test budgets -- --ignored --nocapture
+```
 
-Release (bench) profile on the development machine (Windows 11, 16 threads). laravel/framework is the pinned corpus from `scripts/php-corpus.sh` (3,177 PHP files); without the corpus the `php_laravel/*` benches and their budgets are skipped. The `php_fixture/*` benches use `fixtures/php-library`.
+<!-- bench:budgets:start -->
+| Measure | Budget | Median |
+| --- | --- | --- |
+| `php_fixture/cold_index` | 500 ms | 14 ms |
+| `php_fixture/warm_start` | 200 ms | 6.7 ms |
+| `php_fixture/hover_after_keystroke` | 50 ms | 0.5 ms |
+| `php_fixture/completion_after_keystroke` | 50 ms | 0.7 ms |
+| `php_fixture/diagnostics_after_edit` | 300 ms | 126 ms |
+| `php_laravel/cold_index` | 30.0 s | 1.5 s |
+| `php_laravel/warm_start` | 2.0 s | 59 ms |
+| `php_laravel/hover_after_keystroke` | 50 ms | 2.3 ms |
+| `php_laravel/completion_after_keystroke` | 50 ms | 7.2 ms |
+| `php_laravel/diagnostics_after_edit` | 300 ms | 216 ms |
+
+Medians of `tests/budgets.rs` on fixtures/php-library and laravel/framework, release build, 2026-11-17, Windows x86_64, 16 threads.
+<!-- bench:budgets:end -->
+
+laravel/framework is the pinned corpus from `scripts/php-corpus.sh`; without the corpus its rows are skipped. `node scripts/bench_report.mjs` runs the test and the memory test below and rewrites both tables. The criterion benches in `crates/phoxite/benches/engine.rs` time the same operations (`cargo bench -p phoxite --bench engine`) with their distributions, and the Laravel support budgets, which no test enforces yet.
 
 What the benches measure:
 
@@ -99,9 +107,13 @@ The bench `php_laravel_real/inspect_code` measures 5.7 s. The rest of the slow-d
 
 `cargo test -p phoxite --release --test memory -- --ignored --nocapture` (needs the corpora and `npm i -g intelephense`) indexes laravel/framework from an empty cache with both:
 
-|                             | Index time | Working set                                                                                                                 |
-| --------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Native engine               | 2.0 s      | 74 MB when ready; 153 MB after hover, completion and the inspections on `Builder.php` (the bundled stubs load on first use) |
-| Intelephense 1.18 (Node 24) | 4.6 s      | 323 MB after `indexingEnded`                                                                                                |
+<!-- bench:memory:start -->
+|  | Index time | Working set |
+| --- | --- | --- |
+| Phoxite | 1.5 s | 78 MB when ready; 179 MB after hover, completion and the inspections on `Builder.php` (the bundled stubs load on first use), peak 180 MB |
+| Intelephense 1.18.5 | 4.1 s | 324 MB after `indexingEnded`, peak 324 MB |
+
+laravel/framework v13.40.0, 3,177 PHP files, 2026-11-17, Windows x86_64, 16 threads.
+<!-- bench:memory:end -->
 
 The engine figure is this test process's whole working set, which starts at 5 MB. The Intelephense figure is its `node` process, started directly so that no shell is measured.
