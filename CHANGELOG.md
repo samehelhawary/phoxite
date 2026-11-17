@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- An include path brings what its `composer.json` autoloads: the one at the top of the
+  folder, and, for an include path that is a Composer `vendor` folder, the one of the
+  project beside it. With `../vendor` listed, a `"Services\\": "PaymentGateway/"` rule
+  of `../composer.json` gets `../PaymentGateway` indexed without listing it. The PHP
+  version and the `ext-*` stubs still come from the project's own `composer.json`.
+
 ## 0.6.0 — 2026-11-17
 
 - A file the indexer can't read without failing is left out, and the rest of the project

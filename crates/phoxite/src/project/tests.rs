@@ -450,3 +450,137 @@ fn php_app_fixture() {
     }
     assert_origins_agree(&layout);
 }
+
+#[test]
+fn include_path_with_its_own_manifest() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("app");
+    write(&root, &[("index.php", PHP)]);
+    write(
+        tmp.path(),
+        &[
+            (
+                "platform/composer.json",
+                r#"{
+                    "autoload": { "psr-4": { "Platform\\": "src/", "Shared\\": "../shared/src/" }, "files": ["../helpers.php"] },
+                    "autoload-dev": { "classmap": ["../fixtures"] }
+                }"#,
+            ),
+            ("platform/src/Kernel.php", PHP),
+            ("platform/notes.php", PHP),
+            ("shared/src/Thing.php", PHP),
+            ("shared/bin/tool.php", PHP),
+            ("helpers.php", PHP),
+            ("fixtures/Sample.php", PHP),
+            ("elsewhere/Other.php", PHP),
+        ],
+    );
+    let layout = layout(&root, &[tmp.path().join("platform")], &[]);
+    assert_eq!(
+        files(&layout, tmp.path()),
+        [
+            ("app/index.php".to_string(), Origin::Project),
+            ("fixtures/Sample.php".to_string(), Origin::IncludePath),
+            ("helpers.php".to_string(), Origin::IncludePath),
+            ("platform/notes.php".to_string(), Origin::IncludePath),
+            ("platform/src/Kernel.php".to_string(), Origin::IncludePath),
+            ("shared/src/Thing.php".to_string(), Origin::IncludePath),
+        ]
+    );
+    assert_origins_agree(&layout);
+    let base = normalize(tmp.path());
+    assert_eq!(layout.autoload().class_files("Shared\\Thing"), [base.join("shared/src/Thing.php")]);
+    assert_eq!(layout.autoload().class_files("Platform\\Kernel"), [base.join("platform/src/Kernel.php")]);
+    // `platform/src` is below the include path: no root of its own, so it isn't walked twice.
+    assert!(!layout.libraries.iter().any(|library| library.path == base.join("platform/src")));
+    assert!(layout.is_manifest(&tmp.path().join("platform/composer.json")));
+    assert!(!layout.is_manifest(&tmp.path().join("shared/composer.json")));
+}
+
+/// `../vendor` as an include path brings what the `composer.json` beside it autoloads.
+#[test]
+fn include_path_that_is_a_vendor_directory() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("site/app");
+    let installed = json!({ "packages": [
+        { "name": "a/b", "install-path": "../a/b", "autoload": { "psr-4": { "A\\": "src/" } } }
+    ]});
+    write(&root, &[("index.php", PHP)]);
+    write(
+        &tmp.path().join("site"),
+        &[
+            ("composer.json", r#"{"autoload": {"psr-4": {"Services\\": "PaymentGateway/", "Site\\": "app/lib/"}}}"#),
+            ("vendor/composer/installed.json", &installed.to_string()),
+            ("vendor/a/b/src/Keep.php", PHP),
+            ("vendor/a/b/tests/KeepTest.php", PHP),
+            ("PaymentGateway/Gateway.php", PHP),
+            ("unrelated.php", PHP),
+            ("app/lib/Page.php", PHP),
+        ],
+    );
+    let layout = layout(&root, &[tmp.path().join("site/vendor")], &[]);
+    assert_eq!(
+        files(&layout, &tmp.path().join("site")),
+        [
+            ("PaymentGateway/Gateway.php".to_string(), Origin::IncludePath),
+            ("app/index.php".to_string(), Origin::Project),
+            ("app/lib/Page.php".to_string(), Origin::Project),
+            // The include path itself is indexed whole, as before.
+            ("vendor/a/b/src/Keep.php".to_string(), Origin::IncludePath),
+            ("vendor/a/b/tests/KeepTest.php".to_string(), Origin::IncludePath),
+        ]
+    );
+    assert_origins_agree(&layout);
+    let site = normalize(&tmp.path().join("site"));
+    assert_eq!(layout.autoload().class_files("Services\\Gateway"), [site.join("PaymentGateway/Gateway.php")]);
+    assert_eq!(layout.autoload().namespace_of_dir(&site.join("app/lib")).as_deref(), Some("Site"));
+    assert!(layout.is_manifest(&site.join("composer.json")));
+    assert!(layout.is_manifest(&site.join("vendor/composer.json")));
+}
+
+#[test]
+fn manifests_an_include_path_does_not_bring() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("app");
+    write(&root, &[("composer.json", r#"{"autoload": {"psr-4": {"App\\": "src/"}}}"#), ("src/A.php", PHP)]);
+    let owner = r#"{"autoload": {"classmap": ["extra/"]}}"#;
+    write(
+        tmp.path(),
+        &[
+            // A folder named `vendor` that Composer didn't install.
+            ("plain/composer.json", owner),
+            ("plain/extra/E.php", PHP),
+            ("plain/vendor/lib.php", PHP),
+            // Its owner keeps its packages in `deps`.
+            ("moved/composer.json", r#"{"config": {"vendor-dir": "deps"}, "autoload": {"classmap": ["extra/"]}}"#),
+            ("moved/extra/E.php", PHP),
+            ("moved/vendor/composer/installed.json", "[]"),
+            ("moved/vendor/lib.php", PHP),
+            // A manifest that can't be read: the folder is still indexed.
+            ("broken/composer.json", "{ not json"),
+            ("broken/lib.php", PHP),
+            // Deeper than the top of the include path.
+            ("deep/pkg/composer.json", r#"{"autoload": {"classmap": ["../../plain/extra"]}}"#),
+            ("deep/pkg/lib.php", PHP),
+        ],
+    );
+    let include = ["plain/vendor", "moved/vendor", "broken", "deep"].map(|path| tmp.path().join(path));
+    let layout = layout(&root, &include, &[]);
+    assert_eq!(
+        files(&layout, tmp.path()),
+        [
+            ("app/src/A.php".to_string(), Origin::Project),
+            ("broken/lib.php".to_string(), Origin::IncludePath),
+            ("deep/pkg/lib.php".to_string(), Origin::IncludePath),
+            ("moved/vendor/lib.php".to_string(), Origin::IncludePath),
+            ("plain/vendor/lib.php".to_string(), Origin::IncludePath),
+        ]
+    );
+    assert_origins_agree(&layout);
+    assert!(!layout.is_manifest(&tmp.path().join("plain/composer.json")));
+    assert!(!layout.is_manifest(&tmp.path().join("moved/composer.json")));
+    assert!(layout.is_manifest(&tmp.path().join("broken/composer.json")));
+    // The project's own vendor directory as an include path reads nothing twice.
+    let own = self::layout(&root, &[root.join("vendor")], &[]);
+    assert_eq!(own.autoload().roots().len(), 1);
+}

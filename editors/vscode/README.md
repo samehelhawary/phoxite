@@ -156,7 +156,10 @@ Command Palette under **Phoxite**.
   set, it has to name a `phoxite-lsp` that exists; empty uses the bundled one.
 - **A class or a route that exists is reported missing.** **Index the Project Again**
   reads every file anew. Code outside the workspace folder is found through
-  `phoxite.includePaths`.
+  `phoxite.includePaths`: each folder is indexed whole, and when it has a `composer.json`
+  (or is the `vendor` folder of a project that has one), the folders that file autoloads
+  are indexed too. After changing a `composer.json` outside the workspace, run **Index
+  the Project Again**: the editor only reports changes inside it.
 - **Completions and problems show twice.** Another PHP extension answers too: see below.
 - **Laravel features are missing.** The status says **Phoxite: Laravel** when the folder
   is recognised as one (`composer.json` requires `laravel/framework`, the lock file lists

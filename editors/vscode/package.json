@@ -299,7 +299,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Folders outside the project whose code is indexed too: absolute, `~/…`, or relative to the project."
+          "markdownDescription": "Folders outside the project whose code is indexed too: absolute, `~/…`, or relative to the project. A `composer.json` at the top of such a folder is read for what it autoloads, and so is the one beside a Composer `vendor` folder."
         },
         "phoxite.stubs": {
           "type": "array",

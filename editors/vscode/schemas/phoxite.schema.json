@@ -13,7 +13,7 @@
       "default": ""
     },
     "includePaths": {
-      "description": "Folders outside the project whose code is indexed too: absolute, `~/…`, or relative to the project. Read only in a workspace you trust.",
+      "description": "Folders outside the project whose code is indexed too: absolute, `~/…`, or relative to the project. A `composer.json` at the top of such a folder is read for what it autoloads, and so is the one beside a Composer `vendor` folder. Read only in a workspace you trust.",
       "type": "array",
       "items": { "type": "string" },
       "default": []

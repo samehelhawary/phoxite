@@ -213,6 +213,17 @@ fn layout_changes_rescan() {
     engine.files_changed(&[manifest], &[]);
     assert!(engine.wait_idle(WAIT));
     assert!(has_class(&engine, "Shared\\Thing"));
+
+    // So does one appearing in an include path.
+    let extra = f.root.parent().unwrap().join("extra");
+    std::fs::create_dir_all(&extra).unwrap();
+    std::fs::write(extra.join("Extra.php"), class("Extra\\Thing")).unwrap();
+    assert!(!has_class(&engine, "Extra\\Thing"));
+    let manifest = outside.join("composer.json");
+    std::fs::write(&manifest, r#"{"autoload":{"psr-4":{"Extra\\":"../extra/"}}}"#).unwrap();
+    engine.files_changed(&[manifest], &[]);
+    assert!(engine.wait_idle(WAIT));
+    assert!(has_class(&engine, "Extra\\Thing"));
 }
 
 #[test]

@@ -16,7 +16,11 @@
 //!   contributes the files its own `autoload` names, minus its
 //!   `exclude-from-classmap` patterns, so a package's tests and tooling stay
 //!   out. Without the file nothing from the vendor directory is indexed.
-//! - **Include paths** ([`PhpConfig::include_paths`]).
+//! - **Include paths** ([`PhpConfig::include_paths`]). Each is indexed whole.
+//!   A `composer.json` at its top is read for its `autoload` sections, and so
+//!   is the one beside an include path that is a Composer vendor directory
+//!   (the project that installed it): the folders they name outside the
+//!   include paths are indexed too. Manifests deeper inside are not read.
 //!
 //! The excluded folders apply to every file below the project folder, the
 //! vendor directory included. [`LayoutConfig::from_config`] passes the
@@ -100,6 +104,9 @@ pub struct ProjectLayout {
     matcher: ExcludeMatcher,
     libraries: Vec<LibraryRoot>,
     autoload: AutoloadMap,
+    /// Where the `composer.json` of an include path is, or would be: the
+    /// layout changes with these files too.
+    manifests: Vec<PathBuf>,
 }
 
 impl ProjectLayout {
@@ -122,6 +129,7 @@ impl ProjectLayout {
             matcher: ExcludeMatcher::new(&config.excludes),
             libraries: Vec::new(),
             autoload: AutoloadMap::default(),
+            manifests: Vec::new(),
         };
         if let Some(manifest) = &manifest {
             layout.add_autoload(&root, &manifest.autoload, false, Origin::Project, false);
@@ -131,20 +139,70 @@ impl ProjectLayout {
                 layout.add_autoload(&normalize(&dir), &autoload, dev, Origin::Package(name), true);
             }
         }
-        for path in &config.include_paths {
-            let path = normalize(path);
-            if path.as_os_str().is_empty() {
-                continue;
-            }
+        let include_paths: Vec<PathBuf> = config
+            .include_paths
+            .iter()
+            .map(|path| normalize(path))
+            .filter(|path| !path.as_os_str().is_empty())
+            .collect();
+        for path in &include_paths {
             layout.push_library(LibraryRoot {
                 path: path.clone(),
                 is_file: path.is_file(),
                 origin: Origin::IncludePath,
-                base: path,
+                base: path.clone(),
                 exclude_from_classmap: Vec::new(),
             });
         }
+        // After every include path is known: what one of them covers is not
+        // walked a second time for a manifest's sake.
+        for path in &include_paths {
+            layout.add_include_manifests(path);
+        }
         layout
+    }
+
+    /// The `composer.json` an include path brings: its own, and, when it is
+    /// a Composer vendor directory (it has `composer/installed.json`), the
+    /// one of the project that installed it. What they autoload from outside
+    /// the include paths is indexed with them, and their namespaces are known.
+    fn add_include_manifests(&mut self, path: &Path) {
+        if path.is_file() {
+            return;
+        }
+        let mut dirs = vec![path.to_path_buf()];
+        let owner = path.parent().filter(|_| path.join("composer").join("installed.json").is_file());
+        if let Some(owner) = owner {
+            dirs.push(owner.to_path_buf());
+        }
+        for dir in dirs {
+            let file = dir.join("composer.json");
+            // The project's own manifest is read already.
+            if dir == self.root || self.manifests.contains(&file) {
+                continue;
+            }
+            let manifest = RootManifest::read(&dir);
+            let is_owner = dir != path;
+            if is_owner && manifest.as_ref().is_some_and(|m| normalize(&dir.join(&m.vendor_dir)) != path) {
+                // The folder above keeps its packages elsewhere: this one isn't its vendor directory.
+                continue;
+            }
+            self.manifests.push(file);
+            if let Some(manifest) = manifest {
+                self.add_autoload(&dir, &manifest.autoload, false, Origin::IncludePath, false);
+                self.add_autoload(&dir, &manifest.autoload_dev, true, Origin::IncludePath, false);
+            }
+        }
+    }
+
+    /// Whether the files below `path` (or `path` itself, a PHP file) are
+    /// found without a library root of their own: by the project walk, or
+    /// below an include path.
+    fn is_covered(&self, path: &Path) -> bool {
+        self.in_project_walk(path)
+            || self.libraries.iter().any(|library| {
+                library.origin == Origin::IncludePath && !library.is_file && path.starts_with(&library.path)
+            })
     }
 
     /// Records one autoload section of the package in `base`.
@@ -158,7 +216,12 @@ impl ProjectLayout {
             let path = normalize(&base.join(rel));
             // The project's own paths inside the walk are already covered by
             // it, except a `files` entry the walk skips for its extension.
-            if origin == Origin::Project && layout.in_project_walk(&path) && (!is_file || is_php_path(&path)) {
+            let covered = match origin {
+                Origin::Project => layout.in_project_walk(&path),
+                Origin::IncludePath => layout.is_covered(&path),
+                Origin::Package(_) => false,
+            };
+            if covered && (!is_file || is_php_path(&path)) {
                 return;
             }
             layout.push_library(LibraryRoot {
@@ -230,10 +293,13 @@ impl ProjectLayout {
     }
 
     /// Whether a change to `path` changes the layout itself, so it must be
-    /// loaded again: the root `composer.json` or `installed.json`.
+    /// loaded again: the root `composer.json` or `installed.json`, or the
+    /// `composer.json` of an include path.
     pub fn is_manifest(&self, path: &Path) -> bool {
         let path = normalize(path);
-        path == self.root.join("composer.json") || path == self.vendor_dir.join("composer").join("installed.json")
+        path == self.root.join("composer.json")
+            || path == self.vendor_dir.join("composer").join("installed.json")
+            || self.manifests.contains(&path)
     }
 
     /// Whether `path` is below the project folder, outside the vendor directory.
