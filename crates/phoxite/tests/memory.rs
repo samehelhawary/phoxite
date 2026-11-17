@@ -25,6 +25,7 @@
 mod lsp_client;
 
 use std::path::{Path, PathBuf};
+#[cfg(any(windows, target_os = "macos"))]
 use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
