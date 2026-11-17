@@ -52,6 +52,7 @@ OpenIDEA's installer depends on these, so a release that changes them breaks ins
 
 - Asset names `phoxite-lsp-<target>[.exe]` (OpenIDEA matches the Windows, Linux and macOS
   ones, x64 and arm64), each with a `<asset>.sha256` file containing `<hash>  <name>`.
-- `phoxite-lsp --version`.
+- `phoxite-lsp --version`, and the server starting whatever other arguments it is given
+  (`check` as the first argument is a command of its own and starts no server).
 - `experimental.phoxite` in the server's capabilities, and the request names under
   `phoxite/laravel/*` and `phoxite/refactor/*` (`docs/editors.md`).

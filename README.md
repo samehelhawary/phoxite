@@ -130,6 +130,33 @@ read outside it: `analyzers` and `laravel.database` are never taken from the fil
 `includePaths` only in a workspace the user trusts. A setting whose value doesn't fit is
 named in a message and keeps its default.
 
+## Checking a project from the command line
+
+The same binary inspects a project without an editor, for a terminal or for CI:
+
+```sh
+phoxite-lsp check                      # the project of the current folder
+phoxite-lsp check app routes           # only what is below these paths
+phoxite-lsp check --format sarif > phoxite.sarif
+```
+
+It reports the problems of the project's own PHP files and Blade templates (not
+`vendor/`) as an editor shows them, with the settings of the project's `phoxite.json`.
+The exit code is 1 when there is an error or a warning; `--fail-on error` lets warnings
+pass and `--fail-on never` only reports. `--format` takes `text`, `json`, `sarif`
+(2.1.0, for code scanning) and `github`, which GitHub Actions shows as annotations on
+the changed lines:
+
+```yaml
+- run: |
+    curl -fsSLo phoxite-lsp https://github.com/samehelhawary/phoxite/releases/latest/download/phoxite-lsp-x86_64-unknown-linux-gnu
+    chmod +x phoxite-lsp
+    ./phoxite-lsp check --format github
+```
+
+Install the project's dependencies first (`composer install`): without `vendor/` every
+class of a package is an undefined class. `phoxite-lsp check --help` lists the rest.
+
 ## Licence
 
 Apache-2.0. See `NOTICE` and `THIRD_PARTY_LICENSES.md` for what is bundled (the

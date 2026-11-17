@@ -16,6 +16,9 @@ again when it changes (the README says which keys it may not set). A client that
 files for the server reports its changes like those of any other file; without one, run
 `phoxite.server.rescan` or restart the server after editing it.
 
+`phoxite-lsp check` inspects a project without an editor and prints its problems; see
+the README.
+
 ## OpenIDEA
 
 Nothing to download: pick **Phoxite** for PHP in **Settings › Languages & Frameworks ›

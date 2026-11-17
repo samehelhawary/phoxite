@@ -13,6 +13,7 @@ use crossbeam_channel::Sender;
 use lsp_server::{Message, Notification};
 use lsp_types::{self as lsp, Url};
 use parking_lot::{Mutex, RwLock};
+use phoxite::base::settings::PhpConfig;
 use phoxite::base::{self as e, DocId, Document};
 use phoxite::engine::{CACHE_SUBDIR, EngineConfig, PhpEngine};
 use phoxite::inspect::InspectionConfig;
@@ -85,6 +86,17 @@ impl DocSnapshot {
             version: self.version.max(0) as u32,
             text: &self.text,
         }
+    }
+}
+
+/// What the engine of the project at `root` is opened with: its index is
+/// kept in a folder of `cache_dir` named after the project's path.
+pub fn engine_config(cache_dir: &Path, root: &Path, php: &PhpConfig) -> EngineConfig {
+    let key = blake3::hash(root.to_string_lossy().as_bytes()).to_hex();
+    EngineConfig {
+        cache_dir: cache_dir.join(&key[..16]).join(CACHE_SUBDIR),
+        layout: LayoutConfig::from_config(root, php),
+        stubs: StubFilter::from_config(root, php),
     }
 }
 
@@ -178,12 +190,7 @@ impl State {
         let file = self.project_file(&root, None);
         let (settings, rejected) = Settings::layered(&self.client_settings.read().0, file.as_ref(), self.is_trusted());
         let php = settings.engine_config();
-        let key = blake3::hash(root.to_string_lossy().as_bytes()).to_hex();
-        let config = EngineConfig {
-            cache_dir: self.cache_dir.join(&key[..16]).join(CACHE_SUBDIR),
-            layout: LayoutConfig::from_config(&root, &php),
-            stubs: StubFilter::from_config(&root, &php),
-        };
+        let config = engine_config(&self.cache_dir, &root, &php);
         let events = self.events.clone();
         let sink: e::SharedSink = Arc::new(move |event: e::IdeEvent| {
             let _ = events.send(event);
@@ -497,9 +504,7 @@ impl State {
         let diagnostics = all
             .into_iter()
             .map(|mut d| {
-                if let Some(severity) = d.code.as_deref().and_then(|code| settings.severity(code)) {
-                    d.severity = severity;
-                }
+                settings.apply_severity(&mut d);
                 convert::diagnostic(d)
             })
             .collect();

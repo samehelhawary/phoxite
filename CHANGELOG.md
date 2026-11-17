@@ -16,6 +16,10 @@
   can't set `analyzers` or `laravel.database`, and `includePaths` only in a trusted
   workspace. VS Code completes and validates the file, and `ide.json` too.
 - A changed severity of an inspection shows at once, not with the next edit of the file.
+- `phoxite-lsp check [PATH...]` inspects a project from the command line: the problems of
+  its own PHP files and Blade templates as text, JSON, SARIF 2.1.0 or GitHub annotations
+  (`--format`), and an exit code for CI (`--fail-on error|warning|never`). It reads the
+  project's `phoxite.json`.
 
 ## 0.4.1 — 2026-11-16
 

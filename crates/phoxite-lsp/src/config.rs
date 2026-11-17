@@ -143,6 +143,13 @@ impl Settings {
         }
     }
 
+    /// Gives `problem` the severity the user chose for its inspection.
+    pub fn apply_severity(&self, problem: &mut phoxite::base::Diagnostic) {
+        if let Some(severity) = problem.code.as_deref().and_then(|code| self.severity(code)) {
+            problem.severity = severity;
+        }
+    }
+
     /// The severity the user chose for inspection `code`.
     pub fn severity(&self, code: &str) -> Option<Severity> {
         severity_named(self.inspections.get(code)?.severity.as_deref()?)
@@ -215,13 +222,19 @@ pub const PROJECT_FILE: &str = "phoxite.json";
 /// What `phoxite.json` of the project at `root` holds; `None` without the
 /// file, an error when it isn't a JSON object.
 pub fn read_project_file(root: &Path) -> Result<Option<Value>, String> {
-    let text = match std::fs::read_to_string(root.join(PROJECT_FILE)) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e.to_string()),
-    };
+    let path = root.join(PROJECT_FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    read_settings_file(&path).map(Some)
+}
+
+/// The settings file at `path`; an error when it can't be read or isn't a
+/// JSON object.
+pub fn read_settings_file(path: &Path) -> Result<Value, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     match serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')) {
-        Ok(value @ Value::Object(_)) => Ok(Some(value)),
+        Ok(value @ Value::Object(_)) => Ok(value),
         Ok(_) => Err("it has to hold an object".to_owned()),
         Err(e) => Err(e.to_string()),
     }
