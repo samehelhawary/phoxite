@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 — 2026-11-17
 
 - An include path brings what its `composer.json` autoloads: the one at the top of the
   folder, and, for an include path that is a Composer `vendor` folder, the one of the
