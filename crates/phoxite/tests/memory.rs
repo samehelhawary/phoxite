@@ -20,18 +20,20 @@
 //! The report goes to `target/php-memory.txt` and, for
 //! `scripts/bench_report.mjs`, `target/php-memory.json`.
 
-use std::io::{BufRead, BufReader, Write};
+#[allow(dead_code)]
+#[path = "support/lsp_client.rs"]
+mod lsp_client;
+
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::Arc;
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use phoxite::base::{CancellationToken, DocId, IdeEvent, Pos, SharedSink};
 use phoxite::engine::{CACHE_SUBDIR, EngineConfig, EngineState, PhpEngine};
 use phoxite::project::LayoutConfig;
 use phoxite::stubs::StubFilter;
-use serde_json::{Value, json};
+use serde_json::json;
 
 const INDEX_TIMEOUT: Duration = Duration::from_secs(900);
 const MB: f64 = 1024.0 * 1024.0;
@@ -137,7 +139,12 @@ fn engine_memory_against_intelephense() {
 
     // ------------------------------------------------------ intelephense
     let storage = tempfile::tempdir().unwrap();
-    let (intelephense_indexed, intelephense, intelephense_version) = intelephense(&root, storage.path());
+    let (_, intelephense_version) = lsp_client::intelephense_script();
+    let (server, intelephense_indexed) = lsp_client::intelephense(&root, storage.path(), INDEX_TIMEOUT);
+    // Let the post-indexing work settle before measuring.
+    std::thread::sleep(Duration::from_secs(2));
+    let intelephense = memory(server.pid()).expect("Intelephense's memory");
+    server.shutdown(Duration::from_secs(10));
 
     let report = format!(
         "laravel/framework ({files} files)\n\
@@ -181,145 +188,4 @@ fn engine_memory_against_intelephense() {
         },
     });
     std::fs::write(target.join("php-memory.json"), serde_json::to_string_pretty(&json).unwrap() + "\n").unwrap();
-}
-
-/// Starts Intelephense on `root`, waits for `indexingEnded` and returns how
-/// long indexing took, the server's memory then, and its version.
-fn intelephense(root: &Path, storage: &Path) -> (Duration, Memory, String) {
-    let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
-    let global = Command::new(npm).args(["root", "-g"]).output().expect("npm (Node 18+) on the PATH");
-    let script = PathBuf::from(String::from_utf8_lossy(&global.stdout).trim()).join("intelephense/lib/intelephense.js");
-    assert!(script.is_file(), "{} missing: npm i -g intelephense", script.display());
-    let version = std::fs::read_to_string(script.with_file_name("../package.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|package| package["version"].as_str().map(str::to_owned))
-        .unwrap_or_else(|| "?".into());
-
-    let mut child = Command::new("node")
-        .arg(&script)
-        .arg("--stdio")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("node");
-    let pid = child.id();
-    let mut stdin = child.stdin.take().unwrap();
-    let stdout = child.stdout.take().unwrap();
-
-    let (tx, rx) = mpsc::channel::<Value>();
-    std::thread::spawn(move || {
-        let mut reader = BufReader::new(stdout);
-        while let Some(message) = read_message(&mut reader) {
-            if tx.send(message).is_err() {
-                return;
-            }
-        }
-    });
-
-    let uri = file_uri(root);
-    let started = Instant::now();
-    send(
-        &mut stdin,
-        &json!({
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": {
-                "processId": std::process::id(),
-                "rootUri": uri,
-                "workspaceFolders": [{ "uri": uri, "name": "laravel-framework" }],
-                "capabilities": { "workspace": { "configuration": true, "workspaceFolders": true } },
-                "initializationOptions": { "storagePath": storage.to_string_lossy(), "clearCache": true },
-            }
-        }),
-    );
-    let mut initialized = false;
-    let deadline = Instant::now() + INDEX_TIMEOUT;
-    loop {
-        let left = deadline.saturating_duration_since(Instant::now());
-        let message = rx.recv_timeout(left).expect("Intelephense didn't finish indexing in time");
-        let method = message.get("method").and_then(Value::as_str);
-        match (message.get("id"), method) {
-            // Intelephense 1.18 crashes when `initialized` comes before the
-            // `initialize` result.
-            (Some(id), None) if id == &json!(1) && !initialized => {
-                initialized = true;
-                send(&mut stdin, &json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
-            }
-            // Requests from the server: configuration gets defaults, the rest
-            // an empty result.
-            (Some(id), Some(method)) => {
-                let result = if method == "workspace/configuration" {
-                    let items = message["params"]["items"].as_array().map_or(0, Vec::len);
-                    Value::Array(vec![Value::Null; items])
-                } else {
-                    Value::Null
-                };
-                send(&mut stdin, &json!({ "jsonrpc": "2.0", "id": id, "result": result }));
-            }
-            (None, Some("indexingEnded")) => break,
-            _ => {}
-        }
-    }
-    let indexed = started.elapsed();
-    // Let the post-indexing work settle before measuring.
-    std::thread::sleep(Duration::from_secs(2));
-    let measured = memory(pid).expect("Intelephense's memory");
-    send(&mut stdin, &json!({ "jsonrpc": "2.0", "id": 2, "method": "shutdown" }));
-    send(&mut stdin, &json!({ "jsonrpc": "2.0", "method": "exit" }));
-    if child.wait_timeout_or_kill(Duration::from_secs(10)).is_none() {
-        eprintln!("intelephense: killed after exit");
-    }
-    (indexed, measured, version)
-}
-
-trait WaitOrKill {
-    fn wait_timeout_or_kill(&mut self, timeout: Duration) -> Option<std::process::ExitStatus>;
-}
-
-impl WaitOrKill for std::process::Child {
-    fn wait_timeout_or_kill(&mut self, timeout: Duration) -> Option<std::process::ExitStatus> {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if let Ok(Some(status)) = self.try_wait() {
-                return Some(status);
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        let _ = self.kill();
-        let _ = self.wait();
-        None
-    }
-}
-
-fn file_uri(path: &Path) -> String {
-    let text = path.to_string_lossy().replace('\\', "/");
-    if text.starts_with('/') { format!("file://{text}") } else { format!("file:///{text}") }
-}
-
-fn send(stdin: &mut impl Write, message: &Value) {
-    let body = message.to_string();
-    // The server may already be gone after `exit`.
-    let _ = write!(stdin, "Content-Length: {}\r\n\r\n{body}", body.len());
-    let _ = stdin.flush();
-}
-
-fn read_message(reader: &mut impl BufRead) -> Option<Value> {
-    let mut length = None;
-    loop {
-        let mut line = String::new();
-        if reader.read_line(&mut line).ok()? == 0 {
-            return None;
-        }
-        let line = line.trim_end();
-        if line.is_empty() {
-            break;
-        }
-        if let Some(value) = line.strip_prefix("Content-Length:") {
-            length = value.trim().parse::<usize>().ok();
-        }
-    }
-    let mut body = vec![0; length?];
-    reader.read_exact(&mut body).ok()?;
-    serde_json::from_slice(&body).ok()
 }

@@ -2,7 +2,9 @@
 
 Phase 6.2 ran `crates/phoxite/tests/differential.rs` on the three corpora and on `fixtures/php-library`. This is the summary; the full per-sample reports are written to `target/php-differential/<name>.{md,json}` by each run.
 
-> The harness is not in this repository yet: it drove Intelephense through the language-server client of the IDE the engine was developed in, and has to be moved onto a client of its own. Until then the tables below are a record of that run, and the commands don't work here.
+The harness drives Intelephense over stdio itself (`crates/phoxite/tests/support/lsp_client.rs`); when the tables below were made it went through the language-server client of the IDE the engine was developed in. The same seed samples the same positions.
+
+A rerun on 2026-11-17 with this harness (same seed, corpus tags and Intelephense 1.18.5) gave the counts of the table below for every row but one: WordPress hover agrees on 188 positions and differs on 8, where the table has 190 and 6. The engine of 0.4.1 gives the same 188, so the two positions moved before that release or with the client; they haven't been reviewed by hand, and the table and the review below are still those of the earlier run.
 
 ```text
 cargo test -p phoxite --test differential -- --ignored --exact fixture

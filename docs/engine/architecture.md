@@ -229,9 +229,9 @@ the last three are guesses only what the editor shows uses
   laravel/framework, symfony and WordPress, which `scripts/php-corpus.sh` clones
   into `../php-corpus`; `scripts/laravel-apps.sh` adds two real Laravel
   applications with their `vendor/` for `LARAVEL_APP_DIR`.
-- A differential test compared definition and hover with Intelephense on those
-  corpora. Its harness is not in this repository yet; the last report is in
-  [differential.md](differential.md).
+- `crates/phoxite/tests/differential.rs` (ignored; needs Intelephense and, for
+  `corpus`, the corpora) compares definition and hover with Intelephense on
+  sampled positions. The last report is in [differential.md](differential.md).
 - `crates/phoxite/benches/engine.rs` holds the performance budgets
   (`cargo bench -p phoxite --bench engine`); see
   [performance.md](performance.md). `tests/memory.rs` compares memory with
