@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-11-17
 
 - A file the indexer can't read without failing is left out, and the rest of the project
   is indexed. Indexing that fails as a whole is tried once more, then reported with a
