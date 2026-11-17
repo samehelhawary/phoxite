@@ -310,6 +310,45 @@ fn shutdown_during_a_scan_leaves_dumb_mode() {
 }
 
 #[test]
+fn a_file_whose_scan_panics_is_left_out() {
+    let f = Fixture::new();
+    f.write("src/Foo.php", &class("App\\Foo"));
+    f.write(&format!("src/{}", crate::index::PANICKING_FILE), &class("App\\Broken"));
+    f.write("src/Bar.php", &class("App\\Bar"));
+    let engine = f.open();
+
+    assert_eq!(engine.status().state, EngineState::Ready);
+    assert_eq!(engine.status().files, 2);
+    assert!(has_class(&engine, "App\\Foo") && has_class(&engine, "App\\Bar"));
+    assert!(!has_class(&engine, "App\\Broken"));
+    assert_eq!(summary(&f.take_events()), ["server:Starting", "index:true", "index:false", "server:Ready"]);
+}
+
+#[test]
+fn a_scan_that_panics_fails_and_the_next_one_recovers() {
+    let f = Fixture::new();
+    f.write("src/Foo.php", &class("App\\Foo"));
+    let marker = f.write(PANICKING_PROJECT, "");
+    let engine = f.open();
+
+    // Those waiting for the worker aren't left waiting (`open` returned),
+    // and dumb mode ended. The scan ran twice before the engine gave up.
+    let EngineState::Failed(message) = engine.status().state else { panic!("{:?}", engine.status().state) };
+    assert!(message.contains("indexing panicked"), "{message}");
+    assert_eq!(
+        summary(&f.take_events()),
+        ["server:Starting", "index:true", "index:false", "server:Busy", "index:true", "index:false", "server:Crashed"]
+    );
+
+    std::fs::remove_file(marker).unwrap();
+    engine.rescan();
+    assert!(engine.wait_idle(WAIT));
+    assert_eq!(engine.status().state, EngineState::Ready);
+    assert!(has_class(&engine, "App\\Foo"));
+    assert_eq!(summary(&f.take_events()), ["server:Busy", "index:true", "index:false", "server:Ready"]);
+}
+
+#[test]
 fn resolved_types_are_dropped_on_edit() {
     use crate::types::Type;
     let f = Fixture::new();

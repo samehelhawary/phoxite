@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A file the indexer can't read without failing is left out, and the rest of the project
+  is indexed. Indexing that fails as a whole is tried once more, then reported with a
+  message instead of an "Indexing PHP" progress that never ends.
+
 ## 0.4.1 — 2026-11-16
 
 - The notices and the documentation describe Phoxite as a standalone engine, with Sameh

@@ -201,8 +201,14 @@ pub fn run(connection: Connection) -> Result<(), String> {
     }
     // `initialize_finish` returned, so the client's `initialized` has come (it reads the
     // notification itself): the server may ask the client things from here on.
-    let mut server =
-        Server { state, pending: Arc::default(), progress_open: false, shutting_down: false, laravel: None };
+    let mut server = Server {
+        state,
+        pending: Arc::default(),
+        progress_open: false,
+        shutting_down: false,
+        laravel: None,
+        failure: None,
+    };
     server.watch_files();
     server.main_loop(&connection, &events_rx)?;
     server.state.shutdown();
@@ -219,6 +225,8 @@ struct Server {
     shutting_down: bool,
     /// The Laravel folders the client was last told about; none before the first time.
     laravel: Option<Vec<Url>>,
+    /// Why indexing last failed, once the client was told; none after it worked again.
+    failure: Option<String>,
 }
 
 impl Server {
@@ -269,10 +277,30 @@ impl Server {
                 }
             }
             e::IdeEvent::LanguageServer { status, message, .. } => {
-                tracing::info!("engine {status:?}{}", message.map(|m| format!(": {m}")).unwrap_or_default());
+                tracing::info!("engine {status:?}{}", message.as_ref().map(|m| format!(": {m}")).unwrap_or_default());
+                match status {
+                    e::event::ServerStatus::Crashed => self.indexing_failed(message.unwrap_or_default()),
+                    e::event::ServerStatus::Ready => self.failure = None,
+                    _ => {}
+                }
             }
             e::IdeEvent::LanguageServerRemoved { .. } => {}
         }
+    }
+
+    /// Tells the user indexing failed, once for each reason until it works again.
+    fn indexing_failed(&mut self, reason: String) {
+        if self.failure.as_ref() == Some(&reason) {
+            return;
+        }
+        self.state.notify::<n::ShowMessage>(lsp::ShowMessageParams {
+            typ: lsp::MessageType::ERROR,
+            message: format!(
+                "Phoxite could not index the project: {reason}. Index the project again to retry (`{}`).",
+                crate::commands::RESCAN
+            ),
+        });
+        self.failure = Some(reason);
     }
 
     /// Tells the client which workspace folders are Laravel projects, when that changed

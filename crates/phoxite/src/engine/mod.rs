@@ -46,6 +46,7 @@ pub(crate) mod parts;
 mod tests;
 
 use std::collections::{BTreeSet, HashMap};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -104,7 +105,8 @@ pub enum EngineState {
     Ready,
     /// The project has no PHP: nothing is indexed until a PHP file appears.
     Inactive,
-    /// Indexing failed; the message says why. The next batch or rescan retries.
+    /// Indexing failed (after one more try, when it panicked); the message
+    /// says why. The next batch or rescan retries.
     Failed(String),
     /// [`PhpEngine::shutdown`] was called.
     Stopped,
@@ -1745,24 +1747,76 @@ struct Job {
     removed: Vec<PathBuf>,
 }
 
+/// A scan of a project holding a file of this name panics, in tests.
+#[cfg(test)]
+pub(crate) const PANICKING_PROJECT: &str = "panics-when-scanned";
+
+/// What a panic said.
+fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
+    panic
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_else(|| "no message".into())
+}
+
+/// Dropped when the worker thread ends. If it ends by a panic outside a job,
+/// nobody is left to take work: the engine reports the failure and those
+/// waiting for it stop waiting.
+struct WorkerStopped<'a>(&'a Shared);
+
+impl Drop for WorkerStopped<'_> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            return;
+        }
+        self.0.fail(&IdeError::internal("the indexing worker stopped"));
+        let mut q = self.0.queue.lock();
+        q.busy = false;
+        q.shutdown = true;
+        self.0.idle.notify_all();
+    }
+}
+
 impl Shared {
     fn run(self: Arc<Self>) {
+        let _stopped = WorkerStopped(&self);
+        // A job that panicked is run once more, as a rescan, before the
+        // engine reports that indexing failed.
+        let mut retried = false;
         while let Some(job) = self.next_job() {
-            if job.store_parts {
-                self.store_parts();
-            }
-            if !job.rescan && job.changed.is_empty() && job.removed.is_empty() {
+            let Err(panic) = catch_unwind(AssertUnwindSafe(|| self.work(job))) else {
+                retried = false;
                 continue;
+            };
+            let message = format!("indexing panicked: {}", panic_message(panic.as_ref()));
+            if retried {
+                retried = false;
+                self.fail(&IdeError::internal(message));
+            } else {
+                retried = true;
+                tracing::warn!("php engine: {message}; scanning again");
+                self.end_indexing();
+                self.queue.lock().rescan = true;
             }
-            let result = if job.rescan { self.scan() } else { self.apply(job.changed, job.removed) };
-            match result {
-                Ok(()) => {}
-                Err(e) if e.kind == crate::base::error::ErrorKind::Cancelled => {
-                    // Shutdown: the loop ends at the next look at the queue.
-                    self.end_indexing();
-                }
-                Err(e) => self.fail(&e),
+        }
+    }
+
+    fn work(&self, job: Job) {
+        if job.store_parts {
+            self.store_parts();
+        }
+        if !job.rescan && job.changed.is_empty() && job.removed.is_empty() {
+            return;
+        }
+        let result = if job.rescan { self.scan() } else { self.apply(job.changed, job.removed) };
+        match result {
+            Ok(()) => {}
+            Err(e) if e.kind == crate::base::error::ErrorKind::Cancelled => {
+                // Shutdown: the loop ends at the next look at the queue.
+                self.end_indexing();
             }
+            Err(e) => self.fail(&e),
         }
     }
 
@@ -1829,6 +1883,8 @@ impl Shared {
         self.begin_indexing(files.len() as u64, declarations);
         let index = self.open_index()?;
         let paths: Vec<PathBuf> = files.into_iter().map(|(path, _)| path).collect();
+        #[cfg(test)]
+        assert!(!config.root.join(PANICKING_PROJECT).exists(), "a test project whose scan panics");
         let started = Instant::now();
         let stats = index.sync(&paths, &self.cancel)?;
         log_stats("scan", &stats, started);

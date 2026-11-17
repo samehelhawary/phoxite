@@ -51,6 +51,7 @@ mod tests;
 pub(crate) mod words;
 
 use std::collections::{HashMap, HashSet};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -268,7 +269,13 @@ impl PhpIndex {
                         let scanned = if cancel.is_cancelled() {
                             Scanned::Skipped
                         } else {
-                            scan(path, key, previous.get(key.as_str()), &known)
+                            // A file whose parse panics is left as it was; the
+                            // others are indexed.
+                            catch_unwind(AssertUnwindSafe(|| scan(path, key, previous.get(key.as_str()), &known)))
+                                .unwrap_or_else(|_| {
+                                    tracing::warn!("php index: reading {} panicked; it is left out", path.display());
+                                    Scanned::Skipped
+                                })
                         };
                         (key.as_str(), scanned)
                     })
@@ -586,9 +593,14 @@ fn part_key(kind: &str, path: &Path) -> String {
     format!("{kind}\0{}", path_key(path))
 }
 
+/// Reading a file of this name panics, in tests.
+#[cfg(test)]
+pub(crate) const PANICKING_FILE: &str = "PanicsWhenScanned.php";
+
 /// The result of reading one file.
 enum Scanned {
-    /// Cancelled before the file was looked at.
+    /// Cancelled before the file was looked at, or reading it panicked:
+    /// what the index holds for it stays.
     Skipped,
     /// Same mtime and size as the stored record.
     Unchanged,
@@ -620,6 +632,8 @@ fn scan(path: &Path, key: &str, previous: Option<&FileRecord>, known: &HashSet<[
         return Scanned::Unchanged;
     }
     let Ok(bytes) = std::fs::read(path) else { return Scanned::Gone };
+    #[cfg(test)]
+    assert!(!path.ends_with(PANICKING_FILE), "a test file whose scan panics");
     let record = FileRecord { hash: *blake3::hash(&bytes).as_bytes(), mtime, size: bytes.len() as u64 };
     if previous.is_some_and(|prev| prev.hash == record.hash) {
         return Scanned::Rehashed(record);
