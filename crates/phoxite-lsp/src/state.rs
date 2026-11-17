@@ -184,6 +184,13 @@ impl State {
         }
     }
 
+    /// Reads the PHP version and the `ext-*` requirements of the workspace's
+    /// `composer.json` again. Nothing happens when they are the same.
+    pub fn refresh_stub_filter(&self, workspace: &Workspace) {
+        let php = self.settings.read().engine_config();
+        workspace.engine.set_stub_filter(StubFilter::from_config(&workspace.root, &php));
+    }
+
     pub fn remove_workspace(&self, root: &Path) {
         let root = dunce::simplified(root).to_path_buf();
         let mut workspaces = self.workspaces.write();

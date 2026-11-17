@@ -1097,3 +1097,34 @@ fn the_client_is_told_which_folders_are_laravel_projects() {
     assert_eq!(status(&c), [json!({ "laravel": false, "folders": [] })]);
     c.shutdown();
 }
+
+/// The PHP version and the extensions come from `composer.json`: a change to it is
+/// followed without a restart.
+#[test]
+fn the_php_version_and_the_extensions_follow_composer_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let manifest = root.join("composer.json");
+    std::fs::write(&manifest, r#"{ "require": { "php": "^8.1" } }"#).unwrap();
+    let file = root.join("index.php");
+    let text =
+        "<?php\nclass C {\n    public string $p { get => 'x'; }\n}\n\nfunction f(): void {\n    new \\Redis();\n}\n";
+    std::fs::write(&file, text).unwrap();
+    let mut c = Client::start(&root);
+    let uri = c.open(&file, "php");
+    let codes = |found: &[Value]| -> Vec<String> {
+        let mut codes: Vec<String> = found.iter().filter_map(|d| d["code"].as_str().map(str::to_owned)).collect();
+        codes.sort();
+        codes
+    };
+    let found = c.diagnostics(&uri, |d| d.len() >= 2);
+    assert_eq!(codes(&found), ["PhpLanguageLevel", "PhpUndefinedClass"], "{found:?}");
+
+    std::fs::write(&manifest, r#"{ "require": { "php": "^8.4", "ext-redis": "*" } }"#).unwrap();
+    c.notify::<n::DidChangeWatchedFiles>(json!({
+        "changes": [{ "uri": Url::from_file_path(&manifest).unwrap(), "type": 2 }]
+    }));
+    let found = c.diagnostics(&uri, |d| d.is_empty());
+    assert!(found.is_empty());
+    c.shutdown();
+}

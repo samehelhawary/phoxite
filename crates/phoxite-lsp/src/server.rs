@@ -439,6 +439,11 @@ impl Server {
                 paths.iter().filter(|p| p.starts_with(&w.root)).cloned().collect()
             };
             let (c, r) = (mine(&changed), mine(&removed));
+            // The PHP version and the extensions the project requires.
+            let manifest = w.root.join("composer.json");
+            if c.iter().chain(&r).any(|path| *path == manifest) {
+                self.state.refresh_stub_filter(w);
+            }
             if !c.is_empty() || !r.is_empty() {
                 w.engine.files_changed(&c, &r);
             }
@@ -611,8 +616,9 @@ fn dispatch(state: &State, request: Request, cancel: &CancellationToken) -> Resp
 fn execute_command(state: &State, p: lsp::ExecuteCommandParams) -> h::Result<Option<Value>> {
     match p.command.as_str() {
         commands::RESCAN => {
-            for engine in state.engines() {
-                engine.rescan();
+            for w in state.workspaces.read().iter() {
+                state.refresh_stub_filter(w);
+                w.engine.rescan();
             }
             Ok(None)
         }

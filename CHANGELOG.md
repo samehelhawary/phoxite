@@ -8,6 +8,9 @@
 - A setting whose value doesn't fit (a number where a text is expected, an unknown
   choice) keeps its default and is named in a message. The other settings apply; before,
   one such value put every setting back to its default without a word.
+- The PHP version and the `ext-*` requirements are read again when `composer.json`
+  changes, and by **Index the Project Again**: no restart after raising `require.php` or
+  adding an extension.
 
 ## 0.4.1 — 2026-11-16
 
