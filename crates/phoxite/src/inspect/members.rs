@@ -72,7 +72,7 @@ use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
     Access, AnonymousClass, Argument, ArgumentList, ArrayElement, ArrowFunction, AssignmentOperator, BinaryOperator,
     Call, Class, ClassLikeConstantSelector, ClassLikeMemberSelector, Closure, Construct, Enum, Expression, Function,
-    Interface, Literal, Method, PartialApplication, Trait, Unset, Variable,
+    Interface, Literal, Method, PartialApplication, PropertyHook, Trait, Unset, Variable,
 };
 use mago_syntax::walker::Walker;
 
@@ -815,6 +815,7 @@ impl<'a> Scan<'a, '_> {
                 Frame::Method(node) => Some(node.span().end.offset),
                 Frame::Closure(node) => Some(node.span().end.offset),
                 Frame::Arrow(node) => Some(node.span().end.offset),
+                Frame::Hook(node) => Some(node.span().end.offset),
                 Frame::Class(_) => None,
             })
             .unwrap_or(u32::MAX)
@@ -902,6 +903,12 @@ impl<'a, 'r> Walker<'a, 'a, Scan<'a, 'r>> for ScanWalker {
         cx.frames.push(Frame::Arrow(node));
     }
     fn walk_out_arrow_function(&self, _: &'a ArrowFunction<'a>, cx: &mut Scan<'a, 'r>) {
+        cx.frames.pop();
+    }
+    fn walk_in_property_hook(&self, node: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r>) {
+        cx.frames.push(Frame::Hook(node));
+    }
+    fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r>) {
         cx.frames.pop();
     }
 }

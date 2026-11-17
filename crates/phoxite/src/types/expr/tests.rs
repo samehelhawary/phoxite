@@ -654,3 +654,38 @@ namespace App {
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// A property hook's body is a scope of its own (PHP 8.4): it has the hook's
+/// parameter, or `$value` in a `set` hook that declares none.
+#[test]
+fn property_hooks() {
+    check(&[
+        // `$value` has the property's type: the native one, or what its docblock says.
+        ("class C { public string $name { set { $value/*|*/; } } }", "string"),
+        ("class C { /** @var list<Book> */ public array $books = [] { set { $value/*|*/; } } }", r"list<Lib\Book>"),
+        ("class C { public ?Book $b { set => $value/*|*/; } }", r"?Lib\Book"),
+        // A declared parameter: its own type, else the property's.
+        ("class C { public string $name { set(int|string $given) { $given/*|*/; } } }", "int|string"),
+        ("class C { public string $name { set($given) { $given/*|*/; } } }", "string"),
+        // Only a set hook without a parameter has $value.
+        ("class C { public string $name { set(string $given) { $value/*|*/; } } }", "mixed"),
+        ("class C { public string $name { get { return $value/*|*/; } } }", "mixed"),
+        // $this and the hook's own variables.
+        ("class C { public Book $b; public string $t { get => $this->b->title/*|*/; } }", "string"),
+        ("class C { public int $n { get { $x = new Book; return $x/*|*/->pages; } } }", r"Lib\Book"),
+        ("class C { public string $s { set { $f = fn() => $value/*|*/; } } }", "string"),
+        // A promoted parameter's hooks: the constructor's parameters aren't theirs.
+        ("class C { public function __construct(public string $p { set { $value/*|*/; } }) {} }", "string"),
+        (
+            "class C { public function __construct(Book $other, public string $p { get { return $other/*|*/; } }) {} }",
+            "mixed",
+        ),
+        (
+            "class C { public function __construct(Book $other, public string $p { get => 'x'; }) { $other/*|*/; } }",
+            r"Lib\Book",
+        ),
+        // An anonymous class, and one inside a function: not that function's variables.
+        ("$o = new class { public Book $b { set { $value/*|*/; } } };", r"Lib\Book"),
+        ("function f(Book $outer) { return new class { public int $n { get { return $outer/*|*/; } } }; }", "mixed"),
+    ]);
+}

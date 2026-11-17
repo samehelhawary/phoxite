@@ -39,7 +39,7 @@ use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
     Access, AnonymousClass, Argument, ArgumentList, ArrayElement, ArrowFunction, Call, Class,
     ClassLikeConstantSelector, ClassLikeMemberSelector, Closure, DirectVariable, Enum, Expression, Function, Interface,
-    Literal, LiteralString, Method, PartialApplication, Trait, TriviaKind, Variable,
+    Literal, LiteralString, Method, PartialApplication, PropertyHook, Trait, TriviaKind, Variable,
 };
 use mago_syntax::walker::Walker;
 use rayon::prelude::*;
@@ -1257,6 +1257,12 @@ impl<'a, 'r, 's> Walker<'a, 'a, Scan<'a, 'r, 's>> for ScanWalker {
         cx.frames.push(Frame::Arrow(node));
     }
     fn walk_out_arrow_function(&self, _: &'a ArrowFunction<'a>, cx: &mut Scan<'a, 'r, 's>) {
+        cx.frames.pop();
+    }
+    fn walk_in_property_hook(&self, node: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r, 's>) {
+        cx.frames.push(Frame::Hook(node));
+    }
+    fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r, 's>) {
         cx.frames.pop();
     }
 }

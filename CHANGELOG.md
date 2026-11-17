@@ -16,6 +16,11 @@
   can't set `analyzers` or `laravel.database`, and `includePaths` only in a trusted
   workspace. VS Code completes and validates the file, and `ide.json` too.
 - A changed severity of an inspection shows at once, not with the next edit of the file.
+- **Property hooks** (PHP 8.4) are understood inside: `$value` of a `set` hook has the
+  property's type (or the hook's own parameter its declared one), completion, hover and
+  go to definition work in a hook's body, undefined and unused variables are reported
+  there, and what a `get` hook returns is checked against the property's type. Before,
+  a hook's body was read as part of whatever was around the class.
 - `phoxite-lsp check [PATH...]` inspects a project from the command line: the problems of
   its own PHP files and Blade templates as text, JSON, SARIF 2.1.0 or GitHub annotations
   (`--format`), and an exit code for CI (`--fail-on error|warning|never`). It reads the

@@ -60,8 +60,10 @@
 //! method differently, calls after a spread argument (`...$args`), by-ref
 //! parameters (they are destinations), returns of generators (a
 //! `Generator`/`Iterator`/`Traversable`/`iterable` return type), `void`
-//! and `never` functions ([`super::control`]), property hooks, dumb mode and
-//! `.phpstorm.meta.php` files. The ids follow PhpStorm's documented
+//! and `never` functions ([`super::control`]), assignments to a property
+//! with hooks (its `set` hook says what it takes), dumb mode and
+//! `.phpstorm.meta.php` files. What a `get` hook returns is checked against
+//! its property's native type, like a function's return. The ids follow PhpStorm's documented
 //! inspections where one exists; the rules are our own.
 
 use std::cell::RefCell;
@@ -73,7 +75,8 @@ use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
     Access, AnonymousClass, Argument, ArgumentList, ArrowFunction, AssignmentOperator, BinaryOperator, Call, Class,
     ClassLikeMemberSelector, Closure, Construct, Enum, Expression, Function, FunctionLikeParameterList,
-    FunctionLikeReturnTypeHint, Interface, Method, Return, Statement, Trait, Variable,
+    FunctionLikeReturnTypeHint, Interface, Method, PropertyHook, PropertyHookBody, PropertyHookConcreteBody, Return,
+    Statement, Trait, Variable,
 };
 use mago_syntax::walker::Walker;
 
@@ -829,8 +832,41 @@ impl<'a> Scan<'a, '_> {
 
     fn r#return(&mut self, node: &'a Return<'a>) {
         let Some(value) = node.value else { return };
+        if let Some(Frame::Hook(hook)) = self.frames.iter().rev().find(|frame| !matches!(frame, Frame::Class(_))) {
+            return self.hook_returned(hook, value);
+        }
         let Some((hint, doc)) = self.function_return() else { return };
         self.returned(value, hint, doc);
+    }
+
+    /// What a `get` hook returns is the property's value: it is checked
+    /// against the property's type, as a function's against its return
+    /// type. A hook returning by reference, and a property without a native
+    /// type, are left alone.
+    fn hook_returned(&mut self, hook: &'a PropertyHook<'a>, value: &'a Expression<'a>) {
+        if !hook.name.value.eq_ignore_ascii_case(b"get") || hook.ampersand.is_some() {
+            return;
+        }
+        let Some(owner) = self.types.hook_owner(hook).cloned() else { return };
+        let Some(native) = owner.native else { return };
+        let classes = self.here();
+        let native = bind(&native, &classes);
+        if matches!(native, Type::Void | Type::Never | Type::Mixed) {
+            return;
+        }
+        // What the class declares the property with (its `@var`), in a named class.
+        let context = self.context();
+        let declared = match &context.self_class {
+            Some(_) => {
+                let this = Type::Relative(crate::types::Relative::This);
+                bind(&self.resolver.property_type(&this, &owner.name, &context), &classes)
+            }
+            None => Type::Mixed,
+        };
+        let declared = if declared == Type::Mixed { native.clone() } else { declared };
+        self.value(Check::Return, value, &native, &declared, |expected, given| {
+            format!("Return value is expected to be '{expected}', '{given}' returned")
+        });
     }
 
     /// The return type hint and docblock (with its templates) of the
@@ -866,7 +902,8 @@ impl<'a> Scan<'a, '_> {
                 Some((node.return_type_hint.as_ref()?, doc))
             }
             Frame::Closure(node) => Some((node.return_type_hint.as_ref()?, None)),
-            Frame::Arrow(_) | Frame::Class(_) => None,
+            // A hook has no return type of its own: a `get` hook's is the property's.
+            Frame::Arrow(_) | Frame::Hook(_) | Frame::Class(_) => None,
         }
     }
 
@@ -1061,6 +1098,7 @@ impl<'a> Scan<'a, '_> {
             Frame::Method(node) => Some(&node.parameter_list),
             Frame::Closure(node) => Some(&node.parameter_list),
             Frame::Arrow(node) => Some(&node.parameter_list),
+            Frame::Hook(node) => node.parameter_list.as_ref(),
             Frame::Class(_) => None,
         }
     }
@@ -1104,6 +1142,7 @@ impl<'a> Scan<'a, '_> {
             Some(Frame::Method(node)) => node.span(),
             Some(Frame::Closure(node)) => node.span(),
             Some(Frame::Arrow(node)) => node.span(),
+            Some(Frame::Hook(node)) => node.span(),
             _ => return false,
         };
         let body = self.source(span);
@@ -1117,6 +1156,7 @@ impl<'a> Scan<'a, '_> {
             Some(Frame::Method(node)) => node.span().end.offset,
             Some(Frame::Closure(node)) => node.span().end.offset,
             Some(Frame::Arrow(node)) => node.span().end.offset,
+            Some(Frame::Hook(node)) => node.span().end.offset,
             _ => u32::MAX,
         }
     }
@@ -1249,6 +1289,16 @@ impl<'a, 'r> Walker<'a, 'a, Scan<'a, 'r>> for ScanWalker {
         cx.arrow(node);
     }
     fn walk_out_arrow_function(&self, _: &'a ArrowFunction<'a>, cx: &mut Scan<'a, 'r>) {
+        cx.frames.pop();
+    }
+    fn walk_in_property_hook(&self, node: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r>) {
+        cx.frames.push(Frame::Hook(node));
+        // `get => expr` returns `expr`.
+        if let PropertyHookBody::Concrete(PropertyHookConcreteBody::Expression(body)) = &node.body {
+            cx.hook_returned(node, body.expression);
+        }
+    }
+    fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r>) {
         cx.frames.pop();
     }
 }

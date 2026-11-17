@@ -419,3 +419,19 @@ fn project_classes_rank_before_library_classes() {
     let command = names.iter().position(|l| *l == "Command").expect("Command");
     assert!(comment < command, "{names:?}");
 }
+
+#[test]
+fn members_and_variables_inside_a_property_hook() {
+    let mut project = shop();
+    let source = "<?php\nnamespace App\\Model;\n\nfinal class Card\n{\n    public Book $book;\n    public string $title {\n        get { return $this->book->/*|*/; }\n    }\n}\n";
+    let names_of = |found: &Completions| labels(found).into_iter().map(str::to_owned).collect::<Vec<_>>();
+    let found = project.complete("src/Model/Card.php", source);
+    let names = names_of(&found);
+    assert!(names.iter().any(|n| n == "title") && names.iter().any(|n| n == "label"), "{names:?}");
+
+    // $value of a set hook, with the property's type.
+    let source = "<?php\nnamespace App\\Model;\n\nfinal class Card\n{\n    public Book $book {\n        set { $value->/*|*/; }\n    }\n}\n";
+    let found = project.complete("src/Model/Card.php", source);
+    let names = names_of(&found);
+    assert!(names.iter().any(|n| n == "title"), "{names:?}");
+}

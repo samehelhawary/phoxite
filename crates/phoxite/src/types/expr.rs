@@ -39,9 +39,9 @@ use mago_span::HasSpan;
 use mago_syntax::cst::{
     Access, AnonymousClass, Argument, ArgumentList, ArrayElement, ArrowFunction, Assignment, Call, Class,
     ClassLikeConstantSelector, ClassLikeMember, ClassLikeMemberSelector, Closure, Construct, DirectVariable, Enum,
-    Expression, Function, FunctionLikeParameterList, Hint, Interface, MagicConstant, MatchArm, Method,
-    PartialApplication, PartialArgument, PartialArgumentList, Program, Property, PropertyItem, Return, Trait, Variable,
-    Yield,
+    Expression, Function, FunctionLikeParameter, FunctionLikeParameterList, Hint, HookedProperty, Interface,
+    MagicConstant, MatchArm, Method, PartialApplication, PartialArgument, PartialArgumentList, Program, Property,
+    PropertyHook, PropertyItem, Return, Trait, Variable, Yield,
 };
 use mago_syntax::walker::Walker;
 
@@ -118,6 +118,42 @@ pub enum Frame<'a> {
     Method(&'a Method<'a>),
     Closure(&'a Closure<'a>),
     Arrow(&'a ArrowFunction<'a>),
+    /// A property hook (PHP 8.4): its body is a scope of its own, with the
+    /// hook's parameter, or `$value` in a `set` hook that declares none.
+    Hook(&'a PropertyHook<'a>),
+}
+
+/// Whether `hook` is a `set` hook.
+pub(crate) fn is_set_hook(hook: &PropertyHook<'_>) -> bool {
+    hook.name.value.eq_ignore_ascii_case(b"set")
+}
+
+/// The property a hook belongs to.
+#[derive(Clone, Debug)]
+pub(crate) struct HookOwner {
+    /// Without the `$`.
+    pub name: String,
+    /// Its native type, when it declares one.
+    pub native: Option<Type>,
+}
+
+/// A hook's start, and the type hint and the variable of its property.
+type HookSite<'a> = (u32, Option<&'a Hint<'a>>, &'a DirectVariable<'a>);
+
+/// Finds the property of each hook of a file: a property declared with
+/// hooks, or a promoted constructor parameter.
+struct HookSites;
+
+impl<'a> Walker<'a, 'a, Vec<HookSite<'a>>> for HookSites {
+    fn walk_in_hooked_property(&self, node: &'a HookedProperty<'a>, sites: &mut Vec<HookSite<'a>>) {
+        let hooks = node.hook_list.hooks.iter();
+        sites.extend(hooks.map(|hook| (hook.span().start.offset, node.hint.as_ref(), node.item.variable())));
+    }
+
+    fn walk_in_function_like_parameter(&self, node: &'a FunctionLikeParameter<'a>, sites: &mut Vec<HookSite<'a>>) {
+        let hooks = node.hooks.iter().flat_map(|list| list.hooks.iter());
+        sites.extend(hooks.map(|hook| (hook.span().start.offset, node.hint.as_ref(), &node.variable)));
+    }
 }
 
 impl Frame<'_> {
@@ -133,6 +169,7 @@ impl Frame<'_> {
             Self::Method(node) => node.span().start.offset,
             Self::Closure(node) => node.span().start.offset,
             Self::Arrow(node) => node.span().start.offset,
+            Self::Hook(node) => node.span().start.offset,
         }
     }
 }
@@ -159,6 +196,8 @@ pub struct ExprTypes<'a, 'r> {
     /// custom expectation's), and the class the tests are bound to; computed
     /// on first use.
     pest: std::cell::OnceCell<PestClosures>,
+    /// The property of each hook of the file; found on first use.
+    hook_owners: std::cell::OnceCell<HashMap<u32, HookOwner>>,
     /// The properties a Pest file's `beforeEach()` closures assign to
     /// `$this`, by name; `None` while one is being typed.
     pest_properties: RefCell<HashMap<String, Option<Type>>>,
@@ -202,6 +241,7 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
             expected: RefCell::new(HashMap::new()),
             path: None,
             pest: std::cell::OnceCell::new(),
+            hook_owners: std::cell::OnceCell::new(),
             pest_properties: RefCell::new(HashMap::new()),
             trait_hosts: RefCell::new(HashMap::new()),
             call_sites: None,
@@ -435,6 +475,36 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
             Some(None) => Context::default(),
             None => self.pest_class(frames).map_or_else(Context::default, Context::in_class),
         }
+    }
+
+    /// The property `hook` belongs to.
+    pub(crate) fn hook_owner(&self, hook: &PropertyHook<'_>) -> Option<&HookOwner> {
+        let owners = self.hook_owners.get_or_init(|| {
+            let mut sites = Vec::new();
+            HookSites.walk_program(self.file.program(), &mut sites);
+            let owner = |(hook, hint, variable): HookSite<'a>| {
+                let name = String::from_utf8_lossy(variable.name.strip_prefix(b"$").unwrap_or(variable.name));
+                let native = hint.map(|hint| Type::from_hint(&type_hint(self.scope(hint.span().start.offset), hint)));
+                (hook, HookOwner { name: name.into_owned(), native })
+            };
+            sites.into_iter().map(owner).collect()
+        });
+        owners.get(&hook.span().start.offset)
+    }
+
+    /// The type of the property `hook` (the last of `frames`) belongs to:
+    /// what a `set` hook's value has when the hook doesn't say. The type the
+    /// class declares it with (its `@var` too), else its native type.
+    fn hook_property_type(&self, hook: &PropertyHook<'_>, frames: &[Frame<'a>]) -> Type {
+        let Some(owner) = self.hook_owner(hook) else { return Type::Mixed };
+        if self.frame_class(frames).is_some() {
+            let this = Type::Relative(Relative::This);
+            let declared = self.resolver.property_type(&this, &owner.name, &self.context(frames));
+            if declared != Type::Mixed {
+                return declared;
+            }
+        }
+        owner.native.clone().unwrap_or(Type::Mixed)
     }
 
     /// The named class-like of this file whose body `frames` are in (`None`
@@ -794,6 +864,21 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
             }
             Frame::Closure(closure) => self.function_parameter(&closure.parameter_list, frames, &name),
             Frame::Arrow(arrow) => self.function_parameter(&arrow.parameter_list, frames, &name),
+            Frame::Hook(hook) => {
+                let is = |variable: &DirectVariable<'_>| variable.name.strip_prefix(b"$") == Some(name.as_bytes());
+                match &hook.parameter_list {
+                    Some(list) => {
+                        let parameter = list.parameters.iter().find(|parameter| is(&parameter.variable))?;
+                        // A parameter without a type has the property's.
+                        if parameter.hint.is_some() || parameter.ellipsis.is_some() {
+                            return self.ast_parameter(list, &name);
+                        }
+                    }
+                    None if is_set_hook(hook) && name == "value" => {}
+                    None => return None,
+                }
+                Some(self.hook_property_type(hook, frames))
+            }
             Frame::Class(_) => None,
         }
     }
@@ -1898,6 +1983,12 @@ impl<'a> Walker<'a, 'a, Finder<'a>> for FindWalker {
         cx.frames.push(Frame::Arrow(node));
     }
     fn walk_out_arrow_function(&self, _: &'a ArrowFunction<'a>, cx: &mut Finder<'a>) {
+        cx.frames.pop();
+    }
+    fn walk_in_property_hook(&self, node: &'a PropertyHook<'a>, cx: &mut Finder<'a>) {
+        cx.frames.push(Frame::Hook(node));
+    }
+    fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Finder<'a>) {
         cx.frames.pop();
     }
 }

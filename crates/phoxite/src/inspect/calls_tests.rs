@@ -452,3 +452,43 @@ function check()
     let found = found(&p.inspect(text), text);
     assert_eq!(found, [e(COUNT, "()", "Expected 1 argument, found 0")]);
 }
+
+/// What a `get` hook returns is checked against its property's type, and
+/// not against the return type of a function around its class.
+#[test]
+fn get_hooks_return_the_propertys_type() {
+    let text = r#"<?php
+namespace App;
+
+use App\Model\Plain;
+
+final class Card
+{
+    public int $count { get { return 'abc'; } }
+    public Plain $plain { get => null; }
+    public int $fine { get => 1; }
+    public ?Plain $maybe { get => null; }
+    public $untyped { get => 'x'; }
+    public int $written { set { return; } }
+    public string $name {
+        get { return $this->name; }
+        set => strtolower($value);
+    }
+}
+
+function build(): Plain
+{
+    return new class extends Plain {
+        public int $n { get { return 1; } }
+    };
+}
+"#;
+    let mut p = project(TypeCheckMode::Lenient);
+    assert_eq!(
+        found(&p.inspect(text), text),
+        [
+            e(RETURN, "'abc'", "Return value is expected to be 'int', 'string' returned"),
+            e(RETURN, "null", "Return value is expected to be 'App\\Model\\Plain', 'null' returned"),
+        ]
+    );
+}

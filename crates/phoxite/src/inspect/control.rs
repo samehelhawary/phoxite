@@ -39,7 +39,7 @@ use crate::base::Severity;
 use mago_span::HasSpan;
 use mago_syntax::cst::{
     AnonymousClass, ArrowFunction, Class, Closure, Enum, Expression, Function, FunctionLikeReturnTypeHint, Hint,
-    Interface, Method, MethodBody, Return, Trait,
+    Interface, Method, MethodBody, PropertyHook, Return, Trait,
 };
 use mago_syntax::walker::Walker;
 
@@ -379,6 +379,13 @@ impl<'a, 'r> Walker<'a, 'a, Scan<'a, 'r>> for ScanWalker {
         cx.enter(Frame::Arrow(node), Returns::Unchecked, None);
     }
     fn walk_out_arrow_function(&self, _: &'a ArrowFunction<'a>, cx: &mut Scan<'a, 'r>) {
+        cx.leave();
+    }
+    // A hook's `return`s are its own, not those of a function around its class.
+    fn walk_in_property_hook(&self, node: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r>) {
+        cx.enter(Frame::Hook(node), Returns::Unchecked, None);
+    }
+    fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r>) {
         cx.leave();
     }
 }

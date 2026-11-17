@@ -34,7 +34,7 @@ use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
     Access, AnonymousClass, ArrowFunction, Call, Class, ClassLikeConstantSelector, ClassLikeMemberSelector, Closure,
     DirectVariable, Enum, Expression, Function, FunctionLikeParameterList, Interface, Method, NamedArgument,
-    PartialApplication, Trait, Variable,
+    PartialApplication, PropertyHook, Trait, Variable,
 };
 use mago_syntax::walker::Walker;
 
@@ -465,6 +465,12 @@ impl<'a> Tokens<'a, '_> {
                 Frame::Function(function) => return has(&function.parameter_list),
                 Frame::Method(method) => return has(&method.parameter_list),
                 Frame::Closure(closure) => return has(&closure.parameter_list),
+                Frame::Hook(hook) => {
+                    return match &hook.parameter_list {
+                        Some(list) => has(list),
+                        None => crate::types::expr::is_set_hook(hook) && name == b"$value",
+                    };
+                }
                 Frame::Arrow(arrow) => {
                     if has(&arrow.parameter_list) {
                         return true;
@@ -574,6 +580,15 @@ impl<'a, 'r> Walker<'a, 'a, Tokens<'a, 'r>> for TokenWalker {
         cx.parameters(&node.parameter_list);
     }
     fn walk_out_arrow_function(&self, _: &'a ArrowFunction<'a>, cx: &mut Tokens<'a, 'r>) {
+        cx.frames.pop();
+    }
+    fn walk_in_property_hook(&self, node: &'a PropertyHook<'a>, cx: &mut Tokens<'a, 'r>) {
+        cx.frames.push(Frame::Hook(node));
+        if let Some(list) = &node.parameter_list {
+            cx.parameters(list);
+        }
+    }
+    fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Tokens<'a, 'r>) {
         cx.frames.pop();
     }
 }

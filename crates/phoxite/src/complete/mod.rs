@@ -781,6 +781,7 @@ impl<'e, 'r> Collector<'e, 'r> {
                 Frame::Function(function) => Some(function.span().start.offset),
                 Frame::Closure(closure) => Some(closure.span().start.offset),
                 Frame::Arrow(arrow) => Some(arrow.span().start.offset),
+                Frame::Hook(hook) => Some(hook.span().start.offset),
                 Frame::Class(_) => None,
             });
             if let Some(scope) = scope {

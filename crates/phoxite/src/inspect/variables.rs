@@ -52,7 +52,8 @@ use mago_span::HasSpan;
 use mago_syntax::cst::{
     AnonymousClass, Argument, ArrayElement, ArrowFunction, Assignment, AssignmentOperator, BinaryOperator, Call, Class,
     Closure, Construct, DirectVariable, Enum, Expression, Function, FunctionLikeParameterList, Interface, Literal,
-    Method, MethodBody, Statement, StaticItem, Trait, UnaryPostfix, UnaryPrefix, UnaryPrefixOperator, Variable,
+    Method, MethodBody, PropertyHook, Statement, StaticItem, Trait, UnaryPostfix, UnaryPrefix, UnaryPrefixOperator,
+    Variable,
 };
 use mago_syntax::walker::Walker;
 
@@ -689,6 +690,21 @@ impl<'a, 'r> Walker<'a, 'a, Scan<'a, 'r>> for ScanWalker {
         cx.enter(Frame::Arrow(node), Some(&node.parameter_list), false);
     }
     fn walk_out_arrow_function(&self, _: &'a ArrowFunction<'a>, cx: &mut Scan<'a, 'r>) {
+        cx.leave();
+    }
+    // A hook's body is a scope of its own: it sees its parameter (`$value`
+    // in a `set` hook that declares none) and nothing of a constructor
+    // whose promoted parameter it belongs to.
+    fn walk_in_property_hook(&self, node: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r>) {
+        cx.enter(Frame::Hook(node), node.parameter_list.as_ref(), false);
+        if node.parameter_list.is_none()
+            && crate::types::expr::is_set_hook(node)
+            && let Some(scope) = cx.scopes.last_mut()
+        {
+            scope.params.insert(b"value".to_vec());
+        }
+    }
+    fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r>) {
         cx.leave();
     }
 }

@@ -947,6 +947,13 @@ impl<'a> Lookup<'a, '_> {
                 }
                 return self.variable_declaration(name, &scope[..scope.len() - 1]);
             }
+            Some(Frame::Hook(hook)) => {
+                if let Some(span) = hook.parameter_list.as_ref().and_then(parameter) {
+                    return Some(span);
+                }
+                // `$value` of a `set` hook without a parameter is declared nowhere.
+                OccurrenceWalker.walk_property_hook_body(&hook.body, &mut walker);
+            }
             Some(Frame::Class(_)) => return None,
             None => OccurrenceWalker.walk_program(self.parsed.program(), &mut walker),
         }

@@ -39,8 +39,8 @@ use mago_syntax::cst::{
     Access, Argument, ArgumentList, ArrayElement, Assignment, Binary, BinaryOperator, Call, ClassLikeMemberSelector,
     Construct, DirectVariable, DoWhile, Expression, For, ForBody, Foreach, ForeachBody, ForeachTarget, FunctionCall,
     FunctionLikeParameterList, If, IfBody, Literal, Match, MatchArm, MethodBody, Namespace, NamespaceBody, Node,
-    Statement, StaticItem, Switch, SwitchBody, SwitchCase, Try, UnaryPostfix, UnaryPrefix, UnaryPrefixOperator,
-    Variable, While, WhileBody,
+    PropertyHookBody, PropertyHookConcreteBody, Statement, StaticItem, Switch, SwitchBody, SwitchCase, Try,
+    UnaryPostfix, UnaryPrefix, UnaryPrefixOperator, Variable, While, WhileBody,
 };
 
 use super::{ExprTypes, Frame, MAX_SHAPE_FIELDS, TOP_LEVEL, falsy_removed, is_closure_value, shape_key};
@@ -324,6 +324,26 @@ impl<'t, 'a, 'r> Builder<'t, 'a, 'r> {
                 }
                 self.parameters(&arrow.parameter_list);
                 self.expr(arrow.expression);
+            }
+            Frame::Hook(hook) => {
+                match &hook.parameter_list {
+                    Some(list) => self.parameters(list),
+                    // A `set` hook that declares no parameter has `$value`.
+                    None if super::is_set_hook(hook) => {
+                        let ty = self.types.parameter(self.frames, b"value").unwrap_or(Type::Mixed);
+                        self.env.vars.insert(b"value".to_vec(), VarState::defined(ty));
+                    }
+                    None => {}
+                }
+                match &hook.body {
+                    PropertyHookBody::Concrete(PropertyHookConcreteBody::Block(block)) => {
+                        self.statements(block.statements.iter());
+                    }
+                    PropertyHookBody::Concrete(PropertyHookConcreteBody::Expression(body)) => {
+                        self.expr(body.expression)
+                    }
+                    PropertyHookBody::Abstract(_) => {}
+                }
             }
             Frame::Class(_) => {}
         }

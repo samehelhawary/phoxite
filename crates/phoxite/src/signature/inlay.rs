@@ -24,7 +24,7 @@ use crate::base::{DocId, Pos, Range};
 use mago_span::HasSpan;
 use mago_syntax::cst::{
     AnonymousClass, Argument, ArrowFunction, AssignmentOperator, Call, Class, Closure, Enum, Expression, Foreach,
-    ForeachTarget, Function, Interface, Method, Trait, UnaryPrefixOperator, Variable,
+    ForeachTarget, Function, Interface, Method, PropertyHook, Trait, UnaryPrefixOperator, Variable,
 };
 use mago_syntax::walker::Walker;
 
@@ -182,6 +182,7 @@ impl<'a> Hints<'a, '_> {
                 Frame::Method(node) => Some(node.span().start.offset),
                 Frame::Closure(node) => Some(node.span().start.offset),
                 Frame::Arrow(node) => Some(node.span().start.offset),
+                Frame::Hook(node) => Some(node.span().start.offset),
                 Frame::Class(_) => None,
             })
             .unwrap_or(u32::MAX)
@@ -422,6 +423,12 @@ impl<'a, 'r> Walker<'a, 'a, Hints<'a, 'r>> for HintWalker {
         cx.frames.push(Frame::Arrow(node));
     }
     fn walk_out_arrow_function(&self, _: &'a ArrowFunction<'a>, cx: &mut Hints<'a, 'r>) {
+        cx.frames.pop();
+    }
+    fn walk_in_property_hook(&self, node: &'a PropertyHook<'a>, cx: &mut Hints<'a, 'r>) {
+        cx.frames.push(Frame::Hook(node));
+    }
+    fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Hints<'a, 'r>) {
         cx.frames.pop();
     }
 }

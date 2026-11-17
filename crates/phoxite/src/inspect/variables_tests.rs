@@ -326,3 +326,47 @@ fn quiet_in_dumb_mode() {
     let found = p.inspect("<?php\nfunction f() { echo $x; $y = 1; }\n");
     assert!(found.problems.is_empty(), "{:?}", messages(&found));
 }
+
+/// The body of a property hook is checked as a scope of its own.
+#[test]
+fn property_hooks_are_scopes_of_their_own() {
+    let mut p = project();
+    let found = p.inspect(
+        r#"<?php
+namespace App;
+
+final class Person
+{
+    public string $name {
+        get { return $missing; }
+        set {
+            $unused = 1;
+            $this->name = strtolower($value);
+        }
+    }
+
+    public int $age {
+        set(int $given) { $this->age = $given + $value; }
+    }
+
+    public string $label { set => trim($value); }
+
+    public function __construct(int $seed, public int $id { get => $seed; })
+    {
+        echo $seed;
+    }
+}
+
+function outer(int $n): object
+{
+    return new class {
+        public int $twice { get => $n * 2; }
+    };
+}
+"#,
+    );
+    assert_eq!(
+        messages(&found),
+        [undefined("missing"), unused("unused"), undefined("value"), undefined("seed"), undefined("n")]
+    );
+}

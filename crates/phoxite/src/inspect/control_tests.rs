@@ -225,3 +225,31 @@ fn suppressed_registered_and_quiet_in_dumb_mode() {
     let found = p.inspect("<?php\nfunction a(): int { return; echo 'a'; }\n");
     assert!(found.problems.is_empty(), "{:?}", messages(&found));
 }
+
+/// A hook's `return` is the hook's: the function around its class doesn't return it.
+#[test]
+fn returns_in_property_hooks_are_not_those_of_the_function_around() {
+    let mut p = project();
+    let found = p.inspect(
+        r#"<?php
+namespace App;
+
+function build(): void
+{
+    $o = new class {
+        public int $n { get { return 1; } }
+    };
+    echo $o->n;
+}
+
+function never(): never
+{
+    new class {
+        public int $n { get { return 1; } }
+    };
+    stop();
+}
+"#,
+    );
+    assert!(found.problems.is_empty(), "{:?}", messages(&found));
+}
