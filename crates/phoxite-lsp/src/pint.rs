@@ -66,9 +66,11 @@ fn run(interpreter: &Path, script: &Path, root: &Path, file_name: &str, text: &s
 /// user once: that the project doesn't install it, or why it failed.
 pub fn format(state: &State, doc: &DocSnapshot) -> Option<String> {
     let (wanted, interpreter) = {
+        // The interpreter is the client's to name, the formatter the project's too.
         let settings = state.settings.read();
         let configured = settings.analyzers.php_path.trim();
-        (settings.format.tool == "pint", PathBuf::from(if configured.is_empty() { "php" } else { configured }))
+        let wanted = state.settings_for(&doc.path).format.tool == "pint";
+        (wanted, PathBuf::from(if configured.is_empty() { "php" } else { configured }))
     };
     if !wanted || !state.is_trusted() {
         return None;

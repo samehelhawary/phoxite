@@ -10,7 +10,11 @@ Turn off other PHP language servers (Intelephense, Phpactor) for the same files;
 completions and problems show twice.
 
 Settings go in the initialization options as `{ "settings": { … } }` (see the README for the
-keys); `cacheDir` sets the index folder.
+keys); `cacheDir` sets the index folder. Or leave the editor out of it: a `phoxite.json` at
+the root of a project holds the same keys, wins over what the editor sends, and is read
+again when it changes (the README says which keys it may not set). A client that watches
+files for the server reports its changes like those of any other file; without one, run
+`phoxite.server.rescan` or restart the server after editing it.
 
 ## OpenIDEA
 

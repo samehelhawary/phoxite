@@ -11,6 +11,11 @@
 - The PHP version and the `ext-*` requirements are read again when `composer.json`
   changes, and by **Index the Project Again**: no restart after raising `require.php` or
   adding an extension.
+- A project can carry its settings: `phoxite.json` at its root holds the settings an
+  editor would send, wins over them key by key, and is followed when it changes. It
+  can't set `analyzers` or `laravel.database`, and `includePaths` only in a trusted
+  workspace. VS Code completes and validates the file, and `ide.json` too.
+- A changed severity of an inspection shows at once, not with the next edit of the file.
 
 ## 0.4.1 — 2026-11-16
 

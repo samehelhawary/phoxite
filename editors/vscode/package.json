@@ -101,6 +101,16 @@
         }
       }
     ],
+    "jsonValidation": [
+      {
+        "fileMatch": "phoxite.json",
+        "url": "./schemas/phoxite.schema.json"
+      },
+      {
+        "fileMatch": "ide.json",
+        "url": "./schemas/laravel-ide-json.json"
+      }
+    ],
     "snippets": [
       {
         "language": "blade",

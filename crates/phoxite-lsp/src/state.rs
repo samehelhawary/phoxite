@@ -1,5 +1,8 @@
 //! What the server holds: one engine per workspace folder, the open
 //! documents, the settings, and the problems published per file.
+//!
+//! The settings are the client's, and for each workspace folder what its
+//! `phoxite.json` sets over them ([`Settings::layered`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -16,7 +19,9 @@ use phoxite::inspect::InspectionConfig;
 use phoxite::project::LayoutConfig;
 use phoxite::stubs::StubFilter;
 
-use crate::config::Settings;
+use serde_json::Value;
+
+use crate::config::{PROJECT_FILE, Settings, read_project_file};
 use crate::convert::{self, EditSupport};
 
 /// What a document is, which decides who answers for it.
@@ -86,6 +91,12 @@ impl DocSnapshot {
 pub struct Workspace {
     pub root: PathBuf,
     pub engine: Arc<PhpEngine>,
+    /// The client's settings with the project's settings file over them.
+    pub settings: Arc<Settings>,
+    /// The project's settings file as it was last read without an error.
+    file: Option<Value>,
+    /// The settings left at their defaults: their value doesn't fit.
+    rejected: Vec<String>,
 }
 
 /// What the client supports.
@@ -108,7 +119,12 @@ pub struct State {
     pub sender: Sender<Message>,
     pub support: ClientSupport,
     pub cache_dir: PathBuf,
+    /// The client's settings: those of a file outside every workspace
+    /// folder, and the ones a project's settings file can't set.
     pub settings: RwLock<Settings>,
+    /// The same as the client sent them, and those of them left at their
+    /// defaults.
+    client_settings: RwLock<(Value, Vec<String>)>,
     pub workspaces: RwLock<Vec<Workspace>>,
     pub docs: RwLock<HashMap<Url, OpenDoc>>,
     /// The engine's events go here, and the main loop takes them.
@@ -130,14 +146,14 @@ impl State {
         sender: Sender<Message>,
         support: ClientSupport,
         cache_dir: PathBuf,
-        settings: Settings,
         events: Sender<e::IdeEvent>,
     ) -> Self {
         Self {
             sender,
             support,
             cache_dir,
-            settings: RwLock::new(settings),
+            settings: RwLock::default(),
+            client_settings: RwLock::new((Value::Null, Vec::new())),
             workspaces: RwLock::new(Vec::new()),
             docs: RwLock::new(HashMap::new()),
             events,
@@ -159,7 +175,8 @@ impl State {
         if self.workspaces.read().iter().any(|w| w.root == root) {
             return;
         }
-        let settings = self.settings.read().clone();
+        let file = self.project_file(&root, None);
+        let (settings, rejected) = Settings::layered(&self.client_settings.read().0, file.as_ref(), self.is_trusted());
         let php = settings.engine_config();
         let key = blake3::hash(root.to_string_lossy().as_bytes()).to_hex();
         let config = EngineConfig {
@@ -175,10 +192,19 @@ impl State {
             Ok(engine) => {
                 engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
                 engine.set_laravel_settings(php.laravel.clone());
+                tracing::info!("indexing {}", root.display());
+                let workspace = Workspace {
+                    root: root.clone(),
+                    engine: engine.clone(),
+                    settings: Arc::new(settings),
+                    file,
+                    rejected,
+                };
+                self.workspaces.write().push(workspace);
+                // These read the workspace's settings.
                 crate::laravel::load_templates(self, &root, &engine);
                 crate::schema::refresh_quietly(self, &root, &engine);
-                tracing::info!("indexing {}", root.display());
-                self.workspaces.write().push(Workspace { root, engine });
+                self.settings_rejected();
             }
             Err(e) => tracing::error!("can't start the engine for {}: {e}", root.display()),
         }
@@ -187,8 +213,81 @@ impl State {
     /// Reads the PHP version and the `ext-*` requirements of the workspace's
     /// `composer.json` again. Nothing happens when they are the same.
     pub fn refresh_stub_filter(&self, workspace: &Workspace) {
-        let php = self.settings.read().engine_config();
+        let php = workspace.settings.engine_config();
         workspace.engine.set_stub_filter(StubFilter::from_config(&workspace.root, &php));
+    }
+
+    /// The settings file of the project at `root`. One that can't be read is
+    /// told to the user, and `before` (what it held until now) stays.
+    fn project_file(&self, root: &Path, before: Option<Value>) -> Option<Value> {
+        read_project_file(root).unwrap_or_else(|error| {
+            self.notify::<lsp::notification::ShowMessage>(lsp::ShowMessageParams {
+                typ: lsp::MessageType::WARNING,
+                message: format!("Phoxite can't read {}: {error}", root.join(PROJECT_FILE).display()),
+            });
+            before
+        })
+    }
+
+    /// The settings file of the project at `root` changed (or appeared, or
+    /// went): its settings are worked out again and passed to its engine.
+    pub fn project_file_changed(&self, root: &Path) {
+        self.configure(Some(root), true);
+        self.settings_rejected();
+    }
+
+    /// Works out the settings of the workspace at `only` (of every one
+    /// without it) and passes them to its engine; `reread` reads its settings
+    /// file again first.
+    fn configure(&self, only: Option<&Path>, reread: bool) {
+        let trusted = self.is_trusted();
+        let mut changed = Vec::new();
+        {
+            let client = self.client_settings.read();
+            let mut workspaces = self.workspaces.write();
+            for w in workspaces.iter_mut().filter(|w| only.is_none_or(|root| w.root == root)) {
+                if reread {
+                    w.file = self.project_file(&w.root, w.file.take());
+                }
+                let (settings, rejected) = Settings::layered(&client.0, w.file.as_ref(), trusted);
+                w.rejected = rejected;
+                if *w.settings != settings {
+                    w.settings = Arc::new(settings);
+                    changed.push((w.root.clone(), w.engine.clone(), w.settings.clone()));
+                }
+            }
+        }
+        for (root, engine, settings) in changed {
+            let php = settings.engine_config();
+            engine.set_layout_config(LayoutConfig::from_config(&root, &php));
+            engine.set_stub_filter(StubFilter::from_config(&root, &php));
+            engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
+            engine.set_laravel_settings(php.laravel.clone());
+            crate::laravel::load_templates(self, &root, &engine);
+            crate::schema::refresh_quietly(self, &root, &engine);
+            // The severities the user chose are applied when problems are published.
+            self.republish_below(&root);
+        }
+    }
+
+    /// Publishes the problems of the files below `root` again.
+    fn republish_below(&self, root: &Path) {
+        let paths: Vec<PathBuf> = self.problems.lock().keys().filter(|path| path.starts_with(root)).cloned().collect();
+        for path in paths {
+            self.publish(&path);
+        }
+    }
+
+    /// The settings for `path`: those of its workspace folder, else the
+    /// client's.
+    pub fn settings_for(&self, path: &Path) -> Arc<Settings> {
+        let workspaces = self.workspaces.read();
+        workspaces
+            .iter()
+            .filter(|w| path.starts_with(&w.root))
+            .max_by_key(|w| w.root.components().count())
+            .or_else(|| workspaces.first())
+            .map_or_else(|| Arc::new(self.settings.read().clone()), |w| w.settings.clone())
     }
 
     pub fn remove_workspace(&self, root: &Path) {
@@ -199,27 +298,40 @@ impl State {
         }
     }
 
-    /// Passes changed settings to every engine.
-    pub fn apply_settings(&self, settings: Settings) {
-        let php = settings.engine_config();
+    /// The client's settings, as it sent them: every workspace's settings
+    /// are worked out again and passed to its engine. `rejected` names what
+    /// didn't fit in what the settings came with (the initialization options).
+    pub fn apply_settings(&self, client: &Value, mut rejected: Vec<String>) {
+        let (settings, more) = Settings::from_json(client);
+        rejected.extend(more);
         let analyzers = settings.analyzers.on_save;
+        let database = settings.laravel.database != self.settings.read().laravel.database;
         *self.settings.write() = settings;
+        *self.client_settings.write() = (client.clone(), rejected);
         if !analyzers {
             crate::analyzers::clear_all(self);
         }
-        for w in self.workspaces.read().iter() {
-            w.engine.set_layout_config(LayoutConfig::from_config(&w.root, &php));
-            w.engine.set_stub_filter(StubFilter::from_config(&w.root, &php));
-            w.engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
-            w.engine.set_laravel_settings(php.laravel.clone());
-            crate::laravel::load_templates(self, &w.root, &w.engine);
-            crate::schema::refresh_quietly(self, &w.root, &w.engine);
+        self.configure(None, false);
+        if database {
+            // Read from the client's settings alone, so no workspace's changed with it.
+            for w in self.workspaces.read().iter() {
+                crate::schema::refresh_quietly(self, &w.root, &w.engine);
+            }
         }
+        self.settings_rejected();
     }
 
     /// Tells the user which settings were left at their defaults because
     /// their value doesn't fit, unless they are the ones named last time.
-    pub fn settings_rejected(&self, rejected: Vec<String>) {
+    pub fn settings_rejected(&self) {
+        let mut rejected = self.client_settings.read().1.clone();
+        for w in self.workspaces.read().iter() {
+            for path in &w.rejected {
+                if !rejected.contains(path) {
+                    rejected.push(path.clone());
+                }
+            }
+        }
         let mut last = self.rejected_settings.lock();
         if *last == rejected {
             return;
@@ -250,6 +362,8 @@ impl State {
         if !trusted {
             crate::analyzers::clear_all(self);
         }
+        // What a settings file may set depends on it.
+        self.configure(None, false);
     }
 
     /// The workspace `path` belongs to (the innermost folder holding it).
@@ -365,15 +479,21 @@ impl State {
     /// problems from every source.
     pub fn problems_changed(&self, path: &Path, source: String, items: Vec<e::Diagnostic>) {
         let path = dunce::simplified(path).to_path_buf();
-        let all: Vec<e::Diagnostic> = {
-            let mut problems = self.problems.lock();
-            let by_source = problems.entry(path.clone()).or_default();
-            by_source.insert(source, items);
-            by_source.values().flatten().cloned().collect()
-        };
-        let Some(uri) = convert::uri_of(&path) else { return };
+        self.problems.lock().entry(path.clone()).or_default().insert(source, items);
+        self.publish(&path);
+    }
+
+    /// Publishes the problems of `path` from every source.
+    fn publish(&self, path: &Path) {
+        let all: Vec<e::Diagnostic> = self
+            .problems
+            .lock()
+            .get(path)
+            .map(|by_source| by_source.values().flatten().cloned().collect())
+            .unwrap_or_default();
+        let Some(uri) = convert::uri_of(path) else { return };
         let version = self.docs.read().get(&uri).map(|doc| doc.version);
-        let settings = self.settings.read();
+        let settings = self.settings_for(path);
         let diagnostics = all
             .into_iter()
             .map(|mut d| {

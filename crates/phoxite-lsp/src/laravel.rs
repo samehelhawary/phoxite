@@ -220,7 +220,7 @@ fn project(state: &State, folder: &Option<Url>) -> Option<(PathBuf, Arc<PhpEngin
 
 /// The folder of the edited templates of the project at `root`.
 pub fn templates_dir(state: &State, root: &Path) -> PathBuf {
-    let configured = state.settings.read().templates.path.trim().to_owned();
+    let configured = state.settings_for(root).templates.path.trim().to_owned();
     let relative = if configured.is_empty() { crate::config::DEFAULT_TEMPLATES_PATH } else { configured.as_str() };
     root.join(relative)
 }

@@ -3,8 +3,9 @@
 //
 //   node scripts/package_vscode.mjs --server target/release/phoxite-lsp [--target win32-x64]
 //
-// Copies the binary into editors/vscode/server/, and the changelog, the notice and the
-// third-party licences next to the extension's manifest, then runs `vsce package` (with
+// Copies the binary into editors/vscode/server/, the changelog, the notice and the
+// third-party licences next to the extension's manifest, and the schema of `ide.json`
+// into editors/vscode/schemas/, then runs `vsce package` (with
 // `--target` for a platform-specific VSIX). The VSIX lands in editors/vscode/.
 //
 // `--list` prints the files the package would hold instead of writing it.
@@ -71,6 +72,11 @@ const binary = path.join(serverDir, windows ? "phoxite-lsp.exe" : "phoxite-lsp")
 fs.copyFileSync(server, binary);
 fs.chmodSync(binary, 0o755);
 for (const name of COPIED) fs.copyFileSync(path.join(root, name), path.join(extension, name));
+// The schema of Laravel's `ide.json` is the engine's; `phoxite.json`'s is kept with the extension.
+fs.copyFileSync(
+  path.join(root, "crates", "phoxite", "src", "frameworks", "laravel", "ide-json.schema.json"),
+  path.join(extension, "schemas", "laravel-ide-json.json"),
+);
 
 // esbuild bundles the client library into dist/extension.js, so no dependencies are packed.
 const { version } = JSON.parse(fs.readFileSync(path.join(extension, "package.json"), "utf8"));

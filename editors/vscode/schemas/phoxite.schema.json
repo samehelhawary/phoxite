@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/samehelhawary/phoxite/main/editors/vscode/schemas/phoxite.schema.json",
+  "title": "phoxite.json",
+  "description": "Phoxite's settings for one project, at its root. They are laid over the editor's settings, so everyone working on the project gets them whatever their editor. A project can't set the programs Phoxite runs or the files it reads outside the project: `analyzers` and `laravel.database` stay with the editor's settings, and `includePaths` is read only in a workspace you trust.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "phpVersion": {
+      "description": "The PHP version the code is checked against, e.g. `8.3`. Empty: from `composer.json` (`config.platform.php`, else the lowest version `require.php` allows), else the latest.",
+      "type": "string",
+      "default": ""
+    },
+    "includePaths": {
+      "description": "Folders outside the project whose code is indexed too: absolute, `~/…`, or relative to the project. Read only in a workspace you trust.",
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "stubs": {
+      "description": "Extra phpstorm-stubs sets (`redis`, `swoole`, `wordpress`…) on top of the defaults and the `ext-*` requirements of `composer.json`.",
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "exclude": {
+      "description": "Globs of files and folders left out of the index (`node_modules`, `/storage`). `null`: `node_modules`, `.git`, `storage/framework` and `bootstrap/cache`. `vendor` is read through Composer's `installed.json` either way.",
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "default": null
+    },
+    "inspections": {
+      "description": "Per-inspection settings by id, e.g. `{ \"PhpUndefinedMethod\": { \"enabled\": false } }`. The key `*` with `enabled: false` turns every inspection off.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/inspection" },
+      "default": {}
+    },
+    "laravel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "detection": {
+          "description": "Laravel support: `auto` when `composer.json` requires `laravel/framework`, the lock file lists it, or `artisan` exists.",
+          "enum": ["auto", "enabled", "disabled"],
+          "default": "auto"
+        },
+        "routeHints": {
+          "description": "Code lenses on controller methods listing their routes, and the full URI after each route registration.",
+          "type": "boolean",
+          "default": true
+        },
+        "modules": {
+          "description": "Which modules of a modular application are read: `nwidart/laravel-modules`, module folders (`modules/`, `app-modules/`…), both (`auto`), or none.",
+          "enum": ["auto", "nwidart", "directory", "none"],
+          "default": "auto"
+        },
+        "inertiaPages": {
+          "description": "Folders of Inertia pages, relative to the project. Empty: the `ide.json` page paths, else `resources/js/Pages`.",
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "generation": {
+          "description": "What the Laravel generators write.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {
+              "description": "The application's root namespace for generated classes. Empty: the one `composer.json` maps to `app/`.",
+              "type": "string",
+              "default": ""
+            },
+            "module": {
+              "description": "The module generated classes go to. Empty: the application.",
+              "type": "string",
+              "default": ""
+            },
+            "controllerSuffix": { "description": "The suffix of generated controller classes.", "type": "string", "default": "Controller" },
+            "requestSuffix": { "description": "The suffix of generated request classes.", "type": "string", "default": "Request" },
+            "resourceSuffix": { "description": "The suffix of generated resource classes.", "type": "string", "default": "Resource" },
+            "policySuffix": { "description": "The suffix of generated policy classes.", "type": "string", "default": "Policy" },
+            "seederSuffix": { "description": "The suffix of generated seeder classes.", "type": "string", "default": "Seeder" },
+            "constructorPromotion": {
+              "description": "Generated constructors promote their parameters to properties.",
+              "type": "boolean",
+              "default": true
+            },
+            "typeHints": { "description": "Generated methods declare their return types.", "type": "boolean", "default": true }
+          }
+        }
+      }
+    },
+    "format": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lineWidth": {
+          "description": "The line length Format Document tries to stay within.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 120
+        },
+        "tool": {
+          "description": "What formats a whole PHP file: `phoxite` (the built-in formatter) or `pint` (the project's Laravel Pint). A selection, and Blade files, are always formatted by Phoxite.",
+          "enum": ["phoxite", "pint"],
+          "default": "phoxite"
+        }
+      }
+    },
+    "templates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "The folder of the edited generator templates, relative to the project. Empty: `.phoxite/templates`.",
+          "type": "string",
+          "default": ""
+        }
+      }
+    }
+  },
+  "definitions": {
+    "inspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "strict": {
+          "description": "The type and call checks: report what they can't prove too.",
+          "type": "boolean"
+        },
+        "severity": { "enum": ["error", "warning", "information", "hint"] }
+      }
+    }
+  }
+}

@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::analyzers;
 use crate::commands;
-use crate::config::{InitOptions, Settings, default_cache_dir, lenient};
+use crate::config::{InitOptions, PROJECT_FILE, default_cache_dir, lenient};
 use crate::convert::{self, EditSupport};
 use crate::handlers::{self as h, Goto};
 use crate::laravel;
@@ -178,18 +178,15 @@ pub fn run(connection: Connection) -> Result<(), String> {
 
     let (options, mut rejected): (InitOptions, _) =
         lenient(params.initialization_options.as_ref().unwrap_or(&Value::Null));
-    let (settings, more) = options.settings.as_ref().map(Settings::from_json).unwrap_or_default();
-    rejected.extend(more);
     let (events_tx, events_rx) = crossbeam_channel::unbounded();
     let state = Arc::new(State::new(
         connection.sender.clone(),
         client_support(&params.capabilities),
         options.cache_dir.clone().unwrap_or_else(default_cache_dir),
-        settings,
         events_tx,
     ));
     state.set_trusted(options.trusted.unwrap_or(true));
-    state.settings_rejected(rejected);
+    state.apply_settings(options.settings.as_ref().unwrap_or(&Value::Null), std::mem::take(&mut rejected));
     #[allow(deprecated)]
     let folders: Vec<Url> = match (&params.workspace_folders, &params.root_uri) {
         (Some(folders), _) if !folders.is_empty() => folders.iter().map(|f| f.uri.clone()).collect(),
@@ -389,9 +386,7 @@ impl Server {
             }
             n::DidChangeConfiguration::METHOD => {
                 if let Some(p) = params::<lsp::DidChangeConfigurationParams>(notification.params) {
-                    let (settings, rejected) = Settings::from_json(&p.settings);
-                    state.apply_settings(settings);
-                    state.settings_rejected(rejected);
+                    state.apply_settings(&p.settings, Vec::new());
                 }
             }
             n::DidChangeWorkspaceFolders::METHOD => {
@@ -433,6 +428,14 @@ impl Server {
         for change in changes {
             let Some(path) = convert::path_of(&change.uri) else { continue };
             if change.typ == lsp::FileChangeType::DELETED { removed.push(path) } else { changed.push(path) }
+        }
+        // Settings files first: what changed with them is indexed by the new settings.
+        let roots: Vec<_> = self.state.workspaces.read().iter().map(|w| w.root.clone()).collect();
+        for root in roots {
+            let file = root.join(PROJECT_FILE);
+            if changed.iter().chain(&removed).any(|path| *path == file) {
+                self.state.project_file_changed(&root);
+            }
         }
         for w in self.state.workspaces.read().iter() {
             let mine = |paths: &[std::path::PathBuf]| -> Vec<_> {
@@ -478,8 +481,10 @@ impl Server {
 
 /// The files on disk the index is built from, as glob patterns: what a client watches
 /// for the server.
-pub const WATCHED_FILES: [&str; 8] = [
+pub const WATCHED_FILES: [&str; 9] = [
     "**/*.php",
+    // The settings file of a project.
+    "**/phoxite.json",
     "**/composer.{json,lock}",
     "**/vendor/composer/installed.json",
     "**/.env*",
@@ -616,6 +621,11 @@ fn dispatch(state: &State, request: Request, cancel: &CancellationToken) -> Resp
 fn execute_command(state: &State, p: lsp::ExecuteCommandParams) -> h::Result<Option<Value>> {
     match p.command.as_str() {
         commands::RESCAN => {
+            // The settings files too, for a client that doesn't watch them.
+            let roots: Vec<_> = state.workspaces.read().iter().map(|w| w.root.clone()).collect();
+            for root in roots {
+                state.project_file_changed(&root);
+            }
             for w in state.workspaces.read().iter() {
                 state.refresh_stub_filter(w);
                 w.engine.rescan();

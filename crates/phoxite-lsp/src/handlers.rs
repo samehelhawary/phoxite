@@ -510,7 +510,7 @@ pub fn format(
     options: &lsp::FormattingOptions,
 ) -> Result<Option<Vec<lsp::TextEdit>>> {
     let doc = snapshot(state, uri)?;
-    let line_width = state.settings.read().format.line_width;
+    let line_width = state.settings_for(&doc.path).format.line_width;
     let within = within.map(range);
     let edits = match doc.kind {
         Kind::Php => {

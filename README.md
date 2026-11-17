@@ -112,6 +112,24 @@ The server reads its settings from `initializationOptions.settings` and from
 `initializationOptions.cacheDir` sets where the indexes live (default: the user's cache
 folder, `phoxite/<hash of the folder>`).
 
+A project can carry its settings itself, for everyone who works on it whatever their
+editor: a `phoxite.json` at its root holds the same object.
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/samehelhawary/phoxite/main/editors/vscode/schemas/phoxite.schema.json",
+  "phpVersion": "8.4",
+  "stubs": ["redis"],
+  "inspections": { "PhpUnusedParameter": { "enabled": false } }
+}
+```
+
+What the file sets wins over the editor's settings, key by key, and the server follows
+the file when it changes. A project doesn't choose the programs that run or the files
+read outside it: `analyzers` and `laravel.database` are never taken from the file, and
+`includePaths` only in a workspace the user trusts. A setting whose value doesn't fit is
+named in a message and keeps its default.
+
 ## Licence
 
 Apache-2.0. See `NOTICE` and `THIRD_PARTY_LICENSES.md` for what is bundled (the

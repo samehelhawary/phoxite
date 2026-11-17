@@ -1128,3 +1128,61 @@ fn the_php_version_and_the_extensions_follow_composer_json() {
     assert!(found.is_empty());
     c.shutdown();
 }
+
+/// `phoxite.json` at the root of a project is laid over the client's settings, and is
+/// followed when it changes.
+#[test]
+fn a_project_settings_file_is_laid_over_the_clients_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let settings_file = root.join("phoxite.json");
+    let severity =
+        |name: &str| format!(r#"{{ "inspections": {{ "PhpUndefinedClass": {{ "severity": "{name}" }} }} }}"#);
+    std::fs::write(&settings_file, severity("hint")).unwrap();
+    let file = root.join("index.php");
+    std::fs::write(&file, "<?php\nfunction f(): void {\n    new UnknownThing();\n}\n").unwrap();
+    let mut c = Client::start(&root);
+    let uri = c.open(&file, "php");
+    let changed = |c: &Client, kind: u32| {
+        c.notify::<n::DidChangeWatchedFiles>(json!({
+            "changes": [{ "uri": Url::from_file_path(&settings_file).unwrap(), "type": kind }]
+        }));
+    };
+    // The LSP severities: 1 error, 3 information, 4 hint.
+    let has = |wanted: u64| move |found: &[Value]| found.len() == 1 && found[0]["severity"] == wanted;
+
+    // The file's severity, not the default (an error).
+    c.diagnostics(&uri, has(4));
+
+    // The file changes: the problems are published again with the new severity.
+    std::fs::write(&settings_file, severity("information")).unwrap();
+    changed(&c, 2);
+    c.diagnostics(&uri, has(3));
+
+    // The client sets the same setting: the file wins. `stubs`, which the file doesn't
+    // set, is the client's.
+    let client = json!({ "inspections": { "PhpUndefinedClass": { "severity": "error" } }, "stubs": ["redis"] });
+    c.notify::<n::DidChangeConfiguration>(json!({ "settings": { "phoxite": client } }));
+    c.request::<r::DocumentSymbolRequest>(json!({ "textDocument": { "uri": uri } }));
+    c.diagnostics(&uri, has(3));
+
+    // A file that can't be read is named, and what it held stays.
+    std::fs::write(&settings_file, "{ \"inspections\": ").unwrap();
+    changed(&c, 2);
+    c.request::<r::DocumentSymbolRequest>(json!({ "textDocument": { "uri": uri } }));
+    let messages: Vec<&str> = c
+        .notifications
+        .iter()
+        .filter(|n| n.method == n::ShowMessage::METHOD)
+        .filter_map(|n| n.params["message"].as_str())
+        .collect();
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].starts_with("Phoxite can't read ") && messages[0].contains("phoxite.json"), "{messages:?}");
+    c.diagnostics(&uri, has(3));
+
+    // The file goes: the client's settings are all there is.
+    std::fs::remove_file(&settings_file).unwrap();
+    changed(&c, 3);
+    c.diagnostics(&uri, has(1));
+    c.shutdown();
+}

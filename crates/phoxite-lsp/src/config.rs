@@ -18,22 +18,27 @@
 //!
 //! The settings may also come wrapped in a `phoxite` section, as VS Code
 //! sends them.
+//!
+//! A project's own settings file ([`PROJECT_FILE`], at its root) holds the
+//! same object and is laid over what the client sent ([`Settings::layered`]).
+//! Its schema is `editors/vscode/schemas/phoxite.schema.json`: a new setting
+//! goes there too, and a test here says when it doesn't.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use phoxite::base::Severity;
 use phoxite::base::inspection_settings::InspectionOverride;
 use phoxite::base::settings::{LaravelSettings, PhpConfig};
 use phoxite::inspect::{PROFILE_ID, STRICT_OPTION};
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Folders nobody wants indexed, unless the user lists their own.
 pub const DEFAULT_EXCLUDES: &[&str] = &["node_modules", ".git", "storage/framework", "bootstrap/cache"];
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub php_version: String,
@@ -47,7 +52,7 @@ pub struct Settings {
     pub analyzers: AnalyzerSettings,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct InspectionSetting {
     pub enabled: Option<bool>,
@@ -57,7 +62,7 @@ pub struct InspectionSetting {
     pub severity: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct FormatSettings {
     pub line_width: u32,
@@ -67,7 +72,7 @@ pub struct FormatSettings {
 }
 
 /// The generators' templates the user edited.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct TemplateSettings {
     /// Their folder, relative to the project (or absolute); empty:
@@ -76,7 +81,7 @@ pub struct TemplateSettings {
 }
 
 /// PHPStan and Psalm on save (`analyzers.rs`).
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AnalyzerSettings {
     /// Run the analysers the project installs on each saved PHP file.
@@ -203,6 +208,82 @@ fn prune<T: DeserializeOwned>(
     }
 }
 
+/// The settings file of a project, at its root: the settings above, for
+/// everyone who works on the project whatever their editor.
+pub const PROJECT_FILE: &str = "phoxite.json";
+
+/// What `phoxite.json` of the project at `root` holds; `None` without the
+/// file, an error when it isn't a JSON object.
+pub fn read_project_file(root: &Path) -> Result<Option<Value>, String> {
+    let text = match std::fs::read_to_string(root.join(PROJECT_FILE)) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    match serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')) {
+        Ok(value @ Value::Object(_)) => Ok(Some(value)),
+        Ok(_) => Err("it has to hold an object".to_owned()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// What a project's settings file may set. A project one merely opened
+/// doesn't choose the programs that run or the files read outside it:
+/// `analyzers` and `laravel.database` are never taken from the file, and
+/// `includePaths` only in a workspace the user trusts.
+fn project_settings(file: &Value, trusted: bool) -> Value {
+    let mut file = file.clone();
+    if let Some(members) = file.as_object_mut() {
+        let mut ignored = Vec::new();
+        if members.remove("analyzers").is_some() {
+            ignored.push("analyzers");
+        }
+        if members.get_mut("laravel").and_then(Value::as_object_mut).and_then(|l| l.remove("database")).is_some() {
+            ignored.push("laravel.database");
+        }
+        if !trusted && members.remove("includePaths").is_some() {
+            ignored.push("includePaths");
+        }
+        if !ignored.is_empty() {
+            tracing::warn!("{PROJECT_FILE}: {} is only read from the editor's settings", ignored.join(", "));
+        }
+    }
+    file
+}
+
+/// Lays `over` over `base`: objects member by member, anything else whole.
+fn overlay(base: &mut Value, over: Value) {
+    match (base, over) {
+        (Value::Object(base), Value::Object(over)) => {
+            for (key, value) in over {
+                match base.get_mut(&key) {
+                    Some(below) => overlay(below, value),
+                    None => {
+                        base.insert(key, value);
+                    }
+                }
+            }
+        }
+        (base, over) => *base = over,
+    }
+}
+
+impl Settings {
+    /// The settings of one project: the client's (as for
+    /// [`from_json`](Self::from_json)), and over them what the project's
+    /// settings file sets. The file wins because a client sends every
+    /// setting, the ones the user never touched too.
+    pub fn layered(client: &Value, file: Option<&Value>, trusted: bool) -> (Self, Vec<String>) {
+        let Some(file) = file else { return Self::from_json(client) };
+        let mut merged = match client.get("phoxite").unwrap_or(client) {
+            base @ Value::Object(_) => base.clone(),
+            _ => Value::Object(Default::default()),
+        };
+        overlay(&mut merged, project_settings(file, trusted));
+        Self::from_json(&merged)
+    }
+}
+
 /// `initializationOptions`.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -304,6 +385,85 @@ mod tests {
         assert_eq!(Settings::from_json(&json!("on")), (Settings::default(), vec![String::new()]));
         // An object where a text is expected is left out as a whole.
         assert_eq!(Settings::from_json(&json!({ "phpVersion": {} })), (Settings::default(), vec!["phpVersion".into()]));
+    }
+
+    #[test]
+    fn a_project_file_is_laid_over_the_clients_settings() {
+        let client = json!({ "phoxite": {
+            "phpVersion": "8.1",
+            "stubs": ["redis"],
+            "laravel": { "routeHints": false, "database": "auto", "generation": { "module": "Blog" } },
+            "analyzers": { "onSave": false, "phpPath": "php8.3" },
+            "inspections": { "PhpParams": { "strict": true, "enabled": true } }
+        } });
+        let file = json!({
+            "$schema": "phoxite.schema.json",
+            "phpVersion": "8.4",
+            "includePaths": ["../shared"],
+            "laravel": { "database": "/etc/passwd", "generation": { "controllerSuffix": "Action" } },
+            "analyzers": { "onSave": true, "phpPath": "./run-me" },
+            "inspections": { "PhpParams": { "enabled": false } }
+        });
+
+        let (settings, rejected) = Settings::layered(&client, Some(&file), false);
+        assert!(rejected.is_empty(), "{rejected:?}");
+        // The file wins where it sets something; the rest is the client's.
+        assert_eq!(settings.php_version, "8.4");
+        assert_eq!(settings.stubs, ["redis"]);
+        assert!(!settings.laravel.route_hints);
+        assert_eq!(settings.laravel.generation.module, "Blog");
+        assert_eq!(settings.laravel.generation.controller_suffix, "Action");
+        assert_eq!(
+            settings.inspections["PhpParams"],
+            InspectionSetting { enabled: Some(false), strict: Some(true), severity: None }
+        );
+        // A project doesn't choose the programs that run or the files read outside it.
+        assert_eq!(settings.analyzers, AnalyzerSettings { on_save: false, php_path: "php8.3".into() });
+        assert_eq!(settings.laravel.database, "auto");
+        assert!(settings.include_paths.is_empty());
+
+        // Include paths are taken from the file of a project the user trusts.
+        let (trusted, _) = Settings::layered(&client, Some(&file), true);
+        assert_eq!(trusted.include_paths, ["../shared"]);
+        assert_eq!(trusted.analyzers.php_path, "php8.3");
+
+        // No file: the client's settings as they are.
+        assert_eq!(Settings::layered(&client, None, true), Settings::from_json(&client));
+        // A value of the file that doesn't fit is named like the client's.
+        let (settings, rejected) =
+            Settings::layered(&client, Some(&json!({ "phpVersion": 8, "stubs": ["ffi"] })), true);
+        assert_eq!(rejected, ["phpVersion"]);
+        assert_eq!((settings.php_version.as_str(), settings.stubs), ("", vec!["ffi".to_owned()]));
+    }
+
+    /// The defaults a JSON schema declares, as the object they describe.
+    fn schema_defaults(schema: &Value) -> Value {
+        match (schema.get("default"), schema.get("properties").and_then(Value::as_object)) {
+            (Some(default), _) => default.clone(),
+            (None, Some(properties)) => {
+                Value::Object(properties.iter().map(|(name, schema)| (name.clone(), schema_defaults(schema))).collect())
+            }
+            (None, None) => panic!("neither a default nor properties: {schema}"),
+        }
+    }
+
+    /// The schema of `phoxite.json` (the VS Code extension validates the file with it)
+    /// has every setting a project file may set, with the default the server uses.
+    #[test]
+    fn the_schema_of_the_project_file_has_the_settings_and_their_defaults() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../editors/vscode/schemas/phoxite.schema.json");
+        let mut schema: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        schema["properties"].as_object_mut().unwrap().remove("$schema");
+
+        // What `project_settings` never takes from the file isn't in its schema.
+        let mut settings = serde_json::to_value(Settings::default()).unwrap();
+        settings.as_object_mut().unwrap().remove("analyzers");
+        settings["laravel"].as_object_mut().unwrap().remove("database");
+        assert_eq!(schema_defaults(&schema), settings);
+
+        // And the server takes what the schema describes.
+        let (read, rejected) = Settings::layered(&Value::Null, Some(&schema_defaults(&schema)), true);
+        assert_eq!((read, rejected), (Settings::default(), vec![]));
     }
 
     #[test]

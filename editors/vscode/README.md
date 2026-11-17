@@ -130,6 +130,12 @@ the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
 | `phoxite.trace.server` | Log what the extension and the server say to each other. |
 | `phoxite.warnAboutOtherServers` | Warn about extensions that answer the same requests. |
 
+A project can carry the settings about its code itself: a `phoxite.json` at its root
+holds them without the `phoxite.` prefix (`{ "phpVersion": "8.4", "stubs": ["redis"] }`),
+with completion and validation as you type. What it sets wins over the settings above,
+for everyone who opens the project, in any editor. It can't set `analyzers.*` or
+`laravel.database`, and `includePaths` is read from it only in a trusted workspace.
+
 ## Several projects in one workspace
 
 In a multi-root workspace each Laravel folder is its own project. A command is about the
