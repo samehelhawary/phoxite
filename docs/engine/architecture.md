@@ -225,9 +225,13 @@ the last three are guesses only what the editor shows uses
   `cargo nextest run -p phoxite` or `cargo test -p phoxite`.
 - `crates/phoxite-lsp/src/tests.rs` runs the server end to end over an
   in-memory connection, on the fixtures.
-- `crates/phoxite/tests/differential.rs` (ignored; needs Intelephense and the
-  corpora from `scripts/php-corpus.sh`) compares definition and hover with
-  Intelephense. The last report is in [differential.md](differential.md).
+- The corpus tests (`crates/phoxite/tests/`, ignored) run on pinned releases of
+  laravel/framework, symfony and WordPress, which `scripts/php-corpus.sh` clones
+  into `../php-corpus`; `scripts/laravel-apps.sh` adds two real Laravel
+  applications with their `vendor/` for `LARAVEL_APP_DIR`.
+- A differential test compared definition and hover with Intelephense on those
+  corpora. Its harness is not in this repository yet; the last report is in
+  [differential.md](differential.md).
 - `crates/phoxite/benches/engine.rs` holds the performance budgets
   (`cargo bench -p phoxite --bench engine`); see
   [performance.md](performance.md). `tests/memory.rs` compares memory with

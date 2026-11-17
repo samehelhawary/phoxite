@@ -2,6 +2,8 @@
 
 Phase 6.2 ran `crates/phoxite/tests/differential.rs` on the three corpora and on `fixtures/php-library`. This is the summary; the full per-sample reports are written to `target/php-differential/<name>.{md,json}` by each run.
 
+> The harness is not in this repository yet: it drove Intelephense through the language-server client of the IDE the engine was developed in, and has to be moved onto a client of its own. Until then the tables below are a record of that run, and the commands don't work here.
+
 ```text
 cargo test -p phoxite --test differential -- --ignored --exact fixture
 PHP_DIFF_CORPUS=laravel-framework cargo test -p phoxite --test differential -- --ignored --exact corpus

@@ -46,6 +46,17 @@ PHOXITE_SERVER=../../target/debug/phoxite-lsp npm run test:e2e
 
 CI runs the first two blocks on every pull request; run them before you push.
 
+Some engine tests and benches are ignored unless real code is there to run them on. Two
+scripts fetch it, at pinned versions, into `../php-corpus` (or `PHP_CORPUS_DIR`). They run
+in bash and need git; the second also needs PHP and Composer, and on Windows downloads a
+portable PHP when there is none. `--check` says what is missing without fetching:
+
+```sh
+scripts/php-corpus.sh     # laravel/framework, symfony, WordPress
+scripts/laravel-apps.sh   # two Laravel applications with their vendor/, for LARAVEL_APP_DIR
+cargo test -p phoxite --release --test undefined_symbols -- --ignored --nocapture
+```
+
 ## What a pull request needs
 
 - A test that fails without the change: a test in `crates/phoxite` for the engine, an LSP
