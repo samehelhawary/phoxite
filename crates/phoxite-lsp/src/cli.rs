@@ -23,8 +23,8 @@ their problems, as the language server reports them in an editor.
 Usage: phoxite-lsp check [OPTIONS] [PATH...]
 
 The project is the nearest folder with a phoxite.json or a composer.json, from
-the first PATH up (from the current folder without a PATH). Only the files at
-or below a PATH are reported; all of the project's, without one.
+the current folder up; when a PATH is outside it, from the first PATH up. Only
+the files at or below a PATH are reported; all of the project's, without one.
 
 Options:
   --format <text|json|sarif|github>   how the problems are printed (default text);

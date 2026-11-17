@@ -63,29 +63,39 @@ fn exit_code(report: &Report, fail_on: FailOn) -> u8 {
     if failed { PROBLEMS } else { CLEAN }
 }
 
-/// The folder and the files a check is about: the nearest folder with a
-/// settings file or a `composer.json` from the first path up (the folder of
-/// the path itself without one), and the paths as the index spells them
-/// (canonical, as the folder the engine is opened on).
-fn project(paths: &[PathBuf]) -> Result<(PathBuf, Vec<PathBuf>), Stop> {
+/// The nearest folder with a settings file or a `composer.json`, from
+/// `dir` up.
+fn project_above(dir: &Path) -> Option<&Path> {
+    dir.ancestors().find(|dir| dir.join(PROJECT_FILE).is_file() || dir.join("composer.json").is_file())
+}
+
+/// The folder and the files a check run in `cwd` is about, with the paths
+/// as the index spells them (canonical, as the folder the engine is opened
+/// on).
+///
+/// The project is the one the command is run in when the paths are in it:
+/// in a repository of several packages, `check packages/a` at its root is
+/// about the repository, as `check` there is. Run from elsewhere, it is the
+/// project of the first path, and the other paths have to be in it. A
+/// folder without a project is one itself.
+fn project(cwd: &Path, paths: &[PathBuf]) -> Result<(PathBuf, Vec<PathBuf>), Stop> {
     let mut wanted = Vec::new();
     for path in paths {
-        let found = dunce::canonicalize(path).map_err(|e| Stop(USAGE, format!("{}: {e}", path.display())))?;
+        let found = dunce::canonicalize(cwd.join(path)).map_err(|e| Stop(USAGE, format!("{}: {e}", path.display())))?;
         wanted.push(found);
     }
-    let start = match wanted.first() {
-        Some(first) if first.is_dir() => first.clone(),
-        Some(first) => first.parent().map(Path::to_path_buf).unwrap_or_default(),
-        None => std::env::current_dir()
-            .and_then(dunce::canonicalize)
-            .map_err(|e| Stop(USAGE, format!("the current folder: {e}")))?,
-    };
-    let root = start
-        .ancestors()
-        .find(|dir| dir.join(PROJECT_FILE).is_file() || dir.join("composer.json").is_file())
-        .unwrap_or(&start)
-        .to_path_buf();
-    Ok((root, wanted))
+    let here = project_above(cwd).unwrap_or(cwd);
+    if wanted.iter().all(|path| path.starts_with(here)) {
+        return Ok((here.to_path_buf(), wanted));
+    }
+    let first = &wanted[0];
+    let start = if first.is_dir() { first.as_path() } else { first.parent().unwrap_or(first) };
+    let root = project_above(start).unwrap_or(start);
+    if let Some(outside) = wanted.iter().find(|path| !path.starts_with(root)) {
+        let message = format!("{} is outside the project at {}", outside.display(), root.display());
+        return Err(Stop(USAGE, message));
+    }
+    Ok((root.to_path_buf(), wanted))
 }
 
 fn settings(options: &CheckOptions, root: &Path) -> Result<Settings, Stop> {
@@ -111,7 +121,10 @@ fn settings(options: &CheckOptions, root: &Path) -> Result<Settings, Stop> {
 }
 
 fn check(options: &CheckOptions) -> Result<Report, Stop> {
-    let (root, wanted) = project(&options.paths)?;
+    let cwd = std::env::current_dir()
+        .and_then(dunce::canonicalize)
+        .map_err(|e| Stop(USAGE, format!("the current folder: {e}")))?;
+    let (root, wanted) = project(&cwd, &options.paths)?;
     let settings = settings(options, &root)?;
     let php = settings.engine_config();
 
@@ -312,6 +325,40 @@ mod tests {
             check(&CheckOptions { php_version: Some("8.1".into()), ..all }).unwrap_or_else(|Stop(_, m)| panic!("{m}"));
         assert_eq!(found(&older).len(), 1, "{:?}", found(&older));
         assert!(found(&older)[0].contains("[PhpLanguageLevel]"));
+    }
+
+    #[test]
+    fn the_project_is_the_one_the_command_is_run_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        for folder in ["src", "packages/a/src", "packages/b", "elsewhere/loose"] {
+            std::fs::create_dir_all(root.join(folder)).unwrap();
+        }
+        for manifest in ["composer.json", "packages/a/composer.json", "packages/b/phoxite.json"] {
+            std::fs::write(root.join(manifest), "{}").unwrap();
+        }
+        std::fs::write(root.join("packages/a/src/A.php"), "<?php\n").unwrap();
+        let paths = |paths: &[&str]| paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+        let found =
+            |cwd: &Path, given: &[&str]| project(cwd, &paths(given)).map(|(root, _)| root).map_err(|stop| stop.0);
+
+        // At the root of a repository of packages: the repository, whatever is named.
+        assert_eq!(found(&root, &[]), Ok(root.clone()));
+        assert_eq!(found(&root, &["packages/a/src", "src"]), Ok(root.clone()));
+        assert_eq!(found(&root, &["packages/a/src/A.php"]), Ok(root.clone()));
+        // In a package: the package.
+        assert_eq!(found(&root.join("packages/a/src"), &[]), Ok(root.join("packages/a")));
+        assert_eq!(found(&root.join("packages/b"), &[]), Ok(root.join("packages/b")));
+        // Paths outside where the command is run: the project of the first.
+        let other = tempfile::tempdir().unwrap();
+        let other = dunce::canonicalize(other.path()).unwrap();
+        let a = root.join("packages/a/src/A.php");
+        assert_eq!(found(&other, &[a.to_str().unwrap()]), Ok(root.join("packages/a")));
+        assert_eq!(found(&other, &[a.to_str().unwrap(), root.join("src").to_str().unwrap()]), Err(USAGE));
+        assert_eq!(found(&root.join("packages/a"), &["../b"]), Ok(root.join("packages/b")));
+        // No project above: the folder itself.
+        assert_eq!(found(&other, &[]), Ok(other.clone()));
+        assert_eq!(found(&root, &["nowhere"]), Err(USAGE));
     }
 
     #[test]
