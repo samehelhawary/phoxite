@@ -479,6 +479,14 @@ fn a_script_of_a_wordpress_plugin_names_what_php_declares() {
             .filter(|registration| registration["id"].as_str().is_some_and(|id| id.starts_with("phoxite/scripts/")))
             .collect::<Vec<_>>()
     };
+    // (The server asks after it has answered initialize: read on until its requests are in.)
+    for _ in 0..50 {
+        if asked(&c).len() >= 8 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let _ = c.call(crate::laravel::STATUS, json!({}));
+    }
     let registrations = asked(&c);
     assert_eq!(registrations.len(), 8, "{registrations:?}");
     assert_eq!(registrations[0]["method"], "textDocument/didOpen");

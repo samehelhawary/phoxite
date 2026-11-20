@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-11-21
 
 - **CodeIgniter** (4, and 3). In a CodeIgniter application the names its helper functions
   take are references: views (`view()`, `$this->extend()`, `$this->include()`, a
