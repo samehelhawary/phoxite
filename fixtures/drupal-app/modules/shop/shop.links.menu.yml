@@ -1,0 +1,3 @@
+shop.books_link:
+  title: 'Books'
+  route_name: shop.books

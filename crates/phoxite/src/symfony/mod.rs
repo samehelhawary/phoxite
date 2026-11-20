@@ -81,6 +81,10 @@ pub struct SymfonyConfig {
     pub services: Vec<ServiceDef>,
     pub parameters: Vec<ParameterDef>,
     pub routes: Vec<RouteDef>,
+    /// Drupal: the type a configuration's schema gives each of its keys, as
+    /// the schema names it (the configuration, `node.type.*` for those of
+    /// several; the key; `string`, `integer`, `mapping`…). Empty elsewhere.
+    pub config_types: Vec<(String, String, String)>,
 }
 
 impl SymfonyConfig {
@@ -181,6 +185,16 @@ impl SymfonyConfig {
     /// The service with this id (the last definition wins, as in Symfony).
     pub fn service(&self, id: &str) -> Option<&ServiceDef> {
         self.services.iter().rev().find(|service| service.id == id)
+    }
+
+    /// The type the schema of the configuration `config` gives its key
+    /// `key`.
+    pub fn config_type(&self, config: &str, key: &str) -> Option<&str> {
+        let described = |pattern: &str| {
+            pattern == config || (pattern.contains('*') && crate::summary::matches_pattern(pattern, config))
+        };
+        let found = self.config_types.iter().find(|(pattern, known, _)| known == key && described(pattern));
+        found.map(|(_, _, ty)| ty.as_str())
     }
 
     /// The parameter named `name` (the last definition wins).

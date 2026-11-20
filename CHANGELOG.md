@@ -2,6 +2,69 @@
 
 ## Unreleased
 
+- **Drupal** (8 and later). In a Drupal site, or a module or theme opened on its own, the
+  names its YAML files declare are references: services (`\Drupal::service()`,
+  `$container->get()`), routes (`Url::fromRoute()`, `redirect()`, `setRedirect()`),
+  permissions, libraries (`'#attached' => ['library' => […]]`), configuration and
+  modules. So are the entity types and plugins that attributes and annotations declare,
+  the theme hooks of `hook_theme()` (`'#theme' => '…'`, with the template), and hooks
+  (`invokeAll()`, `alter()`, `#[Hook]` ↔ the `hook_…()` function). Each completes, goes
+  to its declaration, has Find References and a hover; services, routes, permissions and
+  libraries are renamed with the YAML files that name them.
+  - Types: `\Drupal::service('id')` and `$container->get('id')` are the service's
+    class; `getStorage('node')` is the entity type's storage, and what it loads is the
+    entity; the parameters of a hook's implementation (`mymodule_form_alter()`, a method
+    with `#[Hook]`) have the types the hook's function gives them.
+  - `.module`, `.install`, `.theme`, `.profile`, `.engine` and `.inc` files are PHP: they
+    are indexed, the server watches them, and the VS Code extension opens them as PHP.
+  - The `templates` folder of a module or theme is the Twig namespace of its name
+    (`@shop/card.html.twig`).
+  - The YAML files are answered in too: Go to Definition, hover, Find References, Rename
+    and completion on the services, routes, permissions and libraries they name, and
+    Go to Definition on their classes and controller methods. The server asks the client
+    for `*.yml` files only while a Drupal project is open.
+  - Configuration keys (`\Drupal::config('shop.settings')->get('mail.from')`), the
+    plugins a links or layouts file declares, derivative plugin ids, theme hook
+    suggestions (`node__article`) and the preprocess functions of a theme hook.
+  - Go to Definition on the name of a function implementing a hook goes to the hook.
+  - A template completes the variables its theme hook declares, and
+    `attach_library('…')` in it is a library.
+  - `*.api.php` files, which document hooks as empty functions, no longer report unused
+    parameters.
+  - A template's variable has the type a preprocess function assigns it
+    (`$variables['book'] = …`), so `{{ book.title }}` completes.
+  - A configuration only a schema describes (`config/schema`) has its name and keys;
+    migrations and breakpoints are plugins; a `#[Hook]` on a class types the method it
+    names.
+  - In a YAML file, a line is read under the key above it (list items, bracketed lists
+    over several lines), `service.id:method` is a service and its method, and class
+    names complete after `class:` and `_controller:`.
+  - Drupal 7: a site or a module with a `.info` file is detected; `module_invoke_all()`,
+    `drupal_alter()`, `theme()`, `user_access()` and `module_exists()` name hooks, theme
+    hooks, permissions (`hook_permission()`) and modules, and a hook's implementation
+    is typed and goes to its hook.
+  - More of Drupal 7: menu paths (`drupal_goto('admin/shop')` ↔ `hook_menu()`, also
+    through `%` placeholders), variables (`variable_get()` ↔ `variable_set()`), a form's
+    function in `drupal_get_form()`, and its `.info` files (`dependencies[]`, `files[]`).
+  - `->get('key')` on a configuration has the type its schema gives the key; a template's
+    variable has the type a render array passes it (`'#book' => $book`).
+  - In a YAML file, a mapping in braces and an alias (`*defaults`) are read.
+  - Database tables: `db_select('node')` and the connection's `select()`, `insert()`…
+    go to the table's entry in `hook_schema()`, and a column of a query
+    (`$query->condition('n.nid', 5)`, `->fields('n', ['title'])`) goes to its field
+    there and completes, along a chain of calls and through the alias of a joined table
+    (`u.uid` after `->join('users', 'u', …)`).
+  - A configuration key also takes its type from the value a file installs; a render
+    array built up in a function (`$build['#book'] = $book`) types its template's
+    variable.
+  - Nothing of Drupal is bundled.
+- The YAML reader follows anchors and aliases (`&defaults`, `*defaults`) and merges
+  `<<: *defaults`: a Symfony or Drupal service defined that way has its class.
+- A callback under a key named as one (`callback`, `…_callback`, `…_cb`, `page
+  callback`) is a callable in any array, not only one that is a call's argument:
+  `$items['x'] = ['access callback' => 'my_access'];`.
+- A string under a key of an array can be a reference wherever the array is written
+  (`CalleePattern::Entry`): Drupal's render arrays use it.
 - **WordPress.** In a WordPress project (its core, a plugin or a theme), the names
   WordPress keeps in its registries are references: hooks (`add_action('init', …)` ↔
   `do_action('init')`, filters alike), shortcodes, post types, taxonomies, script and

@@ -5,7 +5,8 @@
 //! The directories are Symfony's `templates/` (or the `default_path` of
 //! `config/packages/twig.yaml`), the `paths` of that file (with or without
 //! a namespace), the legacy `app/Resources/views`, and `resources/views`
-//! (TwigBridge for Laravel).
+//! (TwigBridge for Laravel). In a Drupal project, the `templates` folder of
+//! each module and theme is the namespace of its name (`@shop`).
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -84,6 +85,12 @@ impl TemplatePaths {
         dirs.extend(configured);
         dirs.push((None, root.join("app/Resources/views")));
         dirs.push((None, root.join("resources/views")));
+        // Drupal: `@shop/shop-book.html.twig` is in the `templates` folder of the module `shop`.
+        let settings = crate::base::settings::FrameworkSettings::default();
+        if crate::frameworks::Frameworks::detect(root, &settings).contains(crate::frameworks::Framework::Drupal) {
+            let extensions = crate::frameworks::drupal::project::template_dirs(root);
+            dirs.extend(extensions.into_iter().map(|(name, dir)| (Some(name), dir)));
+        }
         let mut seen = Vec::new();
         dirs.retain(|entry| {
             entry.1.is_dir() && !seen.contains(entry) && {

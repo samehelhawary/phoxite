@@ -369,6 +369,17 @@ impl PhpEngine {
             return Some(targets);
         }
         let resolver = self.resolver();
+        // The name of a function implementing one of Drupal's hooks: the hook's function.
+        if let Some(function) =
+            here.functions.iter().find(|function| function.name_loc.start <= offset && offset <= function.name_loc.end)
+            && let Some(hook) = resolver.drupal_implemented_hook(&function.fqn)
+            && let Some(fqn) = resolver.drupal_hook(&hook)
+        {
+            let targets = self.declarations_of(NameKind::Function, &fqn, &path, &here);
+            if !targets.is_empty() {
+                return Some(targets);
+            }
+        }
         let found = self.at_caret(&parsed, &here, &resolver, offset)?;
         let mut out: Vec<Target> = Vec::new();
         match found.subject {

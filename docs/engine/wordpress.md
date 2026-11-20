@@ -124,12 +124,12 @@ with completion, goto, Find References, hover and rename. A new registry is a
 A hook's callback is a string callable (`navigate/callable.rs`), in any project:
 `add_action()`'s docblock says `@param callable $callback`. Callbacks given under a key
 of an array aren't typed by anything WordPress writes (it documents those arrays in
-prose), so `KEYED` in that file lists them: `callback` and `permission_callback` of
-`register_rest_route`, `sanitize_callback` of `register_setting` and `register_meta`,
-`render_callback` of `register_block_type`, and a few more. Beyond the list, a key that
-says so by its name (`callback`, `…_callback`, `…_cb`) holds a callable in any call, a
-method's and a `new` too: `$wp_customize->add_setting($id, ['sanitize_callback' =>
-'absint'])`.
+prose). They are told by the key's name: one that says so (`callback`, `…_callback`,
+`…_cb`) holds a callable in any array, wherever it is written: `callback` and
+`permission_callback` of `register_rest_route`, `sanitize_callback` of
+`register_setting`, `render_callback` of `register_block_type`,
+`$wp_customize->add_setting($id, ['sanitize_callback' => 'absint'])`, and an array
+assigned to a variable first.
 
 ## Types
 
@@ -177,5 +177,5 @@ Both come from docblocks, and both are answered by the resolver from the name fa
   a string is told by its line alone. A rename reads the scripts as they are saved.
 - A REST route whose namespace comes from anywhere but a literal or a property set to
   one string.
-- A callback under a key that neither `KEYED` lists nor is named as one: nothing says
+- A callback under a key that isn't named as one: nothing says
   such a string is a function's name.

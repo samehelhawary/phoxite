@@ -1,0 +1,12 @@
+shop.books:
+  path: '/books'
+  defaults:
+    _controller: '\Drupal\shop\Controller\BookController::list'
+  requirements:
+    _permission: 'administer shop+access shop'
+shop.book:
+  path: '/books/{book}'
+  defaults:
+    _controller: '\Drupal\shop\Controller\BookController::show'
+  requirements:
+    _permission: 'access shop'

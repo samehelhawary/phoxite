@@ -10,7 +10,8 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | Laravel | yes | `types::provider::LaravelProvider` | 24 kinds (`frameworks::laravel::refs`) |
 | Symfony, Doctrine | yes | `types::provider::SymfonyProvider` | route names, template names, service ids, parameters, translation keys and Doctrine fields (`frameworks::symfony::refs`) |
 | WordPress | yes | none (hook callbacks and `global` variables are typed by the engine itself, from name facts) | hooks, shortcodes, post types, taxonomies, script and style handles, options, image sizes, menu locations, template parts (`frameworks::wordpress::refs`; see [`wordpress.md`](wordpress.md)) |
-| Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
+| Drupal | yes | `types::provider::DrupalProvider` (services, entity storages); hook implementations by the engine itself | services, routes, permissions, libraries, configuration, modules, entity types, plugins, theme hooks, hooks (`frameworks::drupal::refs`; see [`drupal.md`](drupal.md)) |
+| CodeIgniter, Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
 
 Twig templates are not a framework in this sense: `phoxite::twig` reads a template's text
 and the project's template folders, needs no engine, and is served for every `*.twig` file.

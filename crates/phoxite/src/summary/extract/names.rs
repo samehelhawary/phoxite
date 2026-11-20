@@ -4,12 +4,18 @@
 //!
 //! The functions are the ones WordPress's developer handbooks document for
 //! firing hooks and for registering shortcodes, post types, taxonomies,
-//! scripts, styles, options, image sizes, menu locations and blocks. They are
+//! scripts, styles, options, image sizes, menu locations and blocks. Drupal's
+//! entity types, plugins and theme hooks are read from the attributes and
+//! annotations of classes and from `hook_theme()` (the second `impl`). They are
 //! matched by name only: a summary doesn't resolve calls, and whether the
 //! project is a WordPress one is asked when the facts are read.
 
 use mago_span::{HasSpan, Span};
-use mago_syntax::cst::{Argument, ArrayElement, CompositeString, Expression, FunctionCall, Literal, StringPart};
+use mago_syntax::comments::docblock::get_docblock_before_position;
+use mago_syntax::cst::{
+    Argument, ArrayElement, AttributeList, Block, CompositeString, Expression, FunctionCall, Literal, PartialArgument,
+    Sequence, Statement, StringPart,
+};
 
 use super::Extractor;
 use crate::summary::{DeclaredKind, DeclaredName, DocBlock, GlobalVariable};
@@ -49,6 +55,8 @@ const DECLARING: &[(&str, usize, Form, DeclaredKind)] = &[
     ("register_nav_menu", 0, Form::Argument, DeclaredKind::NavMenu),
     ("register_nav_menus", 0, Form::Keys, DeclaredKind::NavMenu),
     ("register_block_type", 0, Form::Argument, DeclaredKind::Block),
+    // Drupal 7.
+    ("variable_set", 0, Form::Argument, DeclaredKind::DrupalVariable),
 ];
 
 /// The part of a dynamic name that isn't written.
@@ -60,7 +68,7 @@ impl Extractor<'_> {
         let Expression::Identifier(function) = node.function else { return };
         let Some(called) = function.value().rsplit(|byte| *byte == b'\\').next() else { return };
         // Every one starts with one of these letters: most calls end here.
-        if !matches!(called.first().map(u8::to_ascii_lowercase), Some(b'a' | b'd' | b'r' | b'u' | b'w')) {
+        if !matches!(called.first().map(u8::to_ascii_lowercase), Some(b'a' | b'd' | b'r' | b'u' | b'v' | b'w')) {
             return;
         }
         if called.eq_ignore_ascii_case(b"add_action") || called.eq_ignore_ascii_case(b"add_filter") {
@@ -191,6 +199,7 @@ impl Extractor<'_> {
             dynamic,
             loc,
             params: Vec::new(),
+            classes: Vec::new(),
         });
     }
 
@@ -231,7 +240,14 @@ impl Extractor<'_> {
             return;
         }
         let loc = self.loc(inside(value));
-        self.summary.names.declared.push(DeclaredName { kind, name, dynamic, loc, params: Vec::new() });
+        self.summary.names.declared.push(DeclaredName {
+            kind,
+            name,
+            dynamic,
+            loc,
+            params: Vec::new(),
+            classes: Vec::new(),
+        });
     }
 
     /// Gives the hook just declared by `node` the `@param` types of the
@@ -432,4 +448,336 @@ fn inside(expr: &Expression<'_>) -> Span {
         span.end.offset -= 1;
     }
     span
+}
+
+/// The attributes and annotations that declare a Drupal entity type, by
+/// the last part of their name.
+const ENTITY_TYPES: [&str; 3] = ["ContentEntityType", "ConfigEntityType", "EntityType"];
+
+impl Extractor<'_> {
+    /// What the attributes and the annotation of the class `class` (FQN),
+    /// which starts at `start`, declare for Drupal: an entity type
+    /// (`#[ContentEntityType(id: 'node', handlers: ['storage' => …])]`,
+    /// `@ContentEntityType(id = "node", …)`), or a plugin of a class in a
+    /// `Plugin` namespace (`#[Block(id: 'shop_cart')]`, `@Block(id =
+    /// "shop_cart")`).
+    pub(super) fn drupal_class(&mut self, class: &str, start: u32, lists: &Sequence<'_, AttributeList<'_>>) {
+        let plugin = class.contains("\\Plugin\\");
+        let declare =
+            |this: &mut Self, annotation: &str, loc: crate::summary::Loc, id: String, storage: Option<String>| {
+                let short = annotation.rsplit('\\').next().unwrap_or(annotation);
+                let entity = ENTITY_TYPES.contains(&short);
+                if id.is_empty() || !(entity || plugin) {
+                    return;
+                }
+                let (kind, other) = if entity {
+                    (DeclaredKind::DrupalEntityType, storage.unwrap_or_default())
+                } else {
+                    (DeclaredKind::DrupalPlugin, short.to_owned())
+                };
+                this.summary.names.declared.push(DeclaredName {
+                    kind,
+                    name: id,
+                    dynamic: false,
+                    loc,
+                    params: Vec::new(),
+                    classes: vec![class.to_owned(), other],
+                });
+            };
+        for attribute in lists.iter().flat_map(|list| list.attributes.iter()) {
+            let Some(arguments) = &attribute.argument_list else { continue };
+            let named = |wanted: &[u8]| {
+                arguments.arguments.iter().find_map(|argument| match argument {
+                    PartialArgument::Named(argument) if argument.name.value == wanted => Some(argument.value),
+                    _ => None,
+                })
+            };
+            let first = || match arguments.arguments.first() {
+                Some(PartialArgument::Positional(argument)) => Some(argument.value),
+                _ => None,
+            };
+            let Some(id) = named(b"id").or_else(first) else { continue };
+            let Expression::Literal(Literal::String(string)) = id else { continue };
+            let Some(name) = string.value.map(|value| String::from_utf8_lossy(value).into_owned()) else { continue };
+            // `handlers: ['storage' => NodeStorage::class]`.
+            let storage = named(b"handlers").and_then(|handlers| {
+                let elements = match handlers {
+                    Expression::Array(array) => &array.elements,
+                    Expression::LegacyArray(array) => &array.elements,
+                    _ => return None,
+                };
+                elements.iter().find_map(|element| {
+                    let ArrayElement::KeyValue(element) = element else { return None };
+                    let Expression::Literal(Literal::String(key)) = element.key else { return None };
+                    (key.value == Some(b"storage".as_slice())).then(|| self.class_of(element.value)).flatten()
+                })
+            });
+            let annotation = self.class_name(&attribute.name);
+            let loc = self.loc(inside(id));
+            declare(self, &annotation, loc, name, storage);
+        }
+        // The annotation of the class's docblock, as Drupal wrote plugins before attributes.
+        let Some(trivia) = get_docblock_before_position(self.file.program().trivia.as_slice(), start) else { return };
+        let text = String::from_utf8_lossy(trivia.value);
+        let Some((annotation, body)) = annotation(&text) else { return };
+        let Some((at, id)) = assigned(body, "id", false) else { return };
+        let storage = assigned(body, "storage", true).map(|(_, class)| class.trim_start_matches('\\').to_owned());
+        let from = trivia.span.start.offset + (text.len() - body.len() + at) as u32;
+        let mut span = trivia.span;
+        span.start.offset = from;
+        span.end.offset = from + id.len() as u32;
+        let loc = self.loc(span);
+        declare(self, annotation, loc, id.to_owned(), storage);
+    }
+
+    /// The class `expr` names: `Foo::class`, or a string.
+    fn class_of(&self, expr: &Expression<'_>) -> Option<String> {
+        match expr {
+            Expression::Access(mago_syntax::cst::Access::ClassConstant(access)) => match access.class {
+                Expression::Identifier(class) => Some(self.class_name(class)),
+                _ => None,
+            },
+            Expression::Literal(Literal::String(string)) => {
+                string.value.map(|value| String::from_utf8_lossy(value).trim_start_matches('\\').to_owned())
+            }
+            _ => None,
+        }
+    }
+
+    /// The theme hooks a `hook_theme()` implementation declares: the keys
+    /// of the array that the function named `…_theme`, or the method with
+    /// a `#[Hook('theme')]` attribute, returns.
+    pub(super) fn theme_hooks(&mut self, name: &[u8], lists: &Sequence<'_, AttributeList<'_>>, body: &Block<'_>) {
+        let hooked = lists.iter().flat_map(|list| list.attributes.iter()).any(|attribute| {
+            let named = attribute.name.value().rsplit(|byte| *byte == b'\\').next() == Some(b"Hook".as_slice());
+            let first = attribute.argument_list.as_ref().and_then(|list| list.arguments.first());
+            named
+                && matches!(first, Some(PartialArgument::Positional(argument))
+                    if matches!(argument.value, Expression::Literal(Literal::String(string)) if string.value == Some(b"theme".as_slice())))
+        });
+        // Drupal 7's `hook_permission()` and `hook_menu()`: the keys of what they return, each
+        // described by an array, and those of the array they fill (`$items['path'] = array(…)`).
+        let described = if name.len() > 11 && name.ends_with(b"_permission") {
+            Some(DeclaredKind::DrupalPermission)
+        } else if name.len() > 5 && name.ends_with(b"_menu") {
+            Some(DeclaredKind::DrupalMenuPath)
+        } else if name.len() > 7 && name.ends_with(b"_schema") {
+            Some(DeclaredKind::DrupalTable)
+        } else {
+            None
+        };
+        if let Some(kind) = described {
+            let array = |expr: &Expression<'_>| matches!(expr, Expression::Array(_) | Expression::LegacyArray(_));
+            for statement in body.statements.iter() {
+                match statement {
+                    Statement::Return(returned) => {
+                        let elements = match returned.value {
+                            Some(Expression::Array(array)) => &array.elements,
+                            Some(Expression::LegacyArray(array)) => &array.elements,
+                            _ => continue,
+                        };
+                        for element in elements.iter() {
+                            let ArrayElement::KeyValue(element) = element else { continue };
+                            if array(element.value) {
+                                self.describe(kind, element.key, element.value);
+                            }
+                        }
+                    }
+                    Statement::Expression(statement) => {
+                        let Expression::Assignment(assignment) = statement.expression else { continue };
+                        match assignment.lhs {
+                            // `$items['admin/shop'] = array(…);`
+                            Expression::ArrayAccess(access) => {
+                                if array(assignment.rhs) && matches!(access.array, Expression::Variable(_)) {
+                                    self.describe(kind, access.index, assignment.rhs);
+                                }
+                            }
+                            // `$perms = array('administer shop' => array(…));`, returned later.
+                            Expression::Variable(_) => {
+                                let elements = match assignment.rhs {
+                                    Expression::Array(array) => &array.elements,
+                                    Expression::LegacyArray(array) => &array.elements,
+                                    _ => continue,
+                                };
+                                for element in elements.iter() {
+                                    let ArrayElement::KeyValue(element) = element else { continue };
+                                    if array(element.value) {
+                                        self.describe(kind, element.key, element.value);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if !hooked && !(name.len() > 6 && name.ends_with(b"_theme")) {
+            return;
+        }
+        self.theme_hooks_of(body);
+    }
+
+    /// Declares the name `key` writes, which the array `value` describes. A
+    /// table's columns are declared with it: the keys of its `fields`, each
+    /// as `table.column`.
+    fn describe(&mut self, kind: DeclaredKind, key: &Expression<'_>, value: &Expression<'_>) {
+        let before = self.summary.names.declared.len();
+        self.declare(kind, key);
+        if kind != DeclaredKind::DrupalTable || self.summary.names.declared.len() == before {
+            return;
+        }
+        let Some(table) = self.summary.names.declared.last().map(|declared| declared.name.clone()) else { return };
+        fn elements<'e>(expr: &'e Expression<'e>) -> Option<Vec<&'e ArrayElement<'e>>> {
+            match expr {
+                Expression::Array(array) => Some(array.elements.iter().collect()),
+                Expression::LegacyArray(array) => Some(array.elements.iter().collect()),
+                _ => None,
+            }
+        }
+        let is = |expr: &Expression<'_>, wanted: &[u8]| matches!(expr, Expression::Literal(Literal::String(string)) if string.value == Some(wanted));
+        let fields = elements(value).into_iter().flatten().find_map(|element| match element {
+            ArrayElement::KeyValue(element) if is(element.key, b"fields") => elements(element.value),
+            _ => None,
+        });
+        for field in fields.into_iter().flatten() {
+            let ArrayElement::KeyValue(field) = field else { continue };
+            let Expression::Literal(Literal::String(column)) = field.key else { continue };
+            let Some(column) = column.value.map(|value| String::from_utf8_lossy(value).into_owned()) else { continue };
+            let loc = self.loc(inside(field.key));
+            self.summary.names.declared.push(DeclaredName {
+                kind: DeclaredKind::DrupalColumn,
+                name: format!("{table}.{column}"),
+                dynamic: false,
+                loc,
+                params: Vec::new(),
+                classes: Vec::new(),
+            });
+        }
+    }
+
+    /// The method `method` of the class being read as an implementation of
+    /// the hooks its `#[Hook('name')]` attributes name. Without a method
+    /// (the attributes are the class's): `#[Hook('name', method: 'run')]`.
+    pub(super) fn hook_methods(&mut self, method: &[u8], lists: &Sequence<'_, AttributeList<'_>>) {
+        let Some(class) = self.classes.last().cloned() else { return };
+        for attribute in lists.iter().flat_map(|list| list.attributes.iter()) {
+            if attribute.name.value().rsplit(|byte| *byte == b'\\').next() != Some(b"Hook".as_slice()) {
+                continue;
+            }
+            let Some(arguments) = attribute.argument_list.as_ref() else { continue };
+            let Some(PartialArgument::Positional(argument)) = arguments.arguments.first() else { continue };
+            let Expression::Literal(Literal::String(string)) = argument.value else { continue };
+            let Some(hook) = string.value.map(|value| String::from_utf8_lossy(value).into_owned()) else { continue };
+            // On the class itself: the method the attribute names, else `__invoke`.
+            let named = arguments.arguments.iter().skip(1).find_map(|argument| {
+                let value = match argument {
+                    PartialArgument::Named(argument) if argument.name.value == b"method" => argument.value,
+                    PartialArgument::Positional(argument) => argument.value,
+                    _ => return None,
+                };
+                match value {
+                    Expression::Literal(Literal::String(string)) => {
+                        string.value.map(|value| String::from_utf8_lossy(value).into_owned())
+                    }
+                    _ => None,
+                }
+            });
+            let method = match method {
+                [] => named.filter(|name| !name.is_empty()).unwrap_or_else(|| "__invoke".to_owned()),
+                method => String::from_utf8_lossy(method).into_owned(),
+            };
+            self.summary.names.callbacks.push(crate::summary::HookCallback {
+                hook: format!("{}{hook}", crate::summary::DRUPAL_HOOK),
+                callback: crate::summary::callback_key(Some(&class), &method),
+            });
+        }
+    }
+
+    fn theme_hooks_of(&mut self, body: &Block<'_>) {
+        for statement in body.statements.iter() {
+            let Statement::Return(returned) = statement else { continue };
+            let elements = match returned.value {
+                Some(Expression::Array(array)) => &array.elements,
+                Some(Expression::LegacyArray(array)) => &array.elements,
+                _ => continue,
+            };
+            for element in elements.iter() {
+                let ArrayElement::KeyValue(element) = element else { continue };
+                // A theme hook is described by an array: other functions named so return other things.
+                let described = match element.value {
+                    Expression::Array(array) => &array.elements,
+                    Expression::LegacyArray(array) => &array.elements,
+                    _ => continue,
+                };
+                let before = self.summary.names.declared.len();
+                self.declare(DeclaredKind::DrupalThemeHook, element.key);
+                if self.summary.names.declared.len() == before {
+                    continue;
+                }
+                // What its template is given: the keys of `variables`, or the one `render element`.
+                let mut variables: Vec<String> = Vec::new();
+                let string = |expr: &Expression<'_>| match expr {
+                    Expression::Literal(Literal::String(string)) => {
+                        string.value.map(|value| String::from_utf8_lossy(value).into_owned())
+                    }
+                    _ => None,
+                };
+                for entry in described.iter() {
+                    let ArrayElement::KeyValue(entry) = entry else { continue };
+                    match (string(entry.key).as_deref(), entry.value) {
+                        (Some("variables"), Expression::Array(array)) => {
+                            variables.extend(array.elements.iter().filter_map(|variable| match variable {
+                                ArrayElement::KeyValue(variable) => string(variable.key),
+                                _ => None,
+                            }));
+                        }
+                        (Some("render element"), value) => variables.extend(string(value)),
+                        _ => {}
+                    }
+                }
+                if let Some(declared) = self.summary.names.declared.last_mut() {
+                    declared.classes = variables;
+                }
+            }
+        }
+    }
+}
+
+/// The first annotation of a docblock with arguments: its name and the text
+/// after its `(`.
+fn annotation(text: &str) -> Option<(&str, &str)> {
+    let mut from = 0;
+    while let Some(at) = text[from..].find('@') {
+        let rest = &text[from + at + 1..];
+        let name =
+            rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '\\' || c == '_')).next().unwrap_or_default();
+        if !name.is_empty() && rest[name.len()..].starts_with('(') {
+            return Some((name, &rest[name.len() + 1..]));
+        }
+        from += at + 1;
+    }
+    None
+}
+
+/// The string an annotation's `body` assigns to `key` (`id = "node"`; with
+/// `quoted`, `"storage" = "…"`): where it starts in `body`, and what it is.
+fn assigned<'t>(body: &'t str, key: &str, quoted: bool) -> Option<(usize, &'t str)> {
+    let written = if quoted { format!("\"{key}\"") } else { key.to_owned() };
+    let mut from = 0;
+    while let Some(at) = body[from..].find(&written) {
+        let start = from + at;
+        from = start + written.len();
+        let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        if !quoted && body[..start].ends_with(word) {
+            continue;
+        }
+        let Some(value) = body[from..].trim_start().strip_prefix('=') else { continue };
+        let value = value.trim_start();
+        let Some(value) = value.strip_prefix('"') else { continue };
+        let end = value.find('"')?;
+        return Some((body.len() - value.len(), &value[..end]));
+    }
+    None
 }

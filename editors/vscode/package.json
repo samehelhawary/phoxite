@@ -81,6 +81,17 @@
     },
     "languages": [
       {
+        "id": "php",
+        "extensions": [
+          ".module",
+          ".install",
+          ".theme",
+          ".profile",
+          ".inc",
+          ".engine"
+        ]
+      },
+      {
         "id": "blade",
         "aliases": [
           "Blade",

@@ -164,6 +164,11 @@ pub trait Declarations {
     fn name_facts(&self) -> Vec<crate::summary::NameFacts> {
         Vec::new()
     }
+    /// The functions of the global namespace named `hook_…` (FQNs): the
+    /// hooks a Drupal project's `*.api.php` files document.
+    fn hook_functions(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// [`Declarations`] over a fixed set of summaries, the first declaration
@@ -233,6 +238,11 @@ impl Declarations for SummarySet {
     fn name_facts(&self) -> Vec<crate::summary::NameFacts> {
         self.summaries.iter().map(|summary| summary.names.clone()).filter(|facts| !facts.is_empty()).collect()
     }
+
+    fn hook_functions(&self) -> Vec<String> {
+        let functions = self.summaries.iter().flat_map(|summary| &summary.functions);
+        functions.filter(|function| is_hook_function(&function.fqn)).map(|function| function.fqn.clone()).collect()
+    }
 }
 
 /// A cached declaration.
@@ -300,6 +310,46 @@ struct HookParameters {
     /// By a function or method ([`crate::summary::callback_key`]): the
     /// hooks it is registered for by name.
     callbacks: HashMap<String, Vec<String>>,
+    /// Drupal's hooks: the functions named `hook_…`, by what follows
+    /// `hook_`; those with a placeholder (`hook_ENTITY_TYPE_presave`) as a
+    /// pattern (`*_presave`).
+    drupal: HashMap<String, String>,
+    drupal_patterns: Vec<(String, String)>,
+    /// Drupal's entity types by id: the entity's class and its storage
+    /// handler (empty when none is named).
+    entity_types: HashMap<String, (String, String)>,
+}
+
+/// Whether `fqn` is a function of the global namespace named `hook_…`.
+pub fn is_hook_function(fqn: &str) -> bool {
+    let fqn = fqn.trim_start_matches('\\');
+    fqn.len() > 5 && fqn.starts_with("hook_") && !fqn.contains('\\')
+}
+
+/// A hook's name (what follows `hook_`) as a pattern when it has a
+/// placeholder: a part in capitals stands for anything (`ENTITY_TYPE`,
+/// `FORM_ID`, `HOOK`).
+pub fn hook_pattern(name: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut placeholder = false;
+    for part in name.split('_') {
+        let capitals = !part.is_empty() && part.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
+        if capitals {
+            if !out.ends_with('*') {
+                if !out.is_empty() {
+                    out.push('_');
+                }
+                out.push('*');
+            }
+            placeholder = true;
+        } else {
+            if !out.is_empty() {
+                out.push('_');
+            }
+            out.push_str(part);
+        }
+    }
+    placeholder.then_some(out)
 }
 
 impl HookParameters {
@@ -806,14 +856,90 @@ impl<'a> Resolver<'a> {
         let registered = hooks.callbacks.get(callback)?;
         let mut passed: Vec<Type> = Vec::new();
         for hook in registered {
-            if let Some(ty) = hooks.of(hook).and_then(|params| params.get(index))
-                && *ty != Type::Mixed
-                && !passed.contains(ty)
+            // A method with Drupal's `#[Hook('name')]`: what the hook's function declares.
+            let drupal =
+                hook.strip_prefix(crate::summary::DRUPAL_HOOK).and_then(|name| self.drupal_hook_parameter(name, index));
+            let ty = drupal.or_else(|| hooks.of(hook).and_then(|params| params.get(index)).cloned());
+            if let Some(ty) = ty
+                && ty != Type::Mixed
+                && !passed.contains(&ty)
             {
-                passed.push(ty.clone());
+                passed.push(ty);
             }
         }
         (!passed.is_empty()).then(|| Type::union(passed))
+    }
+
+    /// The function documenting Drupal's hook `name` (what follows
+    /// `hook_`): the one of that name, else the first whose placeholders
+    /// fit it (`hook_ENTITY_TYPE_presave` for `node_presave`).
+    pub fn drupal_hook(&self, name: &str) -> Option<String> {
+        let hooks = self.hooks();
+        hooks.drupal.get(name).cloned().or_else(|| {
+            let found =
+                hooks.drupal_patterns.iter().find(|(pattern, _)| crate::summary::matches_pattern(pattern, name));
+            found.map(|(_, fqn)| fqn.clone())
+        })
+    }
+
+    /// The class of Drupal's entity type `id` and its storage handler
+    /// (empty when its attribute or annotation names none).
+    pub fn drupal_entity_type(&self, id: &str) -> Option<(String, String)> {
+        self.hooks().entity_types.get(id).cloned()
+    }
+
+    /// Every hook function: what follows `hook_` in its name, and its FQN.
+    pub fn drupal_hooks(&self) -> Vec<(String, String)> {
+        let hooks = self.hooks();
+        let mut all: Vec<(String, String)> =
+            hooks.drupal.iter().map(|(name, fqn)| (name.clone(), fqn.clone())).collect();
+        all.extend(
+            hooks
+                .drupal_patterns
+                .iter()
+                .map(|(_, fqn)| (fqn.trim_start_matches('\\')["hook_".len()..].to_owned(), fqn.clone())),
+        );
+        all.sort();
+        all
+    }
+
+    /// The type the function of Drupal's hook `name` gives its parameter
+    /// `index`, when it declares or documents one.
+    pub fn drupal_hook_parameter(&self, name: &str, index: usize) -> Option<Type> {
+        let function = self.decls.function(&self.drupal_hook(name)?)?;
+        let param = function.params.get(index)?;
+        let ty = match (function.doc.as_deref().and_then(|doc| doc.param_type(&param.name)), &param.type_hint) {
+            (Some(ty), _) => Type::from_doc(ty, &[]),
+            (None, Some(hint)) => Type::from_hint(hint),
+            (None, None) => return None,
+        };
+        let ty = self.finish(&ty, &Context::default());
+        (ty != Type::Mixed).then_some(ty)
+    }
+
+    /// The hook the function `function` implements by its name
+    /// (`shop_node_presave` is `node_presave` of the module `shop`): the
+    /// longest end of the name after a `_` that is a hook's. `None` in a
+    /// project without hook functions.
+    pub fn drupal_implemented_hook(&self, function: &str) -> Option<String> {
+        let hooks = self.hooks();
+        if hooks.drupal.is_empty() && hooks.drupal_patterns.is_empty() {
+            return None;
+        }
+        let function = function.trim_start_matches('\\');
+        if function.contains('\\') || is_hook_function(function) {
+            return None;
+        }
+        let ends = || function.match_indices('_').map(|(at, _)| &function[at + 1..]).filter(|end| !end.is_empty());
+        // A hook of that very name before one a placeholder fits.
+        ends()
+            .find(|end| hooks.drupal.contains_key(*end))
+            .or_else(|| {
+                ends().find(|end| {
+                    hooks.drupal_patterns.iter().any(|(pattern, _)| crate::summary::matches_pattern(pattern, end))
+                })
+            })
+            .map(str::to_owned)
     }
 
     fn hooks(&self) -> Arc<HookParameters> {
@@ -821,6 +947,15 @@ impl<'a> Resolver<'a> {
             return hooks;
         }
         let mut hooks = HookParameters::default();
+        for fqn in self.decls.hook_functions() {
+            let name = fqn.trim_start_matches('\\')["hook_".len()..].to_owned();
+            match hook_pattern(&name) {
+                Some(pattern) => hooks.drupal_patterns.push((pattern, fqn)),
+                None => {
+                    hooks.drupal.entry(name).or_insert(fqn);
+                }
+            }
+        }
         for facts in self.decls.name_facts() {
             for registered in facts.callbacks {
                 let known = hooks.callbacks.entry(registered.callback).or_default();
@@ -829,6 +964,11 @@ impl<'a> Resolver<'a> {
                 }
             }
             for declared in facts.declared {
+                if declared.kind == crate::summary::DeclaredKind::DrupalEntityType
+                    && let [entity, storage] = declared.classes.as_slice()
+                {
+                    hooks.entity_types.entry(declared.name.clone()).or_insert((entity.clone(), storage.clone()));
+                }
                 if declared.params.is_empty() {
                     continue;
                 }

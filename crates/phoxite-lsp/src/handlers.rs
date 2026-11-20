@@ -181,6 +181,17 @@ fn twig_completion_item(state: &State, item: phoxite::twig::TwigCompletion) -> l
     }
 }
 
+/// A name of a Drupal project, offered in a YAML file or a template.
+fn drupal_item(item: phoxite::frameworks::drupal::documents::NameCompletion) -> lsp::CompletionItem {
+    lsp::CompletionItem {
+        label: item.label.clone(),
+        kind: Some(lsp::CompletionItemKind::VALUE),
+        detail: item.detail,
+        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit::new(lsp_range(item.range), item.label))),
+        ..lsp::CompletionItem::default()
+    }
+}
+
 pub fn completion(
     state: &State,
     p: lsp::CompletionParams,
@@ -270,6 +281,12 @@ pub fn completion(
                 ..lsp::CompletionItem::default()
             }));
         }
+        // In a Drupal project's `attach_library('…')`: its libraries.
+        if let Some(found) =
+            doc.engine.as_ref().and_then(|engine| engine.drupal_document_completion(&doc.path, &doc.text, at))
+        {
+            items.extend(found.into_iter().map(drupal_item));
+        }
         // In `path('…')` and `url('…')`: the project's route names.
         if let Some(replace) = phoxite::twig::route_string_at(&doc.text, at)
             && let Some(engine) = &doc.engine
@@ -283,6 +300,13 @@ pub fn completion(
             }));
         }
         return Ok(Some(lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })));
+    }
+    if doc.kind == Kind::DrupalYaml {
+        let found = doc.engine.as_ref().and_then(|engine| engine.drupal_document_completion(&doc.path, &doc.text, at));
+        return Ok(found.map(|found| {
+            let items = found.into_iter().map(drupal_item).collect();
+            lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })
+        }));
     }
     if doc.kind == Kind::WordPressScript {
         let found = doc.engine.as_ref().and_then(|engine| engine.wordpress_script_completion(&doc.path, &doc.text, at));
@@ -345,6 +369,15 @@ pub fn resolve_completion(state: &State, mut item: lsp::CompletionItem) -> Resul
 pub fn hover(state: &State, p: lsp::HoverParams) -> Result<Option<lsp::Hover>> {
     let doc = snapshot(state, &p.text_document_position_params.text_document.uri)?;
     let at = pos(p.text_document_position_params.position);
+    if doc.kind == Kind::Twig
+        && let Some(found) =
+            doc.engine.as_ref().and_then(|engine| engine.drupal_document_hover(&doc.path, &doc.text, at))
+    {
+        return Ok(Some(lsp::Hover {
+            contents: lsp::HoverContents::Markup(markup(state, found.markdown)),
+            range: Some(lsp_range(found.range)),
+        }));
+    }
     if doc.kind == Kind::Twig {
         let project = state.twig_project(&doc.root);
         // A member of what the controller passes: its type.
@@ -364,6 +397,7 @@ pub fn hover(state: &State, p: lsp::HoverParams) -> Result<Option<lsp::Hover>> {
         Kind::Php => engine.hover(doc.id, at),
         Kind::Blade => engine.blade_hover(&doc.blade(), at),
         Kind::WordPressScript => engine.wordpress_script_hover(&doc.path, &doc.text, at),
+        Kind::DrupalYaml => engine.drupal_document_hover(&doc.path, &doc.text, at),
         _ => None,
     };
     Ok(found.map(|hover| lsp::Hover {
@@ -436,6 +470,12 @@ pub fn goto(
         }
         (Kind::Blade, Goto::Definition) => blade_definition(&doc, at),
         (Kind::Twig, Goto::Definition) => {
+            // A library of a Drupal project, in `attach_library()`.
+            if let Some(found) =
+                doc.engine.as_ref().and_then(|engine| engine.drupal_document_definition(&doc.path, &doc.text, at))
+            {
+                return Ok(Some(lsp::GotoDefinitionResponse::Array(targets(found))));
+            }
             // A route name or a translation key: where the project declares it.
             if let Some((kind, named)) = twig_name_at(&doc.text, at).filter(|(kind, _)| *kind != SYMFONY_TEMPLATE) {
                 let found = doc.engine.as_ref().and_then(|engine| engine.symfony_name_targets(kind, &named.name));
@@ -472,6 +512,11 @@ pub fn goto(
             }
             Some(locations(found))
         }
+        (Kind::DrupalYaml, Goto::Definition) => doc
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.drupal_document_definition(&doc.path, &doc.text, at))
+            .map(targets),
         (Kind::WordPressScript, Goto::Definition) => doc
             .engine
             .as_ref()
@@ -509,6 +554,14 @@ pub fn references(
     let doc = snapshot(state, &p.text_document_position.text_document.uri)?;
     let at = pos(p.text_document_position.position);
     let include = p.context.include_declaration;
+    if doc.kind == Kind::Twig
+        && let Some(found) = doc
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.drupal_document_references(&doc.path, &doc.text, at, include, cancel))
+    {
+        return found.map(|found| Some(usages(found))).map_err(engine_error);
+    }
     if doc.kind == Kind::Twig {
         // The usages of the route or the template named at the caret.
         let Some((kind, named)) = twig_name_at(&doc.text, at) else { return Ok(None) };
@@ -549,6 +602,7 @@ pub fn references(
         Kind::Env => engine.laravel_env_references(&doc.path, &doc.text, at, include, cancel),
         Kind::TranslationJson => engine.laravel_translation_json_references(&doc.path, &doc.text, at, include, cancel),
         Kind::WordPressScript => engine.wordpress_script_references(&doc.path, &doc.text, at, include, cancel),
+        Kind::DrupalYaml => engine.drupal_document_references(&doc.path, &doc.text, at, include, cancel),
         Kind::Twig | Kind::Other => None,
     };
     match found {
@@ -685,6 +739,7 @@ pub fn prepare_rename(state: &State, p: lsp::TextDocumentPositionParams) -> Resu
         Kind::Env => engine.laravel_env_prepare_rename(&doc.path, &doc.text, at),
         Kind::TranslationJson => engine.laravel_translation_json_prepare_rename(&doc.path, &doc.text, at),
         Kind::WordPressScript => engine.wordpress_script_prepare_rename(&doc.path, &doc.text, at).flatten(),
+        Kind::DrupalYaml => engine.drupal_document_prepare_rename(&doc.path, &doc.text, at).flatten(),
         Kind::Twig | Kind::Other => None,
     };
     match found {
@@ -730,6 +785,7 @@ pub fn rename(state: &State, p: lsp::RenameParams, cancel: &CancellationToken) -
         Kind::Env => engine.laravel_env_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::TranslationJson => engine.laravel_translation_json_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::WordPressScript => engine.wordpress_script_rename(&doc.path, &doc.text, at, new, cancel),
+        Kind::DrupalYaml => engine.drupal_document_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::Twig | Kind::Other => None,
     };
     match found {

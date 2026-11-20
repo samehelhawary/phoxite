@@ -172,6 +172,46 @@ Nothing of WordPress is bundled. A plugin or theme opened on its own needs WordP
 functions from somewhere: install `php-stubs/wordpress-stubs` with Composer, or add a
 WordPress folder to `phoxite.includePaths`.
 
+## Drupal
+
+In a Drupal site, or a module or theme opened on its own (Drupal 8 and later; for Drupal
+7: hooks, `theme()`, `user_access()`, `module_exists()`, menu paths, variables,
+`drupal_get_form()` and the `.info` file). `.module`,
+`.install`, `.theme`, `.profile`, `.engine` and `.inc` files open as PHP.
+
+- Names from the YAML files, with completion, Go to Definition to the key, hover and Find
+  All References: services (`\Drupal::service('shop.catalog')`, `$container->get()`),
+  routes (`Url::fromRoute()`, `$this->redirect()`, `setRedirect()`), permissions
+  (`hasPermission('administer shop')`), libraries (`'#attached' => ['library' =>
+  ['shop/cart']]`), configuration (`\Drupal::config('shop.settings')`) and modules
+  (`moduleExists()`)
+- Rename of a service, a route, a permission or a library changes its key, the PHP strings
+  and what the other YAML files write (`@shop.catalog`, `route_name:`, `_permission:`),
+  for names of the site's own modules
+- Names from PHP: entity types (`getStorage('node')`) and plugins
+  (`createInstance('shop_cart')`) from their attribute or annotation, theme hooks
+  (`'#theme' => 'shop_book'`) from `hook_theme()`, with the template beside it
+- Hooks: `invokeAll('cron')`, `alter('form')` and `#[Hook('node_presave')]` go to the
+  `hook_…()` function of the `*.api.php` file; Find All References lists the functions
+  implementing the hook
+- Types: `\Drupal::service('id')` is the service's class; `getStorage('node')->load(1)`
+  is a `Node`; the parameters of `mymodule_form_alter(&$form, $form_state)` have the types
+  the hook documents
+- A template's `{% include '@shop/card.html.twig' %}` goes to the module's template;
+  `attach_library('shop/cart')` is a library; a template completes the variables its
+  theme hook declares
+- Configuration keys: `\Drupal::config('shop.settings')->get('mail.from')` completes
+  and goes to the key in `config/install/shop.settings.yml`
+- Go to Definition on the name of `mymodule_form_alter()` goes to `hook_form_alter()`
+- In the YAML files themselves (`*.services.yml`, `*.routing.yml`, `*.links.*.yml`,
+  `*.libraries.yml`, `*.info.yml`, `*.permissions.yml`): Go to Definition, hover, Find All
+  References, Rename and completion on services (`@shop.catalog`), routes
+  (`route_name:`), permissions (`_permission:`), libraries, and on the classes and
+  controller methods they name
+
+Nothing of Drupal is bundled. A module opened on its own knows only its own names: add the
+site's `core` folder to `phoxite.includePaths` for Drupal's classes and hooks.
+
 ## Twig
 
 Highlighting of Twig in the text, inside HTML tags and attribute values, and in scripts and

@@ -3,7 +3,9 @@
 //! mappings and sequences by indentation, flow mappings and sequences
 //! (`{ resource: '../src/' }`, `[a, b]`), plain, single- and double-quoted
 //! scalars, comments, and block scalars (`|`, `>`), whose text is skipped.
-//! Anchors, aliases, tags and multi-document streams aren't interpreted:
+//! An anchor (`&name`) is remembered and an alias (`*name`) stands for it;
+//! `<<: *name` merges that mapping in. In a flow collection (`[*a, *b]`) an
+//! alias is the same. Tags and multi-document streams aren't interpreted:
 //! a tag stays in the scalar's text, and documents after `---` are read as
 //! if they continued the first. It never fails: what it can't read is
 //! skipped.
@@ -96,7 +98,7 @@ pub fn parse(text: &str) -> Node {
             Some(Line { number: number as u32, raw, indent, content: trimmed })
         })
         .collect();
-    let mut parser = Parser { lines, at: 0 };
+    let mut parser = Parser { lines, at: 0, anchors: Vec::new() };
     let Some(first) = parser.lines.first() else { return Node::Null };
     let indent = first.indent;
     parser.block(indent)
@@ -105,6 +107,8 @@ pub fn parse(text: &str) -> Node {
 struct Parser<'t> {
     lines: Vec<Line<'t>>,
     at: usize,
+    /// What each `&anchor` met so far stands for.
+    anchors: Vec<(String, Node)>,
 }
 
 impl<'t> Parser<'t> {
@@ -142,6 +146,23 @@ impl<'t> Parser<'t> {
             let value = self.value(rest, indent, true);
             entries.push(Entry { key: unquote(key), range, value });
         }
+        // `<<: *defaults` (or a list of them): the entries of those mappings that this one
+        // doesn't write itself.
+        while let Some(at) = entries.iter().position(|entry| entry.key == "<<") {
+            let merged = entries.remove(at).value;
+            let sources = match merged {
+                Node::Seq(items) => items,
+                other => vec![other],
+            };
+            for source in sources {
+                let Node::Map(inherited) = source else { continue };
+                for entry in inherited {
+                    if !entries.iter().any(|known| known.key == entry.key) {
+                        entries.push(entry);
+                    }
+                }
+            }
+        }
         Node::Map(entries)
     }
 
@@ -178,6 +199,20 @@ impl<'t> Parser<'t> {
     /// What follows a key (`in_mapping`) or a `- `: inline, or a block on
     /// the next lines.
     fn value(&mut self, rest: &str, indent: usize, in_mapping: bool) -> Node {
+        // `&anchor …`: what follows, remembered under the name. `*alias`: that again.
+        if let Some(named) = rest.strip_prefix('&') {
+            let name = named.split_whitespace().next().unwrap_or_default().to_owned();
+            let node = self.value(named[name.len()..].trim_start(), indent, in_mapping);
+            if !name.is_empty() {
+                self.anchors.push((name, node.clone()));
+            }
+            return node;
+        }
+        if let Some(name) = rest.strip_prefix('*').filter(|name| !name.is_empty() && !name.contains([' ', ',']))
+            && let Some((_, node)) = self.anchors.iter().rev().find(|(known, _)| known == name)
+        {
+            return node.clone();
+        }
         if rest.is_empty() {
             // `key:` with a sequence at the same indentation is allowed.
             if in_mapping
@@ -205,9 +240,31 @@ impl<'t> Parser<'t> {
                 text.push_str(next.content);
                 self.at += 1;
             }
-            return inline(&text);
+            let node = inline(&text);
+            return self.aliases(node);
         }
-        inline(rest)
+        let node = inline(rest);
+        self.aliases(node)
+    }
+
+    /// `node` with the aliases among the items of a flow sequence replaced by
+    /// what they stand for.
+    fn aliases(&self, node: Node) -> Node {
+        match node {
+            Node::Seq(items) => Node::Seq(
+                items
+                    .into_iter()
+                    .map(|item| match &item {
+                        Node::Scalar(text) => text
+                            .strip_prefix('*')
+                            .and_then(|name| self.anchors.iter().rev().find(|(known, _)| known == name))
+                            .map_or(item.clone(), |(_, node)| node.clone()),
+                        _ => item,
+                    })
+                    .collect(),
+            ),
+            other => other,
+        }
     }
 
     /// A block indented further than `indent`, or null.
@@ -455,5 +512,43 @@ services: # inline comment
         // UTF-16 columns.
         let root = parse("é: 1\n  ünï: 2\n");
         assert_eq!(root.entries()[0].range, Range::new(Pos::new(0, 0), Pos::new(0, 1)));
+    }
+
+    #[test]
+    fn anchors_aliases_and_merges() {
+        let doc = parse(
+            "defaults: &defaults
+  public: true
+  tags: [a]
+services:
+  one:
+    <<: *defaults
+    class: One
+  two:
+    <<: [*defaults]
+    public: false
+name: &name shop
+again: *name
+",
+        );
+        let one = doc.get("services").and_then(|services| services.get("one")).unwrap();
+        assert_eq!(one.get("class").and_then(Node::as_str), Some("One"));
+        assert_eq!(one.get("public").and_then(Node::as_str), Some("true"));
+        assert!(one.get("<<").is_none());
+        // What the mapping writes itself wins.
+        let two = doc.get("services").and_then(|services| services.get("two")).unwrap();
+        assert_eq!(two.get("public").and_then(Node::as_str), Some("false"));
+        assert_eq!(two.get("tags").map(|tags| tags.items().len()), Some(1));
+        assert_eq!(doc.get("again").and_then(Node::as_str), Some("shop"));
+        // An alias nothing anchors is what is written.
+        assert_eq!(
+            parse(
+                "a: *nothing
+"
+            )
+            .get("a")
+            .and_then(Node::as_str),
+            Some("*nothing")
+        );
     }
 }

@@ -143,6 +143,10 @@ impl Inspection for UnusedParameter {
     }
 
     fn check(&self, cx: &InspectionContext<'_>, out: &mut Problems) {
+        // Drupal's `*.api.php` files document hooks as functions that do nothing.
+        if cx.path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with(".api.php")) {
+            return;
+        }
         for found in cx.variables().iter().filter(|found| found.kind == VariableKind::UnusedParameter) {
             out.report(found.start, found.end, format!("Unused parameter '${}'", found.name)).unnecessary();
         }

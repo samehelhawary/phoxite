@@ -929,9 +929,7 @@ impl<'a> Scan<'a, '_, '_> {
 
     /// String callables among the arguments of `call`.
     fn callable_arguments(&mut self, call: &'a Expression<'a>, list: &'a ArgumentList<'a>) {
-        let mut found = candidates(list);
-        found.extend(keyed_candidates(call));
-        self.callable_strings(Place::Argument(call), found);
+        self.callable_strings(Place::Argument(call), candidates(list));
     }
 
     /// A string callable a function returns or a property is assigned.
@@ -1015,6 +1013,10 @@ impl<'a> Scan<'a, '_, '_> {
         }
         if let Expression::Assignment(assignment) = expr {
             self.callable_value(Place::Assigned(assignment.lhs), assignment.rhs);
+        }
+        // Under a key named as a callback, in whatever array.
+        if matches!(expr, Expression::Array(_) | Expression::LegacyArray(_)) {
+            self.callable_strings(Place::Returned, keyed_candidates(expr));
         }
         let members = self.members_sought();
         match expr {

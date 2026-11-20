@@ -110,6 +110,11 @@ pub enum CalleePattern {
     /// one of `classes` or of a subclass (a model's `$fillable`). The value
     /// is the argument at index 0.
     Property { classes: &'static [&'static str], names: &'static [&'static str] },
+    /// The value under this key of any array, wherever the array is
+    /// written: `'#theme' => 'item_list'` of a Drupal render array, and
+    /// `$build['#theme'] = 'item_list'`. The value is the argument at
+    /// index 0; an array below it is reached with a [`Position`].
+    Entry(&'static str),
 }
 
 /// Where in the argument the string sits.
@@ -164,6 +169,7 @@ impl PlacePattern {
             CalleePattern::Function(fqn) | CalleePattern::UndeclaredFunction(fqn) => {
                 vec![fqn.rsplit('\\').next().unwrap_or(fqn)]
             }
+            CalleePattern::Entry(key) => vec![key],
             CalleePattern::Method { names, .. }
             | CalleePattern::Return { names, .. }
             | CalleePattern::Rules { names, .. }
@@ -231,6 +237,7 @@ impl PlacePattern {
                             classes.iter().any(|wanted| wanted.contains('\\') && model.is_subclass_of(wanted))
                         }))
             }
+            (CalleePattern::Entry(wanted), CallTarget::Entry { key }) => key == wanted,
             (CalleePattern::Rules { form_request, names }, CallTarget::Return { class, method }) => {
                 names.iter().any(|wanted| wanted.eq_ignore_ascii_case(method))
                     && resolver.class_model(class).is_some_and(|model| {
@@ -262,6 +269,8 @@ pub enum CallTarget {
     /// The default value of a property: the class declaring it (FQN) and
     /// its name without `$`.
     Property { class: String, name: String },
+    /// The value under a key of an array ([`CalleePattern::Entry`]).
+    Entry { key: String },
 }
 
 /// One step from an argument into the arrays around the string.
@@ -340,13 +349,21 @@ enum SiteCall<'a> {
         class: (String, u32),
         at: u32,
     },
+    /// The value under `key` of an array, the key at `at`.
+    Entry {
+        key: String,
+        at: u32,
+    },
 }
 
 impl SiteCall<'_> {
     fn start(&self) -> u32 {
         match self {
             SiteCall::Call(call) => call.span().start.offset,
-            SiteCall::Return { at, .. } | SiteCall::Property { at, .. } | SiteCall::Attribute { at, .. } => *at,
+            SiteCall::Return { at, .. }
+            | SiteCall::Property { at, .. }
+            | SiteCall::Attribute { at, .. }
+            | SiteCall::Entry { at, .. } => *at,
         }
     }
 }
@@ -490,6 +507,57 @@ impl<'a> Collect<'a, '_> {
     }
 }
 
+impl<'a> Collect<'a, '_> {
+    /// The strings under a key asked about ([`CalleePattern::Entry`]): of
+    /// the array `expr` is, or of the array element it assigns.
+    fn entries(&mut self, expr: &'a Expression<'a>) {
+        let elements = match expr {
+            Expression::Array(array) => Some(&array.elements),
+            Expression::LegacyArray(array) => Some(&array.elements),
+            _ => None,
+        };
+        for element in elements.into_iter().flat_map(|elements| elements.iter()) {
+            let ArrayElement::KeyValue(element) = element else { continue };
+            let Expression::Literal(Literal::String(key)) = element.key else { continue };
+            let Some(key) = key.value.map(lossy).filter(|key| self.names.contains(&key.to_ascii_lowercase())) else {
+                continue;
+            };
+            let call = SiteCall::Entry { key, at: element.key.span().start.offset };
+            self.strings(&call, element.value, (Some(0), None), &mut Vec::new(), None);
+        }
+        // `$build['#attached']['library'][] = 'core/drupal.ajax'`: the keys the target is reached by.
+        let Expression::Assignment(assignment) = expr else { return };
+        let mut keys: Vec<Option<String>> = Vec::new();
+        let mut target = assignment.lhs;
+        loop {
+            match target {
+                Expression::ArrayAppend(append) => {
+                    keys.push(None);
+                    target = append.array;
+                }
+                Expression::ArrayAccess(access) => {
+                    keys.push(match access.index {
+                        Expression::Literal(Literal::String(key)) => key.value.map(lossy),
+                        _ => None,
+                    });
+                    target = access.array;
+                }
+                _ => break,
+            }
+        }
+        keys.reverse();
+        let Some(at) =
+            keys.iter().position(|key| key.as_ref().is_some_and(|key| self.names.contains(&key.to_ascii_lowercase())))
+        else {
+            return;
+        };
+        let Some(key) = keys[at].clone() else { return };
+        let mut steps: Vec<ArrayStep> = keys[at + 1..].iter().cloned().map(ArrayStep::Value).collect();
+        let call = SiteCall::Entry { key, at: assignment.lhs.span().start.offset };
+        self.strings(&call, assignment.rhs, (Some(0), None), &mut steps, None);
+    }
+}
+
 /// `Foo::class`: the name as written and its offset.
 fn class_constant(expr: &Expression<'_>) -> Option<(String, u32)> {
     let Expression::Access(Access::ClassConstant(access)) = expr else { return None };
@@ -605,6 +673,7 @@ impl<'a> Walker<'a, 'a, Collect<'a, '_>> for SiteWalker {
     }
 
     fn walk_in_expression(&self, expr: &'a Expression<'a>, cx: &mut Collect<'a, '_>) {
+        cx.entries(expr);
         let Some((name, list)) = call_parts(expr) else { return };
         if !cx.names.contains(&name.to_ascii_lowercase()) {
             return;
@@ -718,6 +787,7 @@ pub fn sites_with(
                     };
                     CallTarget::Property { class: class.trim_start_matches('\\').to_owned(), name }
                 }
+                SiteCall::Entry { key, .. } => CallTarget::Entry { key },
                 SiteCall::Attribute { class: (class, offset), .. } => {
                     let class = match file_names.scope_at(offset).resolve(NameKind::ClassLike, &class).resolution {
                         Resolution::Fqn(fqn) | Resolution::Fallback { namespaced: fqn, .. } => fqn,
@@ -883,6 +953,7 @@ fn helper_instance(object: &Expression<'_>) -> Option<&'static str> {
 // ------------------------------------------------------------------ kinds
 
 /// What [`ReferenceKind`] methods get.
+#[derive(Clone)]
 pub struct RefContext<'e> {
     pub engine: &'e PhpEngine,
     /// The frameworks of the project: the ones whose kinds are asked.
@@ -1198,6 +1269,7 @@ pub fn framework_kinds(framework: super::Framework) -> &'static [&'static dyn Re
         super::Framework::Laravel => super::laravel::refs::kinds(),
         super::Framework::Symfony => super::symfony::refs::kinds(),
         super::Framework::WordPress => super::wordpress::refs::kinds(),
+        super::Framework::Drupal => super::drupal::refs::kinds(),
         _ => &[],
     }
 }

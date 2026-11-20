@@ -38,6 +38,10 @@ servers. What it does:
 - **WordPress:** hooks, shortcodes, post types, taxonomies, script and style handles,
   options, image sizes and menu locations with completion, goto, usages and rename;
   template parts; the types of a hook callback's parameters and of `global $wpdb`.
+- **Drupal:** services, routes, permissions, libraries, configuration, entity types,
+  plugins, theme hooks and hooks, from the module's YAML files, attributes and
+  annotations; the types of `\Drupal::service()`, of an entity storage and of a hook
+  implementation's parameters. `.module`, `.theme` and `.install` files are PHP.
 
 ## Performance
 

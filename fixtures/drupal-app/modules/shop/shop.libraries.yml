@@ -1,0 +1,9 @@
+cart:
+  js:
+    js/cart.js: {}
+  dependencies:
+    - shop/base
+base:
+  css:
+    theme:
+      css/base.css: {}

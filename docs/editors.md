@@ -11,6 +11,12 @@ the usages of a template name, rename of blocks and macros, formatting (indentat
 spacing inside tags), semantic tokens and their syntax errors. Highlighting of the tags themselves
 is the editor's.
 
+Drupal's `.module`, `.install`, `.theme`, `.profile`, `.engine` and `.inc` files are PHP to
+the server whatever language id the client sends; give them the `php` filetype in your
+editor so that it attaches the server to them. In a Drupal project the server also answers
+in the module's YAML files, and registers for `**/*.yml` itself where the client takes
+that; elsewhere, attach it to `yaml` beside your YAML server.
+
 In a WordPress project the server also answers in JavaScript and TypeScript files and in
 `block.json` (Go to Definition, hover, references, rename and completion of the blocks,
 REST routes and AJAX actions their strings name). It registers for those documents itself

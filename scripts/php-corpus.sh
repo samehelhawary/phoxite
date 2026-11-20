@@ -15,6 +15,8 @@ CORPORA=(
     "laravel-framework https://github.com/laravel/framework.git v13.40.0"
     "symfony https://github.com/symfony/symfony.git v8.1.11"
     "wordpress https://github.com/WordPress/WordPress.git 7.1.4"
+    "drupal https://github.com/drupal/drupal.git 11.2.0"
+    "drupal7 https://github.com/drupal/drupal.git 7.103"
 )
 
 check=0
@@ -29,7 +31,7 @@ for name in "${wanted[@]}"; do
         [[ "${entry%% *}" == "$name" ]] && known=1
     done
     if ((!known)); then
-        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress]..." >&2
+        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7]..." >&2
         exit 2
     fi
 done

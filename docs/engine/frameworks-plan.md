@@ -18,7 +18,7 @@ Last updated: 2026-11-20.
 | 2 | Symfony and Doctrine, deeper | Done |
 | 2.5 | Callable-string references | Done |
 | 3 | WordPress | Done |
-| 4 | Drupal | Not started |
+| 4 | Drupal | Done |
 | 5 | CodeIgniter 4 | Not started |
 | 6 | Yii 2 | Not started |
 | 7 | CakePHP 4 and 5 | Not started |
@@ -281,8 +281,9 @@ On branch `wordpress`, uncommitted.
 - [x] Callbacks of `add_action`, `add_filter`, `add_shortcode` and the rest: the phase 2.5
       string callables, from the `@param callable` of WordPress's own docblocks.
 - [x] Callbacks under a key of an array argument (`register_rest_route(…, ['callback' =>
-      …])`, `sanitize_callback`, `render_callback`…): a table in `navigate/callable.rs`
-      (`KEYED`), since WordPress documents those arrays in prose, not as shapes.
+      …])`, `sanitize_callback`, `render_callback`…): by the key's name
+      (`navigate/callable.rs`), since WordPress documents those arrays in prose, not as
+      shapes. (Since phase 4 in any array, not only a call's argument.)
 - [x] Shortcode tags, post types, taxonomies, script and style handles, option names, image
       sizes and nav-menu locations: one `WordPressName` per registry
       (`frameworks/wordpress/refs/names.rs`), with the same features as hooks.
@@ -357,20 +358,67 @@ What is left is at the end of `wordpress.md`: a script is read as text, not pars
 
 ## Phase 4 — Drupal (8 and later)
 
-Needs phases 1 and 2.
+Needs phases 1 and 2. See `drupal.md`.
 
-- [ ] Treat `.module`, `.install`, `.theme`, `.profile`, `.inc` and `.engine` as PHP in a
-      Drupal project (engine, server, VS Code file associations).
-- [ ] Service ids from `*.services.yml`: names and the types of `\Drupal::service('id')` and
-      `$container->get('id')`.
-- [ ] Route names from `*.routing.yml`: `Url::fromRoute()`, `Link::createFromRoute()`,
-      `$this->redirect()`, `*.links.*.yml`.
-- [ ] Hooks: `*.api.php` definitions, `<module>_<hook>()` implementations, `#[Hook]`
-      methods, `invokeAll()` / `alter()` calls.
-- [ ] Plugin ids from attributes and annotations to `createInstance('id')`.
-- [ ] Entity type ids and their storage and entity classes (`getStorage('node')`).
-- [ ] Permissions, library names, config names, theme hooks.
-- [ ] Template folders of modules and themes in `TemplatePaths`.
+- [x] `.module`, `.install`, `.theme`, `.profile`, `.inc` and `.engine` are PHP
+      (`project::PHP_EXTENSIONS`, in every project; the server watches them; the VS Code
+      extension associates them with PHP).
+- [x] The YAML files (`frameworks/drupal/project.rs`, `PhpEngine::drupal`): services,
+      routes, permissions, libraries, extensions, configuration names.
+- [x] Service ids: names, and the types of `\Drupal::service('id')` and
+      `$container->get('id')` (`types/provider/drupal.rs`; the services go into the
+      configuration the Symfony provider answers from).
+- [x] Route names: `Url::fromRoute()`, `Link::createFromRoute()`, `redirect()`,
+      `setRedirect()`, and `route_name:` of the `*.links.*.yml` files.
+- [x] Hooks: the `hook_…()` functions of `*.api.php`, `invokeAll()` / `alter()` calls,
+      `#[Hook]` methods, the functions implementing one as its usages, and the parameter
+      types of an implementation.
+- [x] Plugin ids from attributes and annotations to `createInstance('id')`.
+- [x] Entity type ids, with the storage and the entity classes of `getStorage('node')`.
+- [x] Permissions, library names, config names, module names, theme hooks.
+- [x] Strings under a key of an array as a place (`CalleePattern::Entry`): `#theme`,
+      `#attached`.
+- [x] Template folders of modules and themes in `TemplatePaths` (`@shop/…`).
+- [x] `fixtures/drupal-app`, `tests/drupal_fixture.rs`, the server's test, a Drupal run of
+      the VS Code end-to-end suite (10 checks), and `tests/drupal_corpus.rs` on Drupal 11
+      (`scripts/php-corpus.sh drupal`). The checker on four core modules (1,886 files)
+      reports nothing that comes from this phase.
+
+- [x] The YAML files as documents (`frameworks/drupal/documents.rs`, the server's
+      `Kind::DrupalYaml`, registered for only in a Drupal project): goto, hover, usages,
+      rename and completion of the names they write, and goto on their classes.
+- [x] Configuration keys (`drupalConfigKey`), plugins of links and layouts files,
+      derivative plugins, theme hook suggestions and preprocess functions.
+- [x] Go to Definition from a hook's implementation to the hook; a template's variables
+      and `attach_library()`; no unused-parameter reports in `*.api.php`.
+      `SCHEMA_VERSION` 44.
+
+- [x] The key above a YAML line, `service:method`, class completion in YAML; the config
+      schema; migrations and breakpoints; `#[Hook]` on a class; the types of a template's
+      variables from its preprocess functions (`frameworks/drupal/templates.rs`).
+- [x] Drupal 7: detection, and its functions for hooks, theme hooks, permissions and
+      modules. `SCHEMA_VERSION` 45.
+
+- [x] Drupal 7's menu paths (`hook_menu()`), variables, form functions
+      (`drupal_get_form()`), menu callbacks and `.info` files as documents;
+      `tests/drupal_corpus.rs` runs on Drupal 7 too (`scripts/php-corpus.sh drupal7`).
+- [x] A config schema types `->get('key')`; a render array types its template's
+      variables; brace mappings and aliases in YAML. `SCHEMA_VERSION` 46.
+- [x] A callback under a key named as one is a callable in any array (it was only in a
+      call's argument).
+
+- [x] Anchors, aliases and `<<` merges in the YAML reader (`base/yaml.rs`); database
+      tables (`drupalTable`, from `hook_schema()`); config key types from installed
+      values; render arrays built up in a function. `SCHEMA_VERSION` 47.
+
+- [x] A table's columns (`drupalColumn`, `refs/column.rs`; queries are typed by their
+      table); a render array returned by a function of the file. `SCHEMA_VERSION` 48.
+
+- [x] A query keeps its table along a chain; a column after the alias of a joined table;
+      a render array built by a function of another file.
+
+Nothing is left that the project's files say: the end of `drupal.md` lists what can't be
+read (Drupal 7's untyped hook documentation, values that cross calls).
 
 ## Phase 5 — CodeIgniter 4
 

@@ -325,6 +325,7 @@ impl WordPressName {
                 path: block.path.clone(),
                 range: block.range,
                 library: cx.engine.is_library(&block.path),
+                classes: Vec::new(),
             })
             .collect()
     }

@@ -234,6 +234,8 @@ struct Shared {
     /// The project's Symfony configuration, read on first use; dropped
     /// when a YAML file changes.
     symfony_config: Mutex<Option<Arc<SymfonyConfig>>>,
+    /// What a Drupal project's YAML files declare, until one changes.
+    drupal: Mutex<Option<Arc<crate::frameworks::drupal::DrupalProject>>>,
     /// Which frameworks' support the settings force on or off.
     framework_settings: Mutex<FrameworkSettings>,
     /// The frameworks of the project, until a file detection reads changes.
@@ -483,6 +485,7 @@ impl PhpEngine {
             inspections: Arc::default(),
             inspection_config: Mutex::new(InspectionConfig::default()),
             symfony_config: Mutex::new(None),
+            drupal: Mutex::new(None),
             framework_settings: Mutex::new(FrameworkSettings::default()),
             frameworks: Mutex::new(None),
             template_texts: Mutex::new(HashMap::new()),
@@ -722,6 +725,7 @@ impl PhpEngine {
     /// Loads the layout again and brings the indexes up to date.
     pub fn rescan(&self) {
         *self.shared.symfony_config.lock() = None;
+        *self.shared.drupal.lock() = None;
         *self.shared.symfony_translations.lock() = None;
         *self.shared.twig_paths.lock() = None;
         *self.shared.frameworks.lock() = None;
@@ -755,9 +759,14 @@ impl PhpEngine {
         if changed.iter().any(block) || removed.iter().any(|p| !is_php_path(p)) {
             *self.shared.wordpress_blocks.lock() = None;
         }
-        if changed.iter().chain(removed).any(|p| is_yaml_path(p) || p.ends_with("config")) {
+        if changed
+            .iter()
+            .chain(removed)
+            .any(|p| is_yaml_path(p) || p.extension().is_some_and(|ext| ext == "info") || p.ends_with("config"))
+        {
             // The Symfony configuration is read again on next use.
             *self.shared.symfony_config.lock() = None;
+            *self.shared.drupal.lock() = None;
             *self.shared.symfony_translations.lock() = None;
             self.shared.modification.fetch_add(1, Ordering::SeqCst);
             self.shared.inspect_open_documents();
@@ -915,9 +924,37 @@ impl PhpEngine {
             return config;
         }
         let root = self.shared.layout_config.lock().root.clone();
-        let config = Arc::new(SymfonyConfig::load(&root));
+        let mut config = SymfonyConfig::load(&root);
+        // Drupal's container is Symfony's: the services of its `*.services.yml` files.
+        if self.frameworks().contains(Framework::Drupal) {
+            let drupal = self.drupal();
+            config.services.extend(drupal.services.services.iter().cloned());
+            config.parameters.extend(drupal.services.parameters.iter().cloned());
+            for schema in &drupal.schemas {
+                let typed = schema.keys.iter().zip(&schema.types).filter(|(_, ty)| !ty.is_empty());
+                config
+                    .config_types
+                    .extend(typed.map(|(key, ty)| (schema.name.name.clone(), key.name.clone(), ty.clone())));
+            }
+            // Where no schema says, what the value a file installs is.
+            config.config_types.extend(drupal.installed_types());
+        }
+        let config = Arc::new(config);
         *self.shared.symfony_config.lock() = Some(config.clone());
         config
+    }
+
+    /// What the YAML files of a Drupal project declare
+    /// ([`DrupalProject`](crate::frameworks::drupal::DrupalProject)), read
+    /// once until a YAML file changes.
+    pub fn drupal(&self) -> Arc<crate::frameworks::drupal::DrupalProject> {
+        if let Some(project) = self.shared.drupal.lock().clone() {
+            return project;
+        }
+        let root = self.shared.layout_config.lock().root.clone();
+        let project = Arc::new(crate::frameworks::drupal::DrupalProject::load(&root));
+        *self.shared.drupal.lock() = Some(project.clone());
+        project
     }
 
     /// Tells the engine the text an editor has for the template at `path`
@@ -1855,6 +1892,13 @@ impl Declarations for PhpEngine {
         summaries.sort_by(|a, b| a.0.cmp(&b.0));
         let config = SymfonyConfig::clone(&self.symfony_config());
         SymfonyProject::new(config, summaries.iter().map(|(path, summary)| (Some(path.as_path()), &summary.symfony)))
+    }
+
+    fn hook_functions(&self) -> Vec<String> {
+        let Some(index) = self.index() else { return Vec::new() };
+        let global = index.namespace_children("").unwrap_or_default();
+        let functions = global.into_iter().filter(|decl| decl.kind == crate::index::DeclKind::Function);
+        functions.map(|decl| decl.fqn).filter(|fqn| crate::types::resolve::is_hook_function(fqn)).collect()
     }
 
     /// From the indexed files with name facts (their open buffers first)

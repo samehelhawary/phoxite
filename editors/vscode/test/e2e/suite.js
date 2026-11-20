@@ -712,9 +712,179 @@ const wordpressChecks = [
   }],
 ];
 
+/** The checks of the Drupal fixture (run.js opens it): a module and a theme on a stand-in API. */
+const MOD = "modules/shop";
+const CONTROLLER = `${MOD}/src/Controller/BookController.php`;
+const drupalChecks = [
+  ["Drupal: the project is named, and a module's file is PHP", async () => {
+    const doc = await open(`${MOD}/shop.module`);
+    assert.equal(doc.languageId, "php", "`.module` is associated with PHP");
+    assert.equal((await open("themes/shelf/shelf.theme")).languageId, "php");
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["Drupal"]);
+    return names.join(", ");
+  }],
+  ["Drupal: the names of the YAML files go to their keys", async () => {
+    const found = {
+      service: await goes(CONTROLLER, "service('shop.catalog')", 12),
+      route: await goes(CONTROLLER, "'Books', 'shop.books'", 12),
+      "route in a .module": await goes(`${MOD}/shop.module`, "setRedirect('shop.books')", 15),
+      permission: await goes(CONTROLLER, "hasPermission('administer shop')", 17),
+      library: await goes(CONTROLLER, "[] = 'shop/base'", 7),
+      "library in a .theme": await goes("themes/shelf/shelf.theme", "[] = 'shop/cart'", 7),
+      configuration: await goes(CONTROLLER, "config('shop.settings')", 10),
+    };
+    assert.deepEqual(found, {
+      service: [`${MOD}/shop.services.yml:2`],
+      route: [`${MOD}/shop.routing.yml:1`],
+      "route in a .module": [`${MOD}/shop.routing.yml:1`],
+      permission: [`${MOD}/shop.permissions.yml:1`],
+      library: [`${MOD}/shop.libraries.yml:6`],
+      "library in a .theme": [`${MOD}/shop.libraries.yml:1`],
+      configuration: [`${MOD}/config/install/shop.settings.yml:1`],
+    });
+    const hover = await hoverAt(CONTROLLER, "'Books', 'shop.books'", 12);
+    assert.ok(hover.includes("route") && hover.includes("/books"), hover);
+    const routes = await completes(CONTROLLER, "redirect('shop.books')", 10, "shop.book");
+    assert.ok(routes.includes("shop.books") && !routes.includes("shop.catalog"), routes.join(", "));
+    const permissions = await completes(CONTROLLER, "hasPermission('administer shop')", 15, "access shop");
+    return `${Object.keys(found).length} places; ${routes.length} routes, ${permissions.length} permissions`;
+  }],
+  ["Drupal: usages and renames count the YAML files", async () => {
+    const service = [`${MOD}/shop.services.yml:2`, `${MOD}/shop.services.yml:8`, `${CONTROLLER}:21`];
+    assert.deepEqual(await usagesOf(CONTROLLER, "service('shop.catalog')", 12, 3), service);
+    assert.deepEqual(await renames(CONTROLLER, "service('shop.catalog')", 12, "shop.library"), service);
+    const route = [
+      `${MOD}/shop.links.menu.yml:3`, `${MOD}/shop.module:31`, `${MOD}/shop.routing.yml:1`, `${CONTROLLER}:25`, `${CONTROLLER}:35`,
+    ];
+    assert.deepEqual(await renames(CONTROLLER, "redirect('shop.books')", 12, "shop.list"), route);
+    // A permission, written with a space; a library, by the part after the module's name.
+    const permission = await renames(CONTROLLER, "hasPermission('administer shop')", 17, "manage shop");
+    assert.deepEqual(permission, [`${MOD}/shop.permissions.yml:1`, `${MOD}/shop.routing.yml:6`, `${CONTROLLER}:24`]);
+    const library = await renames(CONTROLLER, "[] = 'shop/base'", 13, "reset");
+    assert.deepEqual(library, [
+      `${MOD}/shop.info.yml:5`, `${MOD}/shop.libraries.yml:5`, `${MOD}/shop.libraries.yml:6`, `${CONTROLLER}:23`, "themes/shelf/shelf.info.yml:6",
+    ]);
+    // Not a service of Drupal's own files.
+    assert.deepEqual(await renames(`${MOD}/src/Hook/ShopHooks.php`, "moduleExists('shop')", 15, "store"), []);
+    return `${route.length} places for a route, ${library.length} for a library`;
+  }],
+  ["Drupal: entity types, plugins and theme hooks come from PHP", async () => {
+    assert.deepEqual(await goes(`${MOD}/src/Catalog.php`, "getStorage('shop_book')", 14), [`${MOD}/src/Entity/Book.php:9`]);
+    assert.deepEqual(await goes(CONTROLLER, "getStorage('shop_shelf')", 14), [`${MOD}/src/Entity/Shelf.php:11`]);
+    assert.deepEqual(await goes(CONTROLLER, "createInstance('shop_cart')", 18), [`${MOD}/src/Plugin/Block/CartBlock.php:8`]);
+    // A theme hook: the key of `hook_theme()`, and its template.
+    const theme = await goes(CONTROLLER, "'#theme' => 'shop_book'", 15);
+    assert.deepEqual(theme.sort(), [`${MOD}/shop.module:9`, `${MOD}/templates/shop-book.html.twig:1`]);
+    assert.deepEqual(await goes(`${MOD}/shop.module`, "['#theme'] = 'shop_price_tag'", 20), [`${MOD}/shop.module:10`]);
+    const types = await completes(CONTROLLER, "getStorage('shop_shelf')", 12, "shop_book");
+    assert.ok(types.includes("shop_shelf"), types.join(", "));
+    const hover = await hoverAt(CONTROLLER, "getStorage('shop_shelf')", 14);
+    assert.ok(hover.includes("entity type") && hover.includes("Shelf"), hover);
+    return theme.join(", ");
+  }],
+  ["Drupal: a hook is its api function", async () => {
+    const hooks = `${MOD}/src/Hook/ShopHooks.php`;
+    // By a placeholder, an alter hook, and one fired by name.
+    assert.deepEqual(await goes(hooks, "Hook('shop_book_presave')", 12), ["core/core.api.php:27"]);
+    assert.deepEqual(await goes(`${MOD}/shop.module`, "alter('form'", 8), ["core/core.api.php:37"]);
+    assert.deepEqual(await goes(hooks, "invokeAll('entity_presave'", 16), ["core/core.api.php:17"]);
+    const offered = await completes(hooks, "invokeAll('entity_presave'", 11, "cron");
+    assert.ok(offered.includes("form_alter") && offered.includes("entity_presave"), offered.join(", "));
+    // The usages count the function implementing it.
+    const usages = await usagesOf(hooks, "invokeAll('entity_presave'", 16, 2);
+    assert.ok(usages.includes(`${MOD}/shop.module:17`), usages.join(", "));
+    const hover = await hoverAt(`${MOD}/shop.module`, "alter('form'", 8);
+    assert.ok(hover.includes("hook_form_alter"), hover);
+    return usages.join(", ");
+  }],
+  ["Drupal: services, storages and hook parameters are typed", async () => {
+    // A service by its id; the storage an entity type names and what it loads; a storage nothing names.
+    assert.deepEqual(await goes(CONTROLLER, "$catalog->books()", 12), [`${MOD}/src/Catalog.php:15`]);
+    assert.deepEqual(await goes(`${MOD}/src/Catalog.php`, "$book->title !== ''", 8), [`${MOD}/src/Entity/Book.php:12`]);
+    assert.deepEqual(await goes(CONTROLLER, "$shelf->room", 9), [`${MOD}/src/Entity/Shelf.php:17`]);
+    // A function implementing a hook, in a `.module` and a `.theme`, and a method with the attribute.
+    const state = await completes(`${MOD}/shop.module`, "$form_state->setRedirect", 13, "setRedirect");
+    assert.ok(state.includes("getValue"), state.join(", "));
+    const themed = await completes("themes/shelf/shelf.theme", "$form_state->getValue", 13, "getValue");
+    const entity = await completes(`${MOD}/src/Hook/ShopHooks.php`, "$entity->label()", 9, "label");
+    assert.ok(entity.includes("id"), entity.join(", "));
+    return `${state.join(", ")}; ${themed.length} in the theme; ${entity.join(", ")}`;
+  }],
+  ["Drupal: a template includes a module's by its namespace", async () => {
+    const found = await goes("themes/shelf/templates/page.html.twig", "@shop/shop-book.html.twig", 8);
+    assert.deepEqual(found, [`${MOD}/templates/shop-book.html.twig:1`]);
+    // A library's usages count the template attaching it.
+    const usages = await usagesOf("themes/shelf/shelf.theme", "[] = 'shop/cart'", 9, 3);
+    assert.ok(usages.includes(`${MOD}/templates/shop-book.html.twig:2`), usages.join(", "));
+    return usages.join(", ");
+  }],
+  ["Drupal: a YAML file is answered in", async () => {
+    // The server asks for the YAML files once it knows the project: no selector lists them.
+    const routing = `${MOD}/shop.routing.yml`;
+    assert.deepEqual(await goes(routing, "BookController::list", 17), [`${CONTROLLER}:19`]);
+    assert.deepEqual(await goes(routing, "administer shop+", 3), [`${MOD}/shop.permissions.yml:1`]);
+    assert.deepEqual(await goes(`${MOD}/shop.services.yml`, "'@shop.prices'", 4), [`${MOD}/shop.services.yml:5`]);
+    assert.deepEqual(await goes(`${MOD}/shop.links.menu.yml`, "route_name: shop.books", 14), [`${MOD}/shop.routing.yml:1`]);
+    assert.deepEqual(await goes(`${MOD}/shop.info.yml`, "- shop/base", 5), [`${MOD}/shop.libraries.yml:6`]);
+    const hover = await hoverAt(`${MOD}/shop.services.yml`, "'@shop.prices'", 4);
+    assert.ok(hover.includes("service") && hover.includes("Prices"), hover);
+    // From the key declaring a route: its usages, and its rename.
+    const places = [`${MOD}/shop.links.menu.yml:3`, `${MOD}/shop.module:31`, `${MOD}/shop.routing.yml:1`, `${CONTROLLER}:25`, `${CONTROLLER}:35`];
+    assert.deepEqual(await usagesOf(routing, "shop.books:", 3, 5), places);
+    assert.deepEqual(await renames(routing, "shop.books:", 3, "shop.list"), places);
+    const permissions = await completes(routing, "administer shop+", 3, "access shop");
+    const routes = await completes(`${MOD}/shop.links.menu.yml`, "route_name: shop.books", 13, "shop.book");
+    return `${places.length} usages of a route; ${permissions.length} permissions, ${routes.length} routes offered`;
+  }],
+  ["Drupal: configuration keys, an implementation's hook, a theme hook's functions", async () => {
+    const settings = `${MOD}/config/install/shop.settings.yml`;
+    assert.deepEqual(await goes(CONTROLLER, "->get('currency')", 9), [`${settings}:1`]);
+    assert.deepEqual(await goes(`${MOD}/shop.module`, "->get('mail.from')", 11), [`${settings}:3`]);
+    const keys = await completes(CONTROLLER, "->get('currency')", 7, "currency");
+    assert.ok(keys.includes("mail.from"), keys.join(", "));
+    // The name of a function implementing a hook goes to the hook.
+    assert.deepEqual(await goes(`${MOD}/shop.module`, "function shop_entity_presave", 20), ["core/core.api.php:17"]);
+    assert.deepEqual(await goes("themes/shelf/shelf.theme", "function shelf_form_alter", 18), ["core/core.api.php:37"]);
+    // The function preparing a theme hook's variables is a usage of it.
+    const usages = await usagesOf(CONTROLLER, "'#theme' => 'shop_book'", 15, 3);
+    assert.ok(usages.includes(`${MOD}/shop.module:38`), usages.join(", "));
+    return `${keys.join(", ")}; ${usages.length} usages of the theme hook`;
+  }],
+  ["Drupal: a template knows its libraries and its variables", async () => {
+    const template = `${MOD}/templates/shop-book.html.twig`;
+    assert.deepEqual(await goes(template, "\"shop/cart\"", 4), [`${MOD}/shop.libraries.yml:1`]);
+    const libraries = await completes(template, "\"shop/cart\"", 1, "shop/base");
+    // What `hook_theme()` gives the template.
+    const variables = await completes(template, "{{ book }}", 3, "book");
+    assert.ok(variables.includes("attributes"), variables.join(", "));
+    return `${libraries.join(", ")}; ${variables.filter((name) => ["book", "attributes"].includes(name)).join(", ")}`;
+  }],
+  ["Drupal: a template's variable has its type, and a YAML file completes classes", async () => {
+    // What the preprocess function assigns the variable: its members follow the dot.
+    const doc = await open(`${MOD}/templates/shop-book.html.twig`);
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(doc.uri, new vscode.Position(0, 0), "{{ book. }}" + String.fromCharCode(10));
+    await vscode.workspace.applyEdit(edit);
+    let members;
+    try {
+      const list = await until("members", () => provider("vscode.executeCompletionItemProvider", doc, new vscode.Position(0, 8)),
+        (found) => (found?.items ?? []).some((item) => labelOf(item) === "title"));
+      members = list.items.map(labelOf);
+    } finally {
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    }
+    // After `class:`, the namespaces and classes below what is written.
+    const classes = await completes(`${MOD}/shop.services.yml`, "class: Drupal\\shop\\Catalog", 19, "Drupal\\shop\\Prices");
+    assert.ok(classes.includes("Drupal\\shop\\Entity"), classes.join(", "));
+    return `${members.filter((name) => ["title", "label", "id"].includes(name)).join(", ")}; ${classes.length} names`;
+  }],
+];
+
 exports.run = async function run() {
   const results = [];
-  const byMode = { "two-projects": twoProjectChecks, wordpress: wordpressChecks };
+  const byMode = { "two-projects": twoProjectChecks, wordpress: wordpressChecks, drupal: drupalChecks };
   const chosen = byMode[process.env.PHOXITE_E2E_MODE] ?? checks;
   for (const [name, check] of chosen) {
     const started = Date.now();

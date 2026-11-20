@@ -494,6 +494,85 @@ fn a_script_of_a_wordpress_plugin_names_what_php_declares() {
 }
 
 #[test]
+fn a_drupal_module_names_what_its_yaml_files_declare() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("drupal-app"), &root);
+    let module = root.join("modules/shop/shop.module");
+    let routing = root.join("modules/shop/shop.routing.yml");
+    let mut c = Client::start(&root);
+    // `shop.module` is PHP whatever the client calls it.
+    let uri = c.open(&module, "plaintext");
+    let filled = |v: &Value| v.as_array().is_some_and(|a| !a.is_empty());
+
+    // A route goes to its key in the routing file; a hook's parameter is typed by the hook.
+    let (line, col) = find(&module, "setRedirect('shop.books')", 15);
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("shop.routing.yml")), "{found}");
+    assert_eq!(found[0]["range"]["start"]["line"], 0, "{found}");
+    let (line, col) = find(&module, "$form_state->setRedirect", 15);
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("core/lib/Drupal.php")), "{found}");
+
+    // A route written outside the editor is offered once the client reports the file.
+    let (line, col) = find(&module, "setRedirect('shop.books')", 13);
+    let routes = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(routes.contains("\"shop.book\"") && !routes.contains("\"shop.authors\""), "{routes}");
+    let mut text = std::fs::read_to_string(&routing).unwrap();
+    text.push_str("shop.authors:\n  path: '/authors'\n");
+    std::fs::write(&routing, text).unwrap();
+    c.notify::<n::DidChangeWatchedFiles>(
+        json!({ "changes": [{ "uri": Url::from_file_path(&routing).unwrap(), "type": 2 }] }),
+    );
+    c.request_until::<r::Completion>(at(&uri, line, col), |v| v.to_string().contains("\"shop.authors\""));
+
+    // A theme's template includes a module's by its namespace.
+    let page = root.join("themes/shelf/templates/page.html.twig");
+    let template = c.open(&page, "twig");
+    let (line, col) = find(&page, "@shop/shop-book.html.twig", 8);
+    let found = c.request_until::<r::GotoDefinition>(at(&template, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("shop/templates/shop-book.html.twig")), "{found}");
+
+    // And attaches a library, which goes to the libraries file.
+    let book = root.join("modules/shop/templates/shop-book.html.twig");
+    let template = c.open(&book, "twig");
+    let (line, col) = find(&book, "\"shop/cart\"", 4);
+    let found = c.request_until::<r::GotoDefinition>(at(&template, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("shop.libraries.yml")), "{found}");
+
+    // The routing file itself: a controller's method, a permission, and completion of permissions.
+    let yaml = c.open(&routing, "yaml");
+    let (line, col) = find(&routing, "BookController::list", 17);
+    let found = c.request_until::<r::GotoDefinition>(at(&yaml, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("BookController.php")), "{found}");
+    assert_eq!(found[0]["range"]["start"]["line"], 18, "{found}");
+    let (line, col) = find(&routing, "administer shop+", 3);
+    let found = c.request::<r::GotoDefinition>(at(&yaml, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("shop.permissions.yml")), "{found}");
+    let items = c.request::<r::Completion>(at(&yaml, line, col)).to_string();
+    assert!(items.contains("\"access shop\""), "{items}");
+    let mut references = at(&yaml, 0, 3);
+    references["context"] = json!({ "includeDeclaration": false });
+    let found = c.request::<r::References>(references);
+    assert!(found.as_array().is_some_and(|found| found.len() >= 3), "the usages of the route `shop.books`: {found}");
+
+    // The client was asked for the YAML files, as this is a Drupal project (and not for scripts).
+    let asked: Vec<String> = c
+        .requests
+        .iter()
+        .filter(|r| r.method == "client/registerCapability")
+        .flat_map(|r| r.params["registrations"].as_array().cloned().unwrap_or_default())
+        .filter_map(|registration| registration["id"].as_str().map(str::to_owned))
+        .collect();
+    assert_eq!(asked.iter().filter(|id| id.starts_with("phoxite/yaml/")).count(), 8, "{asked:?}");
+    assert!(!asked.iter().any(|id| id.starts_with("phoxite/scripts/")), "{asked:?}");
+
+    let status = c.call(crate::laravel::STATUS, json!({})).expect("answered");
+    assert_eq!(status["frameworks"], json!(["Drupal"]), "{status}");
+    c.shutdown();
+}
+
+#[test]
 fn a_twig_template_names_routes_and_templates_of_a_symfony_project() {
     let (_dir, root) = symfony_project();
     let layout = root.join("templates/base.html.twig");

@@ -40,6 +40,10 @@ pub enum Kind {
     /// A script or a `block.json`: in a WordPress project, the blocks,
     /// REST routes and AJAX actions its strings name.
     WordPressScript,
+    /// A YAML file of a Drupal module or theme (`*.services.yml`,
+    /// `*.routing.yml`…), or Drupal 7's `<name>.info`: the names it
+    /// declares and writes.
+    DrupalYaml,
     Other,
 }
 
@@ -58,6 +62,10 @@ impl Kind {
             && path.parent().is_some_and(|dir| dir.components().any(|c| c.as_os_str() == "lang"))
         {
             Kind::TranslationJson
+        } else if (name.ends_with(".yml") || name.ends_with(".info"))
+            && phoxite::frameworks::drupal::FileKind::of(path).is_some()
+        {
+            Kind::DrupalYaml
         } else if name == "block.json"
             || matches!(language, "javascript" | "javascriptreact" | "typescript" | "typescriptreact")
             || [".js", ".jsx", ".mjs", ".ts", ".tsx"].iter().any(|ext| name.ends_with(ext))

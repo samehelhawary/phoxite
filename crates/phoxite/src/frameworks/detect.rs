@@ -106,7 +106,13 @@ impl Framework {
             Framework::Laravel => &["artisan"],
             Framework::Symfony => &[],
             Framework::WordPress => &["wp-config.php", "wp-load.php", "wp-includes/version.php"],
-            Framework::Drupal => &["core/lib/Drupal.php", "web/core/lib/Drupal.php", "docroot/core/lib/Drupal.php"],
+            // The last is Drupal 7's.
+            Framework::Drupal => &[
+                "core/lib/Drupal.php",
+                "web/core/lib/Drupal.php",
+                "docroot/core/lib/Drupal.php",
+                "modules/system/system.module",
+            ],
             Framework::CodeIgniter => &["spark"],
             Framework::Yii | Framework::CakePhp | Framework::Laminas => &[],
             Framework::Magento => &["app/etc/di.xml"],
@@ -213,17 +219,29 @@ fn wordpress_extension(root: &Path) -> bool {
 }
 
 /// Whether the folder is a Drupal module, theme or profile on its own: it
-/// has a `<name>.info.yml` with a `core_version_requirement` or `core` key.
+/// has a `<name>.info.yml` with a `core_version_requirement` or `core` key,
+/// or Drupal 7's `<name>.info` with a `core = 7.x` line.
 fn drupal_extension(root: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(root) else { return false };
+    let info = |path: &std::path::PathBuf, suffix: &str| {
+        path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with(suffix))
+    };
     entries
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with(".info.yml")))
+        .filter(|path| info(path, ".info.yml") || info(path, ".info"))
         .take(MAX_ROOT_FILES)
         .any(|path| {
+            let legacy = info(&path, ".info");
             std::fs::read_to_string(path).is_ok_and(|text| {
-                text.lines().any(|line| line.starts_with("core_version_requirement:") || line.starts_with("core:"))
+                text.lines().any(|line| {
+                    if legacy {
+                        line.split_once('=')
+                            .is_some_and(|(key, value)| key.trim() == "core" && value.trim().starts_with('7'))
+                    } else {
+                        line.starts_with("core_version_requirement:") || line.starts_with("core:")
+                    }
+                })
             })
         })
 }

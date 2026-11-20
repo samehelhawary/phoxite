@@ -824,6 +824,14 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
                 {
                     return Some(passed);
                 }
+                // An implementation of one of Drupal's hooks: what the hook's function declares.
+                if undeclared
+                    && ty == Type::Mixed
+                    && let Some(hook) = self.resolver.drupal_implemented_hook(&decl.fqn)
+                    && let Some(passed) = self.resolver.drupal_hook_parameter(&hook, index)
+                {
+                    return Some(passed);
+                }
                 if ((undeclared && ty == Type::Mixed) || ty == Type::Object)
                     && let Some(passed) = self.call_site_function_parameter(decl, index)
                 {

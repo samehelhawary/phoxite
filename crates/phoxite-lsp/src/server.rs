@@ -213,6 +213,7 @@ pub fn run(connection: Connection) -> Result<(), String> {
         shutting_down: false,
         laravel: None,
         scripts: false,
+        yaml: false,
         failure: None,
     };
     server.watch_files();
@@ -233,6 +234,8 @@ struct Server {
     laravel: Option<(Vec<Url>, Vec<&'static str>)>,
     /// The client was asked to send the scripts of a WordPress project.
     scripts: bool,
+    /// The client was asked to send the YAML files of a Drupal project.
+    yaml: bool,
     /// Why indexing last failed, once the client was told; none after it worked again.
     failure: Option<String>,
 }
@@ -319,7 +322,26 @@ impl Server {
         if self.laravel.as_ref() == Some(&(folders.clone(), frameworks.clone())) {
             return;
         }
-        self.register_scripts(frameworks.contains(&"WordPress"));
+        let scripts = serde_json::json!([
+            { "scheme": "file", "language": "javascript" },
+            { "scheme": "file", "language": "javascriptreact" },
+            { "scheme": "file", "language": "typescript" },
+            { "scheme": "file", "language": "typescriptreact" },
+            { "scheme": "file", "pattern": "**/block.json" },
+        ]);
+        let wanted = frameworks.contains(&"WordPress");
+        if wanted != self.scripts && self.register_documents("scripts", wanted, scripts) {
+            self.scripts = wanted;
+        }
+        // Its services, routing, permissions, libraries, info and links files.
+        let yaml = serde_json::json!([
+            { "scheme": "file", "pattern": "**/*.yml" },
+            { "scheme": "file", "pattern": "**/*.info" },
+        ]);
+        let wanted = frameworks.contains(&"Drupal");
+        if wanted != self.yaml && self.register_documents("yaml", wanted, yaml) {
+            self.yaml = wanted;
+        }
         let params =
             serde_json::json!({ "laravel": !folders.is_empty(), "folders": folders, "frameworks": frameworks });
         self.laravel = Some((folders, frameworks));
@@ -327,24 +349,17 @@ impl Server {
         let _ = self.state.sender.send(Message::Notification(notification));
     }
 
-    /// Asks the client for the scripts and `block.json` files while a WordPress project
-    /// is open (`wanted`), and to stop when none is: their documents, and the requests
-    /// the server answers in them. A client that doesn't take registrations sends them
-    /// only if it is set up to.
-    fn register_scripts(&mut self, wanted: bool) {
-        if wanted == self.scripts || !self.state.support.document_registration {
-            return;
+    /// Asks the client for documents no selector of its own lists (`wanted`), or to stop
+    /// sending them: the scripts and `block.json` files while a WordPress project is open,
+    /// the YAML files while a Drupal one is. Their documents, and the requests the server
+    /// answers in them. A client that doesn't take registrations sends them only if it is
+    /// set up to. Returns whether the client was asked.
+    fn register_documents(&mut self, set: &str, wanted: bool, selector: Value) -> bool {
+        if !self.state.support.document_registration {
+            return false;
         }
-        self.scripts = wanted;
-        let id = |method: &str| format!("phoxite/scripts/{method}");
+        let id = |method: &str| format!("phoxite/{set}/{method}");
         let request = if wanted {
-            let selector = serde_json::json!([
-                { "scheme": "file", "language": "javascript" },
-                { "scheme": "file", "language": "javascriptreact" },
-                { "scheme": "file", "language": "typescript" },
-                { "scheme": "file", "language": "typescriptreact" },
-                { "scheme": "file", "pattern": "**/block.json" },
-            ]);
             let registrations = SCRIPT_METHODS
                 .iter()
                 .map(|method| {
@@ -359,7 +374,7 @@ impl Server {
                 })
                 .collect();
             Request::new(
-                RequestId::from("phoxite/scripts".to_owned()),
+                RequestId::from(format!("phoxite/{set}")),
                 r::RegisterCapability::METHOD.to_owned(),
                 lsp::RegistrationParams { registrations },
             )
@@ -369,12 +384,13 @@ impl Server {
                 .map(|method| lsp::Unregistration { id: id(method), method: (*method).to_owned() })
                 .collect();
             Request::new(
-                RequestId::from("phoxite/scripts/stop".to_owned()),
+                RequestId::from(format!("phoxite/{set}/stop")),
                 r::UnregisterCapability::METHOD.to_owned(),
                 lsp::UnregistrationParams { unregisterations },
             )
         };
         let _ = self.state.sender.send(Message::Request(request));
+        true
     }
 
     /// Indexing as a work-done progress, when the client shows them.
@@ -547,8 +563,14 @@ impl Server {
 
 /// The files on disk the index is built from, as glob patterns: what a client watches
 /// for the server.
-pub const WATCHED_FILES: [&str; 12] = [
+pub const WATCHED_FILES: [&str; 17] = [
     "**/*.php",
+    // Drupal's PHP files, and the YAML files that declare its names.
+    "**/*.{module,install,theme,profile,inc,engine}",
+    "**/*.{services,routing,permissions,libraries,info}.yml",
+    "**/*.links.*.yml",
+    "**/*.{layouts,breakpoints}.yml",
+    "**/*.info",
     // Twig templates, and the YAML configuration that names template
     // folders, services and routes.
     "**/*.twig",
@@ -567,7 +589,7 @@ pub const WATCHED_FILES: [&str; 12] = [
     "**/block.json",
 ];
 
-/// What the server is sent and asked in the scripts of a WordPress project.
+/// What the server is sent and asked in the documents it registers for.
 const SCRIPT_METHODS: [&str; 8] = [
     "textDocument/didOpen",
     "textDocument/didChange",

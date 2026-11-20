@@ -1,0 +1,4 @@
+administer shop:
+  title: 'Administer the shop'
+access shop:
+  title: 'Visit the shop'

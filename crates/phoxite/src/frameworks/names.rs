@@ -25,6 +25,8 @@ pub struct DeclaredAt {
     pub range: Range,
     /// In `vendor/` or another library folder: not the project's to rename.
     pub library: bool,
+    /// [`DeclaredName::classes`](crate::summary::DeclaredName::classes).
+    pub classes: Vec<String>,
 }
 
 impl DeclaredAt {
@@ -70,6 +72,7 @@ impl NamesProject {
                 path: path.to_path_buf(),
                 range: name.loc.range,
                 library,
+                classes: name.classes.clone(),
             }));
         }
         ajax_actions.sort();

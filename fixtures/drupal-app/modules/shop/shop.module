@@ -1,0 +1,42 @@
+<?php
+
+/**
+ * Implements hook_theme().
+ */
+function shop_theme(): array
+{
+    return [
+        'shop_book' => ['variables' => ['book' => null]],
+        'shop_price_tag' => ['variables' => ['price' => 0]],
+    ];
+}
+
+/**
+ * Implements hook_entity_presave().
+ */
+function shop_entity_presave($entity): void
+{
+    if ($entity->id() === null && $entity->label() === '') {
+        \Drupal::moduleHandler()->alter('form', $entity);
+    }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function shop_form_alter(&$form, $form_state, $form_id): void
+{
+    if ($form_id === 'shop_book_form' && $form_state->getValue('title') === '') {
+        $form['#theme'] = 'shop_price_tag';
+        $form_state->setRedirect('shop.books');
+    }
+}
+
+/**
+ * Implements hook_preprocess_HOOK() for the book's template.
+ */
+function shop_preprocess_shop_book(array &$variables): void
+{
+    $variables['from'] = \Drupal::config('shop.settings')->get('mail.from');
+    $variables['book'] = new \Drupal\shop\Entity\Book();
+}

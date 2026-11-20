@@ -53,6 +53,10 @@ pub struct HookCallback {
     pub callback: String,
 }
 
+/// What comes before the name of a Drupal hook in [`HookCallback::hook`]:
+/// `drupal:node_presave` for a method with `#[Hook('node_presave')]`.
+pub const DRUPAL_HOOK: &str = "drupal:";
+
 /// How a function (`class` is `None`) or a method is named in
 /// [`HookCallback::callback`].
 pub fn callback_key(class: Option<&str>, name: &str) -> String {
@@ -100,6 +104,30 @@ pub enum DeclaredKind {
     /// A WordPress REST route: `register_rest_route('shop/v1', '/books',
     /// …)` is `shop/v1/books`.
     RestRoute,
+    /// A Drupal entity type: the `id` of a `#[ContentEntityType]` attribute
+    /// or annotation. Its [`classes`](DeclaredName::classes) are the entity
+    /// class and the storage handler (empty when none is named).
+    DrupalEntityType,
+    /// A Drupal plugin: the `id` of the attribute or annotation of a class
+    /// in a `Plugin` namespace. Its classes are the plugin's class and the
+    /// attribute's short name (`Block`).
+    DrupalPlugin,
+    /// A Drupal 7 permission: a key of the array `hook_permission()`
+    /// returns.
+    DrupalPermission,
+    /// A Drupal 7 menu path: a key of what `hook_menu()` returns or fills
+    /// (`$items['admin/shop'] = array(…)`).
+    DrupalMenuPath,
+    /// A Drupal 7 variable: `variable_set('name', …)`.
+    DrupalVariable,
+    /// A table of Drupal's database: a key of what `hook_schema()` returns
+    /// or fills (`$schema['shop_book'] = array(…)`).
+    DrupalTable,
+    /// A column of such a table: a key of its `fields`, as `table.column`.
+    DrupalColumn,
+    /// A Drupal theme hook: a key of the array `hook_theme()` returns. Its
+    /// classes are the variables its template is given.
+    DrupalThemeHook,
 }
 
 /// A name a call declares.
@@ -118,6 +146,10 @@ pub struct DeclaredName {
     /// them, in their order.
     #[serde(default)]
     pub params: Vec<super::DocType>,
+    /// What the name stands for, by kind (see [`DeclaredKind`]); empty for
+    /// most.
+    #[serde(default)]
+    pub classes: Vec<String>,
 }
 
 impl DeclaredName {

@@ -76,7 +76,7 @@ pub fn condition_matches(condition: &Condition, site: &StringSite, resolver: &Re
                         .iter()
                         .any(|class| class_fits(class, &c.class_names, &c.class_fqns, &c.class_parents, resolver)))
         }
-        CallTarget::Property { .. } => false,
+        CallTarget::Property { .. } | CallTarget::Entry { .. } => false,
     }
 }
 

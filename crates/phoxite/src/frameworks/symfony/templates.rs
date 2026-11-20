@@ -72,6 +72,9 @@ impl PhpEngine {
     /// `(name, type)`, sorted by name, the types of one name joined. Empty
     /// outside Symfony projects.
     pub fn twig_template_variables(&self, name: &str) -> Vec<(String, Type)> {
+        if self.frameworks().contains(crate::frameworks::Framework::Drupal) {
+            return self.drupal_template_variables(name);
+        }
         if self.ref_context().is_none() || !self.frameworks().contains(crate::frameworks::Framework::Symfony) {
             return Vec::new();
         }

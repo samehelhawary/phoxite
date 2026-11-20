@@ -49,8 +49,12 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 pub use walk::{ExcludeMatcher, walk_files};
 
-/// File extensions treated as PHP (compared case-insensitively).
-pub const PHP_EXTENSIONS: &[&str] = &["php", "phtml", "php3", "php4", "php5", "php7", "php8"];
+/// File extensions treated as PHP (compared case-insensitively). The last
+/// six are Drupal's (`node.module`, `system.install`, `olivero.theme`…) and
+/// the `.inc` of older code. A file of such a name that isn't PHP has no
+/// `<?php` and so declares nothing.
+pub const PHP_EXTENSIONS: &[&str] =
+    &["php", "phtml", "php3", "php4", "php5", "php7", "php8", "module", "install", "theme", "profile", "inc", "engine"];
 
 /// Why a file belongs to the project.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

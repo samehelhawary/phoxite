@@ -837,9 +837,11 @@ impl<'ast, 'arena, 'f> Walker<'ast, 'arena, Extractor<'f>> for SummaryWalker {
         cx.twig_attributes(&node.members);
         cx.associations(&class.fqn, &node.members);
         cx.entity_repository(&class.fqn, class.repository.as_deref());
+        cx.drupal_class(&class.fqn, node.span().start.offset, &node.attribute_lists);
         cx.repository_scope =
             class.extends.first().filter(|parent| symfony::extends_repository(parent)).map(|_| class.fqn.clone());
         cx.classes.push(class.fqn.clone());
+        cx.hook_methods(b"", &node.attribute_lists);
         cx.push_class(class);
     }
 
@@ -890,6 +892,7 @@ impl<'ast, 'arena, 'f> Walker<'ast, 'arena, Extractor<'f>> for SummaryWalker {
     fn walk_in_function(&self, node: &'ast Function<'arena>, cx: &mut Extractor<'f>) {
         let function = cx.function(node);
         cx.summary.functions.push(function);
+        cx.theme_hooks(node.name.value, &node.attribute_lists, &node.body);
     }
 
     fn walk_in_constant(&self, node: &'ast Constant<'arena>, cx: &mut Extractor<'f>) {
@@ -913,6 +916,10 @@ impl<'ast, 'arena, 'f> Walker<'ast, 'arena, Extractor<'f>> for SummaryWalker {
 
     fn walk_in_method(&self, node: &'ast AstMethod<'arena>, cx: &mut Extractor<'f>) {
         cx.in_down = node.name.value.eq_ignore_ascii_case(b"down");
+        if let mago_syntax::cst::MethodBody::Concrete(body) = &node.body {
+            cx.theme_hooks(b"", &node.attribute_lists, body);
+        }
+        cx.hook_methods(node.name.value, &node.attribute_lists);
     }
 
     fn walk_out_method(&self, _: &'ast AstMethod<'arena>, cx: &mut Extractor<'f>) {

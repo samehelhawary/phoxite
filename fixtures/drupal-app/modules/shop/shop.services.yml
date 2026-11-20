@@ -1,0 +1,8 @@
+services:
+  shop.catalog:
+    class: Drupal\shop\Catalog
+    arguments: ['@shop.prices', '@entity_type.manager']
+  shop.prices:
+    class: Drupal\shop\Prices
+  shop.books:
+    alias: shop.catalog

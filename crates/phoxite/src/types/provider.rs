@@ -42,6 +42,7 @@ use mago_syntax::cst::{
     Access, Argument, ArgumentList, ArrayElement, Call, ClassLikeConstantSelector, ClassLikeMemberSelector, Expression,
 };
 
+pub use self::drupal::DrupalProvider;
 pub use self::laravel::LaravelProvider;
 pub use self::symfony::SymfonyProvider;
 use super::ops::literal_type;
@@ -411,7 +412,8 @@ impl Default for TypeProviders {
     /// others say where they say `mixed` or for container calls, and
     /// `.phpstorm.meta.php` overrides stay in its stored fallbacks),
     /// Symfony ([`SymfonyProvider`]: container and repository calls, its
-    /// fallback what the others say), `.phpstorm.meta.php`
+    /// fallback what the others say), Drupal ([`DrupalProvider`]: services
+    /// and entity storages), `.phpstorm.meta.php`
     /// ([`MetaProvider`]: its fallback is what the others say), PHPUnit and
     /// the core.
     fn default() -> Self {
@@ -419,6 +421,7 @@ impl Default for TypeProviders {
         providers.register(CORE_ORDER, Arc::new(CoreProvider));
         providers.register(CORE_ORDER - 30, Arc::new(LaravelProvider));
         providers.register(CORE_ORDER - 25, Arc::new(SymfonyProvider));
+        providers.register(CORE_ORDER - 24, Arc::new(DrupalProvider));
         providers.register(CORE_ORDER - 10, Arc::new(PhpUnitProvider));
         providers.register(CORE_ORDER - 20, Arc::new(MetaProvider));
         providers
@@ -895,6 +898,7 @@ impl TypeProvider for PhpUnitProvider {
     }
 }
 
+pub(crate) mod drupal;
 pub(crate) mod laravel;
 pub(crate) mod symfony;
 

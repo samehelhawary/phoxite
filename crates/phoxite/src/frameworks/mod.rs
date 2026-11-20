@@ -9,6 +9,7 @@
 //! says how a framework is added.
 
 pub mod detect;
+pub mod drupal;
 pub mod laravel;
 pub mod names;
 pub mod refs;

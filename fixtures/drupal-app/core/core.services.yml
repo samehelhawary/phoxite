@@ -1,0 +1,5 @@
+services:
+  entity_type.manager:
+    class: Drupal\Core\Entity\EntityTypeManagerInterface
+  module_handler:
+    class: Drupal\Core\Extension\ModuleHandlerInterface
