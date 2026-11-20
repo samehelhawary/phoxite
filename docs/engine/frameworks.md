@@ -11,7 +11,8 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | Symfony, Doctrine | yes | `types::provider::SymfonyProvider` | route names, template names, service ids, parameters, translation keys and Doctrine fields (`frameworks::symfony::refs`) |
 | WordPress | yes | none (hook callbacks and `global` variables are typed by the engine itself, from name facts) | hooks, shortcodes, post types, taxonomies, script and style handles, options, image sizes, menu locations, template parts (`frameworks::wordpress::refs`; see [`wordpress.md`](wordpress.md)) |
 | Drupal | yes | `types::provider::DrupalProvider` (services, entity storages); hook implementations by the engine itself | services, routes, permissions, libraries, configuration, modules, entity types, plugins, theme hooks, hooks (`frameworks::drupal::refs`; see [`drupal.md`](drupal.md)) |
-| CodeIgniter, Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
+| CodeIgniter (4, and 3) | yes | `types::provider::CodeIgniterProvider` (helper functions, a model's finders, a builder's table, what CodeIgniter 3's loader gives a controller); a view's variables by the engine itself | views, helpers, language lines, routes, filters, route handlers, configurations, models, services, view cells, events, validation rules and groups, tables and columns; 3's libraries, configuration items and controller paths (`frameworks::codeigniter::refs`; see [`codeigniter.md`](codeigniter.md)) |
+| Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
 
 Twig templates are not a framework in this sense: `phoxite::twig` reads a template's text
 and the project's template folders, needs no engine, and is served for every `*.twig` file.
@@ -31,7 +32,7 @@ Whether Symfony's Twig extensions are known there depends on Composer installing
 | Symfony | `symfony/framework-bundle` | (the `FrameworkBundle` class being known, see below) |
 | WordPress | `johnpbloch/wordpress`, `johnpbloch/wordpress-core`, `roots/wordpress`, `roots/wordpress-no-content`, `php-stubs/wordpress-stubs` | `wp-config.php`, `wp-load.php`, `wp-includes/version.php`; a root PHP file with a `Plugin Name:` header; a `style.css` with a `Theme Name:` header |
 | Drupal | `drupal/core`, `drupal/core-recommended` | `core/lib/Drupal.php` (also below `web/` and `docroot/`); a root `*.info.yml` with a core requirement |
-| CodeIgniter | `codeigniter4/framework` | `spark` |
+| CodeIgniter | `codeigniter4/framework`, `codeigniter/framework` | `spark`, `system/core/CodeIgniter.php` |
 | Yii | `yiisoft/yii2` | |
 | CakePHP | `cakephp/cakephp` | |
 | Laminas | `laminas/laminas-mvc`, `mezzio/mezzio` | |

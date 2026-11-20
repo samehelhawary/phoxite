@@ -231,7 +231,7 @@ impl PlacePattern {
             }
             (CalleePattern::Return { classes, names }, CallTarget::Return { class, method })
             | (CalleePattern::Property { classes, names }, CallTarget::Property { class, name: method }) => {
-                names.iter().any(|wanted| wanted.eq_ignore_ascii_case(method))
+                names.iter().any(|wanted| *wanted == "*" || wanted.eq_ignore_ascii_case(method))
                     && (classes.iter().any(|wanted| fqn_eq(NameKind::ClassLike, class, wanted))
                         || resolver.class_model(class).is_some_and(|model| {
                             classes.iter().any(|wanted| wanted.contains('\\') && model.is_subclass_of(wanted))
@@ -251,6 +251,12 @@ impl PlacePattern {
 }
 
 // ------------------------------------------------------------------ sites
+
+/// The receiver of a method called on `$this` outside any class, in a
+/// [`CallTarget::Method`]: a template's `$this` is the object rendering it,
+/// which the file doesn't say. A pattern lists it among its classes to
+/// take such calls (CodeIgniter's `$this->extend('layout')` in a view).
+pub const TEMPLATE_THIS: &str = "$this";
 
 /// The call a string literal is an argument of.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -546,6 +552,18 @@ impl<'a> Collect<'a, '_> {
             }
         }
         keys.reverse();
+        // `$route['books/(:num)'] = 'books/show/$1'`: an entry of the variable asked about
+        // (`CalleePattern::Entry("$route")`).
+        if let Expression::Variable(mago_syntax::cst::Variable::Direct(variable)) = target
+            && keys.len() == 1
+        {
+            let name = lossy(variable.name);
+            if self.names.contains(&name.to_ascii_lowercase()) {
+                let call = SiteCall::Entry { key: name, at: assignment.lhs.span().start.offset };
+                self.strings(&call, assignment.rhs, (Some(0), None), &mut Vec::new(), None);
+                return;
+            }
+        }
         let Some(at) =
             keys.iter().position(|key| key.as_ref().is_some_and(|key| self.names.contains(&key.to_ascii_lowercase())))
         else {
@@ -640,7 +658,8 @@ impl<'a> Walker<'a, 'a, Collect<'a, '_>> for SiteWalker {
     ) {
         let [.., Frame::Class(Some(class))] = cx.frames.as_slice() else { return };
         let name = lossy(item.variable.name.strip_prefix(b"$").unwrap_or(item.variable.name));
-        if !cx.names.contains(&name.to_ascii_lowercase()) {
+        // (`*`: a pattern about every property of its classes.)
+        if !cx.names.contains(&name.to_ascii_lowercase()) && !cx.names.contains("*") {
             return;
         }
         let call = SiteCall::Property { class: class.clone(), name, at: item.variable.span.start.offset };
@@ -895,6 +914,20 @@ fn call_target<'a>(
         return Some(CallTarget::Function(resolved.resolution.candidates().map(str::to_owned).collect()));
     }
     let frames = types.locate(call.span().start.offset).expression.map(|(_, frames)| frames).unwrap_or_default();
+    // `$this->extend('layout')` outside any class: a template, whose `$this` is the object
+    // rendering it.
+    if let Expression::Call(Call::Method(method)) = call
+        && matches!(method.object, Expression::Variable(mago_syntax::cst::Variable::Direct(this)) if this.name == b"$this")
+        && types.context(&frames).self_class.is_none()
+        && let Some(name) = member_name(&method.method)
+    {
+        return Some(CallTarget::Method {
+            classes: vec![TEMPLATE_THIS.to_owned()],
+            name,
+            models: Vec::new(),
+            tables: Vec::new(),
+        });
+    }
     let Callee::Method { receiver, name } = crate::signature::callee(types, names, resolver, call, &frames)? else {
         return None;
     };
@@ -913,6 +946,8 @@ fn call_target<'a>(
         Expression::Call(Call::NullSafeMethod(method)) => Some(method.object),
         _ => None,
     };
+    // (Laravel's helpers: the classes pushed are only in the patterns of Laravel's kinds,
+    // which are asked in a Laravel project only.)
     if let Some(class) = object.and_then(helper_instance) {
         classes.push(class.to_owned());
     }
@@ -1180,6 +1215,12 @@ pub trait ReferenceKind: Send + Sync {
         None
     }
 
+    /// Whether [`undefined`](Self::undefined) is also asked of a value with
+    /// backslashes (a class's name, a namespaced view).
+    fn checks_backslashes(&self) -> bool {
+        false
+    }
+
     /// What is wrong with a usage written `value` (a plain literal) that
     /// names nothing; `None` when it is fine, or when that can't be told
     /// (a package's configuration, say).
@@ -1270,6 +1311,7 @@ pub fn framework_kinds(framework: super::Framework) -> &'static [&'static dyn Re
         super::Framework::Symfony => super::symfony::refs::kinds(),
         super::Framework::WordPress => super::wordpress::refs::kinds(),
         super::Framework::Drupal => super::drupal::refs::kinds(),
+        super::Framework::CodeIgniter => super::codeigniter::refs::kinds(),
         _ => &[],
     }
 }
@@ -1352,6 +1394,16 @@ fn literal_around(text: &str, offset: usize) -> Option<(usize, usize, bool)> {
     Some((quote, content_end, closed))
 }
 
+/// Of the sites one string is (an argument of a call, and the value under a key
+/// of an array in it), the first a pattern of `kinds` takes; else the first.
+fn placed(sites: Vec<StringSite>, kinds: &[&'static dyn ReferenceKind], resolver: &Resolver<'_>) -> Option<StringSite> {
+    let taken = |site: &StringSite| {
+        kinds.iter().any(|kind| kind.patterns().iter().any(|pattern| pattern.matches(site, resolver)))
+    };
+    let at = sites.iter().position(taken).unwrap_or(0);
+    sites.into_iter().nth(at)
+}
+
 /// The string site of one of `kinds` at `offset` of `parsed`, in its own
 /// parse or in a probe with the literal closed; the calls of `rules` count
 /// too.
@@ -1364,7 +1416,7 @@ pub fn site_at_in(
 ) -> Option<StringSite> {
     let text = parsed.text();
     let (quote, content_end, closed) = literal_around(text, offset as usize)?;
-    if let Some(site) = sites_with(parsed, resolver, kinds, rules, Some(quote as u32)).into_iter().next() {
+    if let Some(site) = placed(sites_with(parsed, resolver, kinds, rules, Some(quote as u32)), kinds, resolver) {
         return Some(site);
     }
     // Not a literal of the parse (being typed): a probe string in its place.
@@ -1379,7 +1431,8 @@ pub fn site_at_in(
         let probe_value = "x".repeat(content_end - quote - 1);
         let probe =
             ParsedFile::parse("reference.php", format!("{}'{probe_value}'{close}{terminator}{rest}", &text[..quote]));
-        if let Some(mut site) = sites_with(&probe, resolver, kinds, rules, Some(quote as u32)).into_iter().next() {
+        if let Some(mut site) = placed(sites_with(&probe, resolver, kinds, rules, Some(quote as u32)), kinds, resolver)
+        {
             site.start = quote as u32 + 1;
             site.end = content_end as u32;
             site.value = text[quote + 1..content_end].to_owned();
@@ -1634,10 +1687,19 @@ impl PhpEngine {
             if cancel.is_cancelled() {
                 break;
             }
-            if site.value.is_empty() || site.value.contains(['$', '\\', '{']) {
+            if site.value.is_empty() || site.value.contains(['$', '{']) {
                 continue;
             }
             let Some((kind, rule)) = classify(&site) else { continue };
+            // A backslash may be an escape: only a kind that names classes asks, of a
+            // single-quoted string without one.
+            if site.value.contains('\\') {
+                let quote = parsed.text().as_bytes().get((site.start as usize).wrapping_sub(1)).copied();
+                let literal = quote == Some(b'\'') && !site.value.contains("\\\\") && !site.value.contains("\\'");
+                if !literal || !kind.checks_backslashes() {
+                    continue;
+                }
+            }
             if kind.id() == ConfigKey.id() && set_here(&site.value) {
                 continue;
             }

@@ -430,8 +430,9 @@ impl<'t, 'a, 'r> Builder<'t, 'a, 'r> {
     }
 
     /// Applies an inline `/** @var T $x */` (or `/** @var T */` on an
-    /// assignment or `foreach`) in front of `statement`: an existing `$x` is
-    /// `T` from here, and writes of `$x` in the statement store `T`. Returns
+    /// assignment or `foreach`) in front of `statement`: `$x` is `T` from
+    /// here (set before or not), and writes of `$x` in the statement store
+    /// `T`. Returns
     /// the documented types in force before, to restore after the statement.
     fn document(&mut self, statement: &'a Statement<'a>) -> Vec<(Vec<u8>, Type)> {
         let start = statement.span().start.offset;
@@ -459,6 +460,9 @@ impl<'t, 'a, 'r> Builder<'t, 'a, 'r> {
         };
         let mut documented = Vec::new();
         for (name, ty) in vars {
+            // A tag naming its variable declares one nothing here sets: `/** @var
+            // RouteCollection $routes */` at the top of a file another one includes.
+            let declares = name.is_some();
             let Some(name) = name.map(String::into_bytes).or_else(|| assigned.map(|v| name_of(v).to_vec())) else {
                 continue;
             };
@@ -468,8 +472,12 @@ impl<'t, 'a, 'r> Builder<'t, 'a, 'r> {
                 ty = self.types.resolver.expand_aliases(&ty, class);
             }
             let ty = ty.settle();
-            if let Some(state) = self.env.vars.get_mut(&name) {
-                state.ty = ty.clone();
+            match self.env.vars.get_mut(&name) {
+                Some(state) => state.ty = ty.clone(),
+                None if declares => {
+                    self.env.vars.insert(name.clone(), VarState::defined(ty.clone()));
+                }
+                None => {}
             }
             documented.push((name, ty));
         }

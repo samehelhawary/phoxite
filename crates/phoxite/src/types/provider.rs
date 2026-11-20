@@ -42,6 +42,7 @@ use mago_syntax::cst::{
     Access, Argument, ArgumentList, ArrayElement, Call, ClassLikeConstantSelector, ClassLikeMemberSelector, Expression,
 };
 
+pub use self::codeigniter::CodeIgniterProvider;
 pub use self::drupal::DrupalProvider;
 pub use self::laravel::LaravelProvider;
 pub use self::symfony::SymfonyProvider;
@@ -422,6 +423,7 @@ impl Default for TypeProviders {
         providers.register(CORE_ORDER - 30, Arc::new(LaravelProvider));
         providers.register(CORE_ORDER - 25, Arc::new(SymfonyProvider));
         providers.register(CORE_ORDER - 24, Arc::new(DrupalProvider));
+        providers.register(CORE_ORDER - 23, Arc::new(CodeIgniterProvider));
         providers.register(CORE_ORDER - 10, Arc::new(PhpUnitProvider));
         providers.register(CORE_ORDER - 20, Arc::new(MetaProvider));
         providers
@@ -898,6 +900,7 @@ impl TypeProvider for PhpUnitProvider {
     }
 }
 
+pub(crate) mod codeigniter;
 pub(crate) mod drupal;
 pub(crate) mod laravel;
 pub(crate) mod symfony;

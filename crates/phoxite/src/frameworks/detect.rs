@@ -89,7 +89,7 @@ impl Framework {
                 "php-stubs/wordpress-stubs",
             ],
             Framework::Drupal => &["drupal/core", "drupal/core-recommended"],
-            Framework::CodeIgniter => &["codeigniter4/framework"],
+            Framework::CodeIgniter => &["codeigniter4/framework", "codeigniter/framework"],
             Framework::Yii => &["yiisoft/yii2"],
             Framework::CakePhp => &["cakephp/cakephp"],
             Framework::Laminas => &["laminas/laminas-mvc", "mezzio/mezzio"],
@@ -113,7 +113,8 @@ impl Framework {
                 "docroot/core/lib/Drupal.php",
                 "modules/system/system.module",
             ],
-            Framework::CodeIgniter => &["spark"],
+            // The second is CodeIgniter 3's.
+            Framework::CodeIgniter => &["spark", "system/core/CodeIgniter.php"],
             Framework::Yii | Framework::CakePhp | Framework::Laminas => &[],
             Framework::Magento => &["app/etc/di.xml"],
         }

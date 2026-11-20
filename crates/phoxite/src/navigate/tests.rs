@@ -10,6 +10,7 @@ use crate::stubs::StubFilter;
 use crate::syntax::{LineIndex, ParsedFile};
 
 mod callables;
+mod codeigniter;
 mod drupal;
 mod hierarchy;
 mod laravel;

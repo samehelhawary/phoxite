@@ -164,6 +164,19 @@ pub trait Declarations {
     fn name_facts(&self) -> Vec<crate::summary::NameFacts> {
         Vec::new()
     }
+    /// The type of the variable `name` (without `$`) that the file at `path`
+    /// reads without setting it, when the file is a view and the code
+    /// rendering it passes one: CodeIgniter's `view('books/list', ['books' =>
+    /// $books])` for `app/Views/books/list.php`.
+    fn view_variable(&self, _path: &std::path::Path, _name: &str) -> Option<Type> {
+        None
+    }
+    /// CodeIgniter 3: the class of what the loader made under `name`, when
+    /// the project says: a model loaded under that name, a library of the
+    /// application.
+    fn loaded_class(&self, _name: &str) -> Option<String> {
+        None
+    }
     /// The functions of the global namespace named `hook_…` (FQNs): the
     /// hooks a Drupal project's `*.api.php` files document.
     fn hook_functions(&self) -> Vec<String> {
@@ -880,6 +893,16 @@ impl<'a> Resolver<'a> {
                 hooks.drupal_patterns.iter().find(|(pattern, _)| crate::summary::matches_pattern(pattern, name));
             found.map(|(_, fqn)| fqn.clone())
         })
+    }
+
+    /// [`Declarations::loaded_class`].
+    pub fn loaded_class(&self, name: &str) -> Option<String> {
+        self.decls.loaded_class(name)
+    }
+
+    /// [`Declarations::view_variable`].
+    pub fn view_variable(&self, path: &std::path::Path, name: &str) -> Option<Type> {
+        self.decls.view_variable(path, name)
     }
 
     /// The class of Drupal's entity type `id` and its storage handler

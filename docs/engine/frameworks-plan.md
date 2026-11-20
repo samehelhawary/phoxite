@@ -19,7 +19,7 @@ Last updated: 2026-11-20.
 | 2.5 | Callable-string references | Done |
 | 3 | WordPress | Done |
 | 4 | Drupal | Done |
-| 5 | CodeIgniter 4 | Not started |
+| 5 | CodeIgniter (4, and 3) | Done |
 | 6 | Yii 2 | Not started |
 | 7 | CakePHP 4 and 5 | Not started |
 | 8 | Laminas (MVC and Mezzio) | Not started |
@@ -420,13 +420,47 @@ Needs phases 1 and 2. See `drupal.md`.
 Nothing is left that the project's files say: the end of `drupal.md` lists what can't be
 read (Drupal 7's untyped hook documentation, values that cross calls).
 
-## Phase 5 — CodeIgniter 4
+## Phase 5 — CodeIgniter (4, and 3)
 
-- [ ] First: the helper-instance table per framework (see phase 0's leftovers).
-- [ ] Types: `service('name')`, `Services::name()`, `model()`, `config()`,
-      `single_service()`; functions a `helper()` call loads.
-- [ ] Names: views, route names (`route_to()`, `url_to()`), language keys, filter aliases,
-      helper names.
+See `codeigniter.md`.
+
+- [x] The helper-instance table per framework: left as it is. Its classes are only in the
+      patterns of Laravel's kinds, which are asked in a Laravel project only; gating it on
+      the class being known broke Laravel projects whose stubs don't declare it.
+- [x] Types: `service('name')`, `single_service()`, `model()`, `config()`
+      (`types/provider/codeigniter.rs`); `Services::name()` and the functions a
+      `helper()` call loads need nothing (they are declarations the index has). A
+      model's finders by its `$returnType`; `$db->table('books')` as a builder of that
+      table; the closure of a route group.
+- [x] Names: views, helpers, language lines, routes (by `as`, path or handler), filter
+      aliases, configurations, models, services, a route's handler, view cells, events,
+      validation rules and rule groups, tables and columns
+      (`frameworks/codeigniter/refs`). `SCHEMA_VERSION` 50 (events, tables and columns
+      are name facts).
+- [x] A view's variables from the `view()` calls passing them
+      (`Declarations::view_variable`), shared with its layout and its partials; `$this`
+      in a view (`TEMPLATE_THIS`).
+- [x] An inline `@var` declares a variable nothing sets (`$routes`).
+- [x] Modules: the `$psr4` of `Config/Autoload.php` and Composer's namespaces; a moved
+      application, framework or views folder by `Config/Paths.php`.
+- [x] Fifteen "unknown name" inspections (`inspect/laravel.rs`, `CODEIGNITER`; the
+      event, table and column ones off unless turned on), checked on CodeIgniter's own
+      application, framework, tests and user guide examples. `SCHEMA_VERSION` 51.
+- [x] Several columns in one string, a column in an expression, the table and field of
+      `is_unique[…]`; the routes `resource()` and `presenter()` make; a path as its route
+      or the method auto-routing would call; `dirname()` and `realpath()` in the paths
+      configuration. `SCHEMA_VERSION` 52.
+- [x] CodeIgniter 3 (left out of the plan "unless asked for"; asked for): the loader's
+      names, language lines, configuration items, controller paths (through
+      `config/routes.php`), what the loader gives a controller (a model under another
+      name and a library of the application among it), a view's variables, the tables
+      and fields of its migrations.
+- [x] `fixtures/codeigniter-app`, `tests/codeigniter_fixture.rs`, the server's test, a
+      CodeIgniter run of the VS Code end-to-end suite, and `tests/codeigniter_corpus.rs`
+      on CodeIgniter 4.6 and 3.1.13 (`scripts/php-corpus.sh codeigniter codeigniter3`).
+
+What is left is at the end of `codeigniter.md`: a builder whose table isn't a string, the
+fields other rules name, `only`/`except` of a resource, third-party HMVC.
 
 ## Phase 6 — Yii 2
 

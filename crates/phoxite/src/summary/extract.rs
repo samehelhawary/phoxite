@@ -46,6 +46,8 @@ pub(super) fn extract(file: &ParsedFile) -> FileSummary {
         repository_scope: None,
         classes: Vec::new(),
         in_down: false,
+        forge_fields: Vec::new(),
+        forge_chained: Vec::new(),
     };
     SummaryWalker.walk_program(file.program(), &mut cx);
     // With every import of the file in scope.
@@ -80,6 +82,8 @@ pub(crate) fn inline_vars(
         repository_scope: None,
         classes: Vec::new(),
         in_down: false,
+        forge_fields: Vec::new(),
+        forge_chained: Vec::new(),
     };
     let Some(doc) = cx.doc_at(start, outer) else { return Vec::new() };
     doc.vars.into_iter().map(|var| (var.name, var.ty)).collect()
@@ -99,6 +103,8 @@ pub(crate) fn doc_before(file: &ParsedFile, scope: &NameScope, start: u32, outer
         repository_scope: None,
         classes: Vec::new(),
         in_down: false,
+        forge_fields: Vec::new(),
+        forge_chained: Vec::new(),
     };
     cx.doc_at(start, outer)
 }
@@ -222,6 +228,11 @@ struct Extractor<'f> {
     /// Walking a `down()` method (a migration's rollback, whose drops
     /// don't change the schema).
     in_down: bool,
+    /// CodeIgniter: the fields `addField()` was given since the last
+    /// `createTable()`, and the ends of the `addField()` calls a chain
+    /// already took.
+    forge_fields: Vec<(String, Loc)>,
+    forge_chained: Vec<u32>,
 }
 
 impl Extractor<'_> {
@@ -933,12 +944,15 @@ impl<'ast, 'arena, 'f> Walker<'ast, 'arena, Extractor<'f>> for SummaryWalker {
     fn walk_in_method_call(&self, node: &'ast MethodCall<'arena>, cx: &mut Extractor<'f>) {
         cx.method_binding(node.object, &node.method, &node.argument_list);
         cx.method_routes(node.object, &node.method, &node.argument_list);
+        cx.named_route(&node.method, &node.argument_list);
+        cx.forge(node.object, &node.method, &node.argument_list, node.span().end.offset);
         cx.rule_method(&node.method, &node.argument_list);
         cx.expectation_extend(node.object, &node.method, &node.argument_list, node.span());
     }
 
     fn walk_in_static_method_call(&self, node: &'ast StaticMethodCall<'arena>, cx: &mut Extractor<'f>) {
         cx.static_binding(node.class, &node.method, &node.argument_list);
+        cx.triggered_event(node.class, &node.method, &node.argument_list);
         cx.migration(node.class, &node.method, &node.argument_list);
         cx.macro_registration(node.class, &node.method, &node.argument_list, node.span());
         cx.static_routes(node.class, &node.method, &node.argument_list);

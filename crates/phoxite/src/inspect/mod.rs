@@ -102,7 +102,11 @@ pub trait Inspection: Send + Sync {
 ///
 /// - `PhpUndefinedHook`: a WordPress hook can be fired by a plugin that
 ///   isn't in the workspace.
-pub const OPT_IN: &[&str] = &["PhpUndefinedHook"];
+/// - `PhpUndefinedCodeIgniterEvent`: an event can be fired by a package.
+/// - `PhpUnknownCodeIgniterTable`, `PhpUnknownCodeIgniterColumn`: a table
+///   can be made outside the project's migrations.
+pub const OPT_IN: &[&str] =
+    &["PhpUndefinedHook", "PhpUndefinedCodeIgniterEvent", "PhpUnknownCodeIgniterTable", "PhpUnknownCodeIgniterColumn"];
 
 /// The set of inspections the engine runs, in order.
 #[derive(Clone, Default)]

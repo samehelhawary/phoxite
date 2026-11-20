@@ -8,6 +8,7 @@
 //! knows about the whole project lives here. `docs/engine/frameworks.md`
 //! says how a framework is added.
 
+pub mod codeigniter;
 pub mod detect;
 pub mod drupal;
 pub mod laravel;

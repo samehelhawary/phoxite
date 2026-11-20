@@ -659,7 +659,9 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
             return if frames.iter().any(|frame| matches!(frame, Frame::Class(_))) || self.pest_class(frames).is_some() {
                 Type::Relative(Relative::This)
             } else {
-                Type::Mixed
+                // Outside a class: in a view, the object rendering it.
+                let view = self.path.as_deref().and_then(|path| self.resolver.view_variable(path, "this"));
+                view.unwrap_or(Type::Mixed)
             };
         }
         // Superglobals exist everywhere, as arrays (writes into them don't
@@ -683,6 +685,13 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
                 // At the top level of a file, a variable nothing here sets
                 // may be a global (a theme's template reads `$post`): the
                 // type its `@global` tags document.
+                // A view: what the code rendering it passes.
+                if scope.is_empty()
+                    && let Some(path) = &self.path
+                    && let Some(ty) = self.resolver.view_variable(path, &String::from_utf8_lossy(name))
+                {
+                    return ty;
+                }
                 if scope.is_empty()
                     && let Some(ty) = self.resolver.global_type(&String::from_utf8_lossy(name))
                 {

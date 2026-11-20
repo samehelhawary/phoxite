@@ -38,6 +38,11 @@ servers. What it does:
 - **WordPress:** hooks, shortcodes, post types, taxonomies, script and style handles,
   options, image sizes and menu locations with completion, goto, usages and rename;
   template parts; the types of a hook callback's parameters and of `global $wpdb`.
+- **CodeIgniter** (4, and 3): views, helpers, language lines, routes, filters, view cells,
+  events, validation rules, tables and their columns, configurations, models and services
+  by name, with a warning for one that names nothing; the types of `service()`,
+  `model()` and `config()`, of what a model finds, and of the variables a controller
+  passes its view. In CodeIgniter 3, what `$this->load` loads and gives the controller.
 - **Drupal:** services, routes, permissions, libraries, configuration, entity types,
   plugins, theme hooks and hooks, from the module's YAML files, attributes and
   annotations; the types of `\Drupal::service()`, of an entity storage and of a hook

@@ -104,6 +104,19 @@ pub enum DeclaredKind {
     /// A WordPress REST route: `register_rest_route('shop/v1', '/books',
     /// …)` is `shop/v1/books`.
     RestRoute,
+    /// A CodeIgniter route's name: the `as` of its options,
+    /// `$routes->get('books', 'Books::index', ['as' => 'books'])`.
+    CodeIgniterRoute,
+    /// A CodeIgniter event: what `Events::trigger('name')` fires.
+    CodeIgniterEvent,
+    /// CodeIgniter 3: the name a model is loaded under,
+    /// `$this->load->model('book_model', 'books')`. Its class is the model.
+    CodeIgniterLoaded,
+    /// A table a CodeIgniter migration makes: `$this->forge->createTable('books')`.
+    CodeIgniterTable,
+    /// A column of such a table: a key of the fields given to `addField()`
+    /// before it, as `table.column`.
+    CodeIgniterColumn,
     /// A Drupal entity type: the `id` of a `#[ContentEntityType]` attribute
     /// or annotation. Its [`classes`](DeclaredName::classes) are the entity
     /// class and the storage handler (empty when none is named).

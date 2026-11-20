@@ -172,6 +172,63 @@ Nothing of WordPress is bundled. A plugin or theme opened on its own needs WordP
 functions from somewhere: install `php-stubs/wordpress-stubs` with Composer, or add a
 WordPress folder to `phoxite.includePaths`.
 
+## CodeIgniter
+
+In a CodeIgniter 4 application (a `spark` file, or `codeigniter4/framework` in Composer):
+
+- Names with completion, Go to Definition, hover and Find All References:
+  - views (`view('books/list')`, a view's `$this->extend('layout')`, a module's
+    `view('Blog\Views\list')`), helpers (`helper('url')`, a controller's `$helpers`) and
+    language lines (`lang('Shop.cart.empty')`)
+  - routes (`route_to('books.show')`, `redirect()->route()`: by the `as` of a route, by
+    its path when it has none, or by its handler `'Books::show'`) and filter aliases
+    (`'filter' => 'auth'`)
+  - configurations (`config('App')`), models (`model('BookModel')`), services
+    (`service('session')`) and view cells (`view_cell('Card::render')`)
+  - events (`Events::on('name', …)` ↔ `Events::trigger('name')`)
+  - validation rules, each rule of `'required|min_length[3]'` (the methods of your rule
+    sets), and rule groups (`$validation->run($data, 'signup')`)
+  - tables and columns from your migrations: `$db->table('books')`, a model's `$table`
+    and `$allowedFields`, `->where('title', …)`, `->orderBy('price')`
+- A route's handler (`'Books::show/$1'`) goes to the controller's method, in the namespace
+  of the group around it; a path (`site_url('books/show')`, `redirect()->to()`) to its
+  route, else to the method auto-routing would call
+- Rename of a route name, a filter alias or an event, where it is declared and wherever it
+  is named
+- Types: `service('name')` is what `Config\Services::name()` returns, `model('BookModel')`
+  the model, `config('App')` the configuration class; a model's `find()` and `findAll()`
+  follow its `$returnType`
+- A view knows the variables its controller passes it, with their types, and they aren't
+  reported as undefined; `$this` in a view is the view object
+- Warnings for a name that names nothing: `PhpUndefinedCodeIgniterView`,
+  `PhpUndefinedCodeIgniterHelper`, `PhpUndefinedCodeIgniterLanguageLine`,
+  `PhpUndefinedCodeIgniterRoute`, `PhpUnknownCodeIgniterFilter`,
+  `PhpUndefinedCodeIgniterController` (a route's handler), `PhpUnknownCodeIgniterRule`,
+  `PhpUnknownCodeIgniterRuleGroup`, `PhpUndefinedCodeIgniterModel`,
+  `PhpUndefinedCodeIgniterConfig`, `PhpUndefinedCodeIgniterService` and
+  `PhpUndefinedCodeIgniterCell`
+- Off until you turn them on in `phoxite.inspections`, because what they look for may be
+  defined outside the project: `PhpUndefinedCodeIgniterEvent` (an event nothing fires),
+  `PhpUnknownCodeIgniterTable` and `PhpUnknownCodeIgniterColumn` (a table or a column no
+  migration makes)
+- Modules are found by the `$psr4` of `Config/Autoload.php` and by Composer's namespaces;
+  a moved `app`, `system` or views folder by `Config/Paths.php`
+
+In a CodeIgniter 3 application (`system/core/CodeIgniter.php`, or an `index.php` setting
+`$system_path`):
+
+- `$this->load->view()`, `->model()`, `->library()` and `->helper()` name what they load;
+  `$this->lang->line('key')` a line of a language file; `$this->config->item('key')` an
+  item of `application/config`; `site_url('books/show')` and `redirect('books/show')` the
+  controller's method
+- `$this->load`, `$this->db`, `$this->session`, `$this->input` and the like are typed,
+  as are a loaded model (`$this->book_model`, or the name it was loaded under) and a
+  library of the application, in controllers, models and views
+- A path that a route of `config/routes.php` matches goes where the route sends it
+- Tables and columns from `application/migrations`: `$this->db->get('books')`,
+  `->where('title', …)`
+- A view knows the variables `$this->load->view('name', array(...))` passes it
+
 ## Drupal
 
 In a Drupal site, or a module or theme opened on its own (Drupal 8 and later; for Drupal

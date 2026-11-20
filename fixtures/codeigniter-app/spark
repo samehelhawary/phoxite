@@ -1,0 +1,4 @@
+#!/usr/bin/env php
+<?php
+
+// The command line tool of the application (a stand-in: the engine looks for the file).

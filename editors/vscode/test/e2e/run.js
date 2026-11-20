@@ -1,9 +1,11 @@
 // Runs the end-to-end suite (suite.js) inside VS Code on a copy of the Laravel
-// fixture (and once on the WordPress and the Drupal ones), with only this extension loaded.
+// fixture (and once on each of the WordPress, Drupal and CodeIgniter ones), with only this
+// extension loaded.
 //
 //   node test/e2e/run.js [path to Code executable]
 //
-// PHOXITE_E2E_ONLY=wordpress (or one-project, two-projects, drupal) runs that part alone.
+// PHOXITE_E2E_ONLY=wordpress (or one-project, two-projects, drupal, codeigniter) runs that
+// part alone.
 // Without a path it downloads a VS Code build. The extension needs a server:
 // server/phoxite-lsp(.exe), or PHOXITE_SERVER pointing at one.
 
@@ -25,14 +27,14 @@ function copyDir(from, to) {
 /**
  * Runs the suite in a fresh VS Code on a fresh copy of the fixture. In mode `two-projects`
  * the workspace has two folders, each a copy of the fixture, and the suite runs the
- * checks about that instead. In modes `wordpress` and `drupal` the project is that fixture.
+ * checks about that instead. In modes `wordpress`, `drupal` and `codeigniter` the project is that fixture.
  */
 async function run(mode) {
   const extension = path.resolve(__dirname, "../..");
   const fixtures = path.resolve(extension, "../../fixtures");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "phoxite-e2e-"));
   const project = path.join(tmp, "app");
-  if (mode === "wordpress" || mode === "drupal") {
+  if (mode === "wordpress" || mode === "drupal" || mode === "codeigniter") {
     copyDir(path.join(fixtures, `${mode}-app`), project);
   } else {
     copyDir(path.join(fixtures, "laravel-app"), project);
@@ -72,7 +74,7 @@ async function run(mode) {
 async function main() {
   try {
     const only = process.env.PHOXITE_E2E_ONLY;
-    for (const mode of ["one-project", "two-projects", "wordpress", "drupal"]) {
+    for (const mode of ["one-project", "two-projects", "wordpress", "drupal", "codeigniter"]) {
       if (!only || only === mode) await run(mode);
     }
   } catch (e) {

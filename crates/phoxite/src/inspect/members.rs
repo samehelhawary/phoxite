@@ -435,7 +435,12 @@ impl<'a> Scan<'a, '_> {
                 (Kind::Method, false) => Self::has_method(models, "__call"),
                 (Kind::Method, true) => Self::has_method(models, "__callStatic") || Self::has_method(models, "__call"),
                 (Kind::Property, false) => {
-                    Self::has_method(models, "__get") || models.iter().any(|m| self.allows_dynamic_properties(m))
+                    Self::has_method(models, "__get")
+                        || models.iter().any(|m| self.allows_dynamic_properties(m))
+                        // One a framework gives the class (CodeIgniter 3's `$this->load`).
+                        || models.iter().any(|m| {
+                            self.resolver.providers().magic_property(m.fqn(), name, self.resolver).is_some()
+                        })
                 }
                 (Kind::Property, true) | (Kind::Constant, _) => false,
             }

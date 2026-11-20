@@ -84,6 +84,9 @@ pub const SERVER_NAME: &str = "PHP (native)";
 /// index database.
 pub const CACHE_SUBDIR: &str = "php";
 
+/// A view's variables by its path, with the edit count they were read at.
+pub(crate) type TypedViewVariables = Mutex<HashMap<PathBuf, (u64, Arc<Vec<(String, Type)>>)>>;
+
 /// What [`PhpEngine::open`] needs.
 #[derive(Clone, Debug, Default)]
 pub struct EngineConfig {
@@ -234,6 +237,10 @@ struct Shared {
     /// The project's Symfony configuration, read on first use; dropped
     /// when a YAML file changes.
     symfony_config: Mutex<Option<Arc<SymfonyConfig>>>,
+    /// What a CodeIgniter project's files declare, for an edit count.
+    codeigniter: Mutex<Option<(u64, Arc<crate::frameworks::codeigniter::CodeIgniterProject>)>>,
+    /// What each view of a CodeIgniter project is passed, for an edit count.
+    codeigniter_views: TypedViewVariables,
     /// What a Drupal project's YAML files declare, until one changes.
     drupal: Mutex<Option<Arc<crate::frameworks::drupal::DrupalProject>>>,
     /// Which frameworks' support the settings force on or off.
@@ -486,6 +493,8 @@ impl PhpEngine {
             inspection_config: Mutex::new(InspectionConfig::default()),
             symfony_config: Mutex::new(None),
             drupal: Mutex::new(None),
+            codeigniter: Mutex::new(None),
+            codeigniter_views: Mutex::new(HashMap::new()),
             framework_settings: Mutex::new(FrameworkSettings::default()),
             frameworks: Mutex::new(None),
             template_texts: Mutex::new(HashMap::new()),
@@ -942,6 +951,31 @@ impl PhpEngine {
         let config = Arc::new(config);
         *self.shared.symfony_config.lock() = Some(config.clone());
         config
+    }
+
+    /// What the files of a CodeIgniter project declare
+    /// ([`CodeIgniterProject`](crate::frameworks::codeigniter::CodeIgniterProject)):
+    /// its language lines and filter aliases.
+    pub fn codeigniter(&self) -> Arc<crate::frameworks::codeigniter::CodeIgniterProject> {
+        let count = self.edit_count();
+        if let Some((at, project)) = self.shared.codeigniter.lock().clone()
+            && at == count
+        {
+            return project;
+        }
+        let root = self.shared.layout_config.lock().root.clone();
+        let text_of = |path: &Path| match self.open_document(path) {
+            Some(document) => Some(document.text.to_string()),
+            None => std::fs::read_to_string(path).ok(),
+        };
+        let project = Arc::new(crate::frameworks::codeigniter::CodeIgniterProject::load(&root, text_of));
+        *self.shared.codeigniter.lock() = Some((count, project.clone()));
+        project
+    }
+
+    /// The cache of [`PhpEngine::codeigniter_view_variables`].
+    pub(crate) fn codeigniter_views_cache(&self) -> &TypedViewVariables {
+        &self.shared.codeigniter_views
     }
 
     /// What the YAML files of a Drupal project declare
@@ -1892,6 +1926,44 @@ impl Declarations for PhpEngine {
         summaries.sort_by(|a, b| a.0.cmp(&b.0));
         let config = SymfonyConfig::clone(&self.symfony_config());
         SymfonyProject::new(config, summaries.iter().map(|(path, summary)| (Some(path.as_path()), &summary.symfony)))
+    }
+
+    fn loaded_class(&self, name: &str) -> Option<String> {
+        if !self.frameworks().contains(crate::frameworks::Framework::CodeIgniter) {
+            return None;
+        }
+        let project = self.codeigniter();
+        if !project.legacy {
+            return None;
+        }
+        let names = self.names();
+        let loaded = names.named(&[crate::summary::DeclaredKind::CodeIgniterLoaded], name);
+        if let Some(class) = loaded.iter().find_map(|declared| declared.classes.first()) {
+            return Some(class.clone());
+        }
+        // A library of the application: the file of that name, in any case.
+        let folder = project.library_dirs().into_iter().next()?;
+        std::fs::read_dir(folder).ok()?.flatten().find_map(|entry| {
+            let path = entry.path();
+            let stem = path.file_stem()?.to_str()?;
+            (path.extension().is_some_and(|ext| ext == "php") && stem.eq_ignore_ascii_case(name))
+                .then(|| stem.to_owned())
+        })
+    }
+
+    fn view_variable(&self, path: &Path, name: &str) -> Option<Type> {
+        // Only a file of a `Views` folder is asked about.
+        if !path.components().any(|part| part.as_os_str() == "Views" || part.as_os_str() == "views") {
+            return None;
+        }
+        // `$this` in a view is the view object: `$this->extend('layout')`. (CodeIgniter 3's
+        // has what the controller has.)
+        if name == "this" {
+            let class = if self.codeigniter().legacy { "CI_Controller" } else { "CodeIgniter\\View\\View" };
+            return self.codeigniter_view_name(path).map(|_| Type::named(class));
+        }
+        let variables = self.codeigniter_view_variables(path);
+        variables.iter().find(|(known, _)| known == name).map(|(_, ty)| ty.clone())
     }
 
     fn hook_functions(&self) -> Vec<String> {

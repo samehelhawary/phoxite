@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+- **CodeIgniter** (4, and 3). In a CodeIgniter application the names its helper functions
+  take are references: views (`view()`, `$this->extend()`, `$this->include()`, a
+  module's `Blog\Views\list`), helpers (`helper()`, `$helpers`), language lines
+  (`lang('File.key')`), routes (`route_to()`, `redirect()->route()` ↔ the `as` of a
+  route, its path when it has none, or its handler), filter aliases (`'filter' => 'auth'`
+  ↔ `Config\Filters::$aliases`), configurations, models, services, view cells
+  (`view_cell('Card::render')`), events (`Events::on()` ↔ `Events::trigger()`),
+  validation rules (each rule of `'required|min_length[3]'` ↔ the methods of the rule
+  sets) and rule groups, tables and columns (`$db->table('books')`, a model's `$table`
+  and `$allowedFields`, `->where('title', …)` ↔ the migrations), and a route's handler
+  (`'Books::show/$1'`, in the namespace of its group). Each goes to what it names and has
+  Find References and a hover; a route name, a filter alias and an event are renamed.
+  - Types: `service('name')`, `model('BookModel')` and `config('App')` are the service,
+    the model and the configuration class; a model's `find()`, `first()` and `findAll()`
+    follow its `$returnType`; `$db->table('books')` is a builder of that table.
+  - A view has the variables its controller passes it, with their types
+    (`view('books/list', ['books' => $books])`), as have the layout it extends and the
+    views it includes. They aren't reported as undefined.
+  - Inspections for a name that names nothing: `PhpUndefinedCodeIgniterView`,
+    `PhpUndefinedCodeIgniterHelper`, `PhpUndefinedCodeIgniterLanguageLine`,
+    `PhpUndefinedCodeIgniterRoute`, `PhpUnknownCodeIgniterFilter`,
+    `PhpUndefinedCodeIgniterController`, `PhpUnknownCodeIgniterRule`,
+    `PhpUnknownCodeIgniterRuleGroup`, `PhpUndefinedCodeIgniterModel`,
+    `PhpUndefinedCodeIgniterConfig`, `PhpUndefinedCodeIgniterService`,
+    `PhpUndefinedCodeIgniterCell`. Off unless turned on, as what they look for may be
+    defined outside the project: `PhpUndefinedCodeIgniterEvent`,
+    `PhpUnknownCodeIgniterTable`, `PhpUnknownCodeIgniterColumn`.
+  - Several columns in one string (`select('title, price')`), a column in an expression
+    (`where('COUNT(price) >', 3)`), the table and field of `is_unique[books.title]`, the
+    routes `resource()` and `presenter()` make, and a path (`site_url('books/show')`,
+    `redirect()->to()`: its route, else the method auto-routing would call) are names too.
+  - Modules (the `$psr4` of `Config/Autoload.php`, Composer's namespaces) bring their
+    views, helpers, language files and routes; `Config/Paths.php` says where a moved
+    `app`, `system` or views folder is.
+  - CodeIgniter 3: `$this->load->view()`, `->model()`, `->library()`, `->helper()`,
+    `$this->lang->line()`, `$this->config->item()` and the path of `site_url()` and
+    `redirect()` are references; `$this->load`, `$this->db`, `$this->session`, a loaded
+    model (under its own name or another) and a library of the application are typed in
+    controllers, models and views; a path goes through the routes of `config/routes.php`;
+    the tables and fields of `application/migrations` are the names of `$this->db`'s
+    methods.
+- A property a framework gives a class isn't reported as undefined, and a string in PHP
+  embedded in markup (`<a href="<?= site_url('books') ?>">`) is found where it was taken
+  for part of the attribute.
+- An inline `/** @var Type $name */` declares a variable that nothing in the file sets
+  (`$routes` at the top of a routes file), instead of only retyping one that exists.
 - **Drupal** (8 and later). In a Drupal site, or a module or theme opened on its own, the
   names its YAML files declare are references: services (`\Drupal::service()`,
   `$container->get()`), routes (`Url::fromRoute()`, `redirect()`, `setRedirect()`),

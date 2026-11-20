@@ -882,9 +882,131 @@ const drupalChecks = [
   }],
 ];
 
+/** The checks of the CodeIgniter fixture (run.js opens it): an application on a stand-in API. */
+const BOOKS = "app/Controllers/Books.php";
+const LIST = "app/Views/books/list.php";
+const codeigniterChecks = [
+  ["CodeIgniter: the project is named", async () => {
+    await open(BOOKS);
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["CodeIgniter"]);
+    return names.join(", ");
+  }],
+  ["CodeIgniter: names go to what they name", async () => {
+    const found = {
+      view: await goes(BOOKS, "view('books/list'", 8),
+      helper: await goes(BOOKS, "helper(['shop', 'url'])", 10),
+      "helper of the framework": await goes(BOOKS, "helper(['shop', 'url'])", 18),
+      "language line": await goes(BOOKS, "lang('Shop.cart.empty')", 8),
+      route: await goes(BOOKS, "route('books.list')", 9),
+      filter: await goes("app/Config/Routes.php", "'filter' => 'auth'", 13),
+      "route's handler": await goes("app/Config/Routes.php", "'Books::show/$1'", 9),
+      model: await goes(BOOKS, "model('BookModel')", 9),
+      configuration: await goes(BOOKS, "config('Shop')", 9),
+      service: await goes(BOOKS, "service('catalog')", 11),
+    };
+    assert.deepEqual(found, {
+      view: [`${LIST}:1`],
+      helper: ["app/Helpers/shop_helper.php:1"],
+      "helper of the framework": ["system/Helpers/url_helper.php:1"],
+      "language line": ["app/Language/en/Shop.php:6"],
+      route: ["app/Config/Routes.php:6"],
+      filter: ["app/Config/Filters.php:11"],
+      "route's handler": [`${BOOKS}:26`],
+      model: ["app/Models/BookModel.php:7"],
+      configuration: ["app/Config/Shop.php:5"],
+      service: ["app/Config/Services.php:10"],
+    });
+    const hover = await hoverAt(BOOKS, "lang('Shop.cart.empty')", 8);
+    assert.ok(hover.includes("language line") && hover.includes("Nothing yet"), hover);
+    return `${Object.keys(found).length} kinds`;
+  }],
+  ["CodeIgniter: names complete, and a route and a filter are renamed", async () => {
+    const lines = await completes(BOOKS, "lang('Shop.cart.empty')", 6, "Shop.title");
+    assert.ok(lines.includes("Validation.required"), lines.join(", "));
+    const views = await completes(BOOKS, "view('books/list'", 6, "layout");
+    const services = await completes(BOOKS, "service('catalog')", 9, "request");
+    assert.ok(services.includes("catalog"), services.join(", "));
+    const route = ["app/Config/Routes.php:6", `${BOOKS}:28`, "app/Filters/Auth.php:13"];
+    assert.deepEqual(await usagesOf(BOOKS, "route('books.list')", 9, 3), route);
+    assert.deepEqual(await renames(BOOKS, "route('books.list')", 9, "books.all"), route);
+    const filter = ["app/Config/Filters.php:11", "app/Config/Filters.php:16", "app/Config/Routes.php:6"];
+    assert.deepEqual(await renames("app/Config/Routes.php", "'filter' => 'auth'", 13, "member"), filter);
+    // Not a view, whose name is a file's.
+    assert.deepEqual(await renames(BOOKS, "view('books/list'", 8, "books/all"), []);
+    return `${lines.length} lines, ${views.length} views, ${services.length} services`;
+  }],
+  ["CodeIgniter: events, cells, rules, tables and columns are names", async () => {
+    const ORDERS = "app/Controllers/Orders.php";
+    const MIGRATION = "app/Database/Migrations/2024-01-01-000000_CreateBooks.php";
+    const found = {
+      event: await goes("app/Config/Events.php", "'order_placed'", 8),
+      "view cell": await goes(ORDERS, "'Card::render'", 9),
+      rule: await goes(ORDERS, "'required|valid_email'", 14),
+      "rule group": await goes(ORDERS, "'order')", 3),
+      table: await goes(ORDERS, "table('books')", 9),
+      column: await goes(ORDERS, "where('title'", 9),
+      "column along the chain": await goes(ORDERS, "orderBy('price')", 11),
+      "column of a model": await goes("app/Models/ShelfModel.php", "['title', 'price']", 13),
+      "route by its path": await goes(ORDERS, "route_to('orders')", 12),
+    };
+    assert.deepEqual(found, {
+      event: [`${ORDERS}:18`],
+      "view cell": ["app/Cells/Card.php:7"],
+      rule: ["system/More.php:59"],
+      "rule group": ["app/Config/Validation.php:14"],
+      table: [`${MIGRATION}:16`],
+      column: [`${MIGRATION}:13`],
+      "column along the chain": [`${MIGRATION}:14`],
+      "column of a model": [`${MIGRATION}:14`],
+      "route by its path": ["app/Config/Routes.php:8"],
+    });
+    const rules = await completes(ORDERS, "'required|valid_email'", 10, "valid_email");
+    const columns = await completes(ORDERS, "where('title'", 7, "price");
+    assert.deepEqual(await renames("app/Config/Events.php", "'order_placed'", 8, "order_made"), [
+      "app/Config/Events.php:5",
+      `${ORDERS}:18`,
+    ]);
+    return `${Object.keys(found).length} kinds, ${rules.length} rules, ${columns.length} columns`;
+  }],
+  ["CodeIgniter: a name that names nothing is reported", async () => {
+    const ORDERS = "app/Controllers/Orders.php";
+    const document = await open(ORDERS);
+    const edit = new vscode.WorkspaceEdit();
+    const at = document.getText().indexOf("'required|valid_email'");
+    edit.replace(document.uri, new vscode.Range(document.positionAt(at), document.positionAt(at + 22)), "'required|nope'");
+    await vscode.workspace.applyEdit(edit);
+    const problems = await until(
+      "the unknown rule",
+      async () => vscode.languages.getDiagnostics(document.uri).map((problem) => problem.message),
+      (found) => found.some((message) => message.includes("nope")),
+    );
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    assert.deepEqual(problems, ["Unknown validation rule 'nope'"]);
+    return problems.join("; ");
+  }],
+  ["CodeIgniter: the helper functions and a view's variables are typed", async () => {
+    assert.deepEqual(await goes(BOOKS, "$model->titles()", 10), ["app/Models/BookModel.php:12"]);
+    assert.deepEqual(await goes(BOOKS, "$shop->currency", 8), ["app/Config/Shop.php:7"]);
+    // In the view: what the controller passes, and the object rendering it.
+    assert.deepEqual(await goes(LIST, "$catalog->count()", 12), ["app/Libraries/Catalog.php:7"]);
+    assert.deepEqual(await goes(LIST, "extend('layout')", 9), ["app/Views/layout.php:1"]);
+    const members = await completes(LIST, "$catalog->count()", 10, "count");
+    const problems = vscode.languages.getDiagnostics(file(LIST)).map((problem) => problem.message);
+    assert.deepEqual(problems, [], "a view's variables aren't undefined");
+    return `${members.join(", ")}; no problems in the view`;
+  }],
+];
+
 exports.run = async function run() {
   const results = [];
-  const byMode = { "two-projects": twoProjectChecks, wordpress: wordpressChecks, drupal: drupalChecks };
+  const byMode = {
+    "two-projects": twoProjectChecks,
+    wordpress: wordpressChecks,
+    drupal: drupalChecks,
+    codeigniter: codeigniterChecks,
+  };
   const chosen = byMode[process.env.PHOXITE_E2E_MODE] ?? checks;
   for (const [name, check] of chosen) {
     const started = Date.now();

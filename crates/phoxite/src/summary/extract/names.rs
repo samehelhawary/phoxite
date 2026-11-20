@@ -619,6 +619,49 @@ impl Extractor<'_> {
         self.theme_hooks_of(body);
     }
 
+    /// The name a CodeIgniter route is given: the `as` of the options of a
+    /// call of one of the route collection's methods,
+    /// `$routes->get('books', 'Books::index', ['as' => 'books'])`.
+    pub(super) fn named_route(
+        &mut self,
+        method: &mago_syntax::cst::ClassLikeMemberSelector<'_>,
+        arguments: &mago_syntax::cst::ArgumentList<'_>,
+    ) {
+        const VERBS: [&[u8]; 12] = [
+            b"get",
+            b"post",
+            b"put",
+            b"patch",
+            b"delete",
+            b"options",
+            b"head",
+            b"add",
+            b"cli",
+            b"view",
+            b"match",
+            b"resource",
+        ];
+        let mago_syntax::cst::ClassLikeMemberSelector::Identifier(name) = method else { return };
+        if !VERBS.iter().any(|verb| name.value.eq_ignore_ascii_case(verb)) {
+            return;
+        }
+        for argument in arguments.arguments.iter() {
+            let Argument::Positional(argument) = argument else { continue };
+            let elements = match argument.value {
+                Expression::Array(array) => &array.elements,
+                Expression::LegacyArray(array) => &array.elements,
+                _ => continue,
+            };
+            for element in elements.iter() {
+                let ArrayElement::KeyValue(element) = element else { continue };
+                let named = matches!(element.key, Expression::Literal(Literal::String(key)) if key.value == Some(b"as".as_slice()));
+                if named && matches!(element.value, Expression::Literal(Literal::String(_))) {
+                    self.declare(DeclaredKind::CodeIgniterRoute, element.value);
+                }
+            }
+        }
+    }
+
     /// Declares the name `key` writes, which the array `value` describes. A
     /// table's columns are declared with it: the keys of its `fields`, each
     /// as `table.column`.
@@ -780,4 +823,139 @@ fn assigned<'t>(body: &'t str, key: &str, quoted: bool) -> Option<(usize, &'t st
         return Some((body.len() - value.len(), &value[..end]));
     }
     None
+}
+
+/// CodeIgniter: the events a file fires and the tables its migrations make.
+impl Extractor<'_> {
+    /// The event `Events::trigger('name', …)` fires.
+    pub(super) fn triggered_event(
+        &mut self,
+        class: &Expression<'_>,
+        method: &mago_syntax::cst::ClassLikeMemberSelector<'_>,
+        arguments: &mago_syntax::cst::ArgumentList<'_>,
+    ) {
+        let Expression::Identifier(class) = class else { return };
+        let mago_syntax::cst::ClassLikeMemberSelector::Identifier(name) = method else { return };
+        let events = class.value().rsplit(|byte| *byte == b'\\').next().is_some_and(|last| last == b"Events");
+        if !events || !name.value.eq_ignore_ascii_case(b"trigger") {
+            return;
+        }
+        if let Some(Argument::Positional(first)) = arguments.arguments.first() {
+            self.declare(DeclaredKind::CodeIgniterEvent, first.value);
+        }
+    }
+
+    /// The table a migration makes and its columns: the keys of the arrays
+    /// `addField()` is given before `createTable('name')` (or along its
+    /// chain), each as `table.column`; and those `addColumn('name', […])`
+    /// adds.
+    pub(super) fn forge(
+        &mut self,
+        object: &Expression<'_>,
+        method: &mago_syntax::cst::ClassLikeMemberSelector<'_>,
+        arguments: &mago_syntax::cst::ArgumentList<'_>,
+        end: u32,
+    ) {
+        let mago_syntax::cst::ClassLikeMemberSelector::Identifier(name) = method else { return };
+        fn positional<'e>(
+            arguments: &'e mago_syntax::cst::ArgumentList<'e>,
+            index: usize,
+        ) -> Option<&'e Expression<'e>> {
+            match arguments.arguments.iter().nth(index)? {
+                Argument::Positional(argument) => Some(argument.value),
+                _ => None,
+            }
+        }
+        let Some(first) = positional(arguments, 0) else { return };
+        // CodeIgniter 3: `$this->load->model('book_model', 'books')`.
+        let library = name.value.eq_ignore_ascii_case(b"library");
+        if (library || name.value.eq_ignore_ascii_case(b"model")) && self.source(object.span()).ends_with("->load") {
+            let model = match first {
+                Expression::Literal(Literal::String(string)) => {
+                    string.value.map(|v| String::from_utf8_lossy(v).into_owned())
+                }
+                _ => None,
+            };
+            // (A library's name is its third argument: `->library('basket', NULL, 'cart')`.)
+            if let (Some(model), Some(alias)) = (model, positional(arguments, if library { 2 } else { 1 })) {
+                let before = self.summary.names.declared.len();
+                self.declare(DeclaredKind::CodeIgniterLoaded, alias);
+                if self.summary.names.declared.len() > before
+                    && let Some(declared) = self.summary.names.declared.last_mut()
+                {
+                    declared.classes = vec![model.rsplit('/').next().unwrap_or(&model).to_owned()];
+                }
+            }
+            return;
+        }
+        if name.value.eq_ignore_ascii_case(b"addField") || name.value.eq_ignore_ascii_case(b"add_field") {
+            if !self.forge_chained.contains(&end) {
+                let fields = self.field_keys(first);
+                self.forge_fields.extend(fields);
+            }
+            return;
+        }
+        let creates =
+            name.value.eq_ignore_ascii_case(b"createTable") || name.value.eq_ignore_ascii_case(b"create_table");
+        if !creates
+            && !(name.value.eq_ignore_ascii_case(b"addColumn") || name.value.eq_ignore_ascii_case(b"add_column"))
+        {
+            return;
+        }
+        let mut fields = if creates { std::mem::take(&mut self.forge_fields) } else { Vec::new() };
+        if creates {
+            // `$forge->addField([...])->addKey('id')->createTable('books')`.
+            let mut below = object;
+            while let Expression::Call(mago_syntax::cst::Call::Method(call)) = below {
+                let added = matches!(&call.method, mago_syntax::cst::ClassLikeMemberSelector::Identifier(name) if (name.value.eq_ignore_ascii_case(b"addField") || name.value.eq_ignore_ascii_case(b"add_field")));
+                if added && let Some(array) = positional(&call.argument_list, 0) {
+                    fields.extend(self.field_keys(array));
+                    self.forge_chained.push(call.span().end.offset);
+                }
+                below = call.object;
+            }
+        } else if let Some(array) = positional(arguments, 1) {
+            fields = self.field_keys(array);
+        }
+        let Expression::Literal(Literal::String(string)) = first else { return };
+        let Some(table) = string.value.map(|value| String::from_utf8_lossy(value).into_owned()) else { return };
+        if table.is_empty() {
+            return;
+        }
+        if creates {
+            self.declare(DeclaredKind::CodeIgniterTable, first);
+        }
+        for (column, loc) in fields {
+            self.summary.names.declared.push(DeclaredName {
+                kind: DeclaredKind::CodeIgniterColumn,
+                name: format!("{table}.{column}"),
+                dynamic: false,
+                loc,
+                params: Vec::new(),
+                classes: Vec::new(),
+            });
+        }
+    }
+
+    /// The string keys of the array `expr` whose values are arrays: the
+    /// fields of `addField(['id' => ['type' => 'INT'], …])`.
+    fn field_keys(&self, expr: &Expression<'_>) -> Vec<(String, crate::summary::Loc)> {
+        let elements = match expr {
+            Expression::Array(array) => &array.elements,
+            Expression::LegacyArray(array) => &array.elements,
+            _ => return Vec::new(),
+        };
+        let mut out = Vec::new();
+        for element in elements.iter() {
+            let ArrayElement::KeyValue(element) = element else { continue };
+            let Expression::Literal(Literal::String(key)) = element.key else { continue };
+            if !matches!(element.value, Expression::Array(_) | Expression::LegacyArray(_)) {
+                continue;
+            }
+            if let Some(name) = key.value.map(|value| String::from_utf8_lossy(value).into_owned()) {
+                out.push((name, self.loc(inside(element.key))));
+            }
+        }
+        out
+    }
 }

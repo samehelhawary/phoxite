@@ -573,6 +573,41 @@ fn a_drupal_module_names_what_its_yaml_files_declare() {
 }
 
 #[test]
+fn a_codeigniter_application_names_its_views_and_types_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("codeigniter-app"), &root);
+    let controller = root.join("app/Controllers/Books.php");
+    let view = root.join("app/Views/books/list.php");
+    let mut c = Client::start(&root);
+    let uri = c.open(&controller, "php");
+    let filled = |v: &Value| v.as_array().is_some_and(|a| !a.is_empty());
+
+    // A view's name goes to its file, a language line to its file.
+    let (line, col) = find(&controller, "view('books/list'", 8);
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Views/books/list.php")), "{found}");
+    let (line, col) = find(&controller, "lang('Shop.cart.empty')", 8);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Language/en/Shop.php")), "{found}");
+    let items = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(items.contains("\"Shop.title\""), "{items}");
+
+    // The view has what the controller passes it, with its type, and reports nothing.
+    let page = c.open(&view, "php");
+    let (line, col) = find(&view, "$catalog->count()", 12);
+    let found = c.request_until::<r::GotoDefinition>(at(&page, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Libraries/Catalog.php")), "{found}");
+    let (line, col) = find(&view, "$catalog->count()", 3);
+    let hover = c.request::<r::HoverRequest>(at(&page, line, col)).to_string();
+    assert!(hover.contains("Catalog"), "{hover}");
+
+    let status = c.call(crate::laravel::STATUS, json!({})).expect("answered");
+    assert_eq!(status["frameworks"], json!(["CodeIgniter"]), "{status}");
+    c.shutdown();
+}
+
+#[test]
 fn a_twig_template_names_routes_and_templates_of_a_symfony_project() {
     let (_dir, root) = symfony_project();
     let layout = root.join("templates/base.html.twig");

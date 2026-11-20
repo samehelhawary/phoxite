@@ -280,6 +280,13 @@ pub(crate) fn string_start(bytes: &[u8], offset: usize) -> Option<usize> {
     let mut i = line_start;
     while i < offset {
         let byte = bytes[i];
+        // PHP opening inside markup (`<a href="<?= site_url('books') ?>">`): the quote
+        // before it is the markup's.
+        if byte == b'<' && (bytes[i..].starts_with(b"<?=") || bytes[i..].starts_with(b"<?php")) {
+            open = None;
+            i += 2;
+            continue;
+        }
         match open {
             Some(_) if byte == b'\\' => i += 1,
             Some(quote) if byte == bytes[quote] => open = None,

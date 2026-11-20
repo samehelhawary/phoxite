@@ -34,7 +34,8 @@
 //!   only with `vendor/` installed, so the packages' commands are known.
 //!
 //! - `PhpUndefinedTemplate` (Symfony) and `PhpUndefinedHook` (WordPress,
-//!   off by default) are of the other frameworks' kinds.
+//!   off by default) are of the other frameworks' kinds, as are
+//!   CodeIgniter's eight ([`CODEIGNITER`]).
 //!
 //! They run only while the indexes are ready, each in projects of its
 //! framework.
@@ -61,7 +62,30 @@ type Inspections = &'static [(&'static str, &'static dyn ReferenceKind)];
 /// …" inspections of its own adds its list here. A kind is only asked in a
 /// project of its framework ([`crate::frameworks::refs::kinds_for`]), so an
 /// inspection reports nothing elsewhere.
-const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS];
+const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER];
+
+/// CodeIgniter's: a view, a helper, a language line, a route, a filter, a
+/// route's handler, a validation rule, a rule group, a model, a
+/// configuration, a service and a view cell that name nothing; and, turned
+/// on, an event nothing fires and a table or a column no migration makes.
+const CODEIGNITER: Inspections = &[
+    ("PhpUndefinedCodeIgniterView", &crate::frameworks::codeigniter::refs::VIEW),
+    ("PhpUndefinedCodeIgniterHelper", &crate::frameworks::codeigniter::refs::HELPER),
+    ("PhpUndefinedCodeIgniterLanguageLine", &crate::frameworks::codeigniter::refs::LANG),
+    ("PhpUndefinedCodeIgniterRoute", &crate::frameworks::codeigniter::refs::ROUTE),
+    ("PhpUnknownCodeIgniterFilter", &crate::frameworks::codeigniter::refs::FILTER),
+    ("PhpUndefinedCodeIgniterController", &crate::frameworks::codeigniter::refs::CONTROLLER),
+    ("PhpUnknownCodeIgniterRule", &crate::frameworks::codeigniter::refs::RULE),
+    ("PhpUnknownCodeIgniterRuleGroup", &crate::frameworks::codeigniter::refs::RULE_GROUP),
+    ("PhpUndefinedCodeIgniterModel", &crate::frameworks::codeigniter::refs::MODEL),
+    ("PhpUndefinedCodeIgniterConfig", &crate::frameworks::codeigniter::refs::CONFIG),
+    ("PhpUndefinedCodeIgniterService", &crate::frameworks::codeigniter::refs::SERVICE),
+    ("PhpUndefinedCodeIgniterCell", &crate::frameworks::codeigniter::refs::CELL),
+    // Off unless turned on ([`super::OPT_IN`]).
+    ("PhpUndefinedCodeIgniterEvent", &crate::frameworks::codeigniter::refs::EVENT),
+    ("PhpUnknownCodeIgniterTable", &crate::frameworks::codeigniter::refs::TABLE),
+    ("PhpUnknownCodeIgniterColumn", &crate::frameworks::codeigniter::refs::COLUMN),
+];
 
 /// WordPress's: `PhpUndefinedHook`, a hook listened to that nothing indexed
 /// fires. Off unless turned on ([`super::OPT_IN`]).

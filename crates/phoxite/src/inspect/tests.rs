@@ -413,6 +413,18 @@ fn replacing_the_inspections_runs_them_again() {
             "PhpUnknownArtisanCommand",
             "PhpUnknownArtisanOption",
             "PhpUndefinedTemplate",
+            "PhpUndefinedCodeIgniterView",
+            "PhpUndefinedCodeIgniterHelper",
+            "PhpUndefinedCodeIgniterLanguageLine",
+            "PhpUndefinedCodeIgniterRoute",
+            "PhpUnknownCodeIgniterFilter",
+            "PhpUndefinedCodeIgniterController",
+            "PhpUnknownCodeIgniterRule",
+            "PhpUnknownCodeIgniterRuleGroup",
+            "PhpUndefinedCodeIgniterModel",
+            "PhpUndefinedCodeIgniterConfig",
+            "PhpUndefinedCodeIgniterService",
+            "PhpUndefinedCodeIgniterCell",
         ]
     );
 }
