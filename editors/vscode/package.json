@@ -336,7 +336,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Extra phpstorm-stubs sets (`redis`, `swoole`, `wordpress`…) on top of the defaults and the `ext-*` requirements of `composer.json`."
+          "markdownDescription": "Extra phpstorm-stubs sets (`redis`, `swoole`, `mongodb`…) on top of the defaults and the `ext-*` requirements of `composer.json`."
         },
         "phoxite.exclude": {
           "type": [

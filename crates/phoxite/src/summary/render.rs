@@ -58,6 +58,15 @@ pub(super) fn render(summary: &FileSummary) -> String {
     meta(&mut out, &summary.meta);
     laravel(&mut out, &summary.laravel);
     symfony(&mut out, &summary.symfony);
+    for callback in &summary.names.callbacks {
+        let _ = writeln!(out, "hook callback '{}' => {}", callback.hook, callback.callback);
+    }
+    for name in &summary.names.declared {
+        let dynamic = if name.dynamic { " dynamic" } else { "" };
+        let params: Vec<&str> = name.params.iter().map(|ty| ty.as_str()).collect();
+        let params = if params.is_empty() { String::new() } else { format!(" ({})", params.join(", ")) };
+        let _ = writeln!(out, "name {:?} '{}'{dynamic}{params} {}", name.kind, name.name, name_loc(name.loc));
+    }
     out
 }
 
@@ -284,6 +293,10 @@ fn doc(out: &mut String, indent: &str, doc: &Option<Box<DocBlock>>) {
             })
             .collect();
         let _ = writeln!(out, "{line}({}) {}", params.join(", "), name_loc(method.name_loc));
+    }
+    for global in &doc.globals {
+        let name = global.name.as_deref().unwrap_or_default();
+        let _ = writeln!(out, "{indent}@global {} ${name}", global.ty);
     }
     for var in &doc.vars {
         let name = var.name.as_ref().map(|name| format!(" ${name}")).unwrap_or_default();

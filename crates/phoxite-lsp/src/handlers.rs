@@ -284,6 +284,25 @@ pub fn completion(
         }
         return Ok(Some(lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })));
     }
+    if doc.kind == Kind::WordPressScript {
+        let found = doc.engine.as_ref().and_then(|engine| engine.wordpress_script_completion(&doc.path, &doc.text, at));
+        return Ok(found.map(|found| {
+            let items = found
+                .into_iter()
+                .map(|item| lsp::CompletionItem {
+                    label: item.label.clone(),
+                    kind: Some(lsp::CompletionItemKind::VALUE),
+                    detail: Some(item.detail.to_owned()),
+                    text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit::new(
+                        lsp_range(item.range),
+                        item.label,
+                    ))),
+                    ..lsp::CompletionItem::default()
+                })
+                .collect();
+            lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })
+        }));
+    }
     // `|` opens completion in Twig only (its filters).
     if trigger.as_deref() == Some("|") {
         return Ok(None);
@@ -344,6 +363,7 @@ pub fn hover(state: &State, p: lsp::HoverParams) -> Result<Option<lsp::Hover>> {
     let found = match doc.kind {
         Kind::Php => engine.hover(doc.id, at),
         Kind::Blade => engine.blade_hover(&doc.blade(), at),
+        Kind::WordPressScript => engine.wordpress_script_hover(&doc.path, &doc.text, at),
         _ => None,
     };
     Ok(found.map(|hover| lsp::Hover {
@@ -452,6 +472,11 @@ pub fn goto(
             }
             Some(locations(found))
         }
+        (Kind::WordPressScript, Goto::Definition) => doc
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.wordpress_script_definition(&doc.path, &doc.text, at))
+            .map(targets),
         _ => None,
     };
     Ok(found.map(lsp::GotoDefinitionResponse::Array))
@@ -523,6 +548,7 @@ pub fn references(
         Kind::Blade => return blade_references(&engine, &doc, at, include, cancel),
         Kind::Env => engine.laravel_env_references(&doc.path, &doc.text, at, include, cancel),
         Kind::TranslationJson => engine.laravel_translation_json_references(&doc.path, &doc.text, at, include, cancel),
+        Kind::WordPressScript => engine.wordpress_script_references(&doc.path, &doc.text, at, include, cancel),
         Kind::Twig | Kind::Other => None,
     };
     match found {
@@ -658,6 +684,7 @@ pub fn prepare_rename(state: &State, p: lsp::TextDocumentPositionParams) -> Resu
         Kind::Blade => engine.blade_prepare_rename(&doc.blade(), at).flatten(),
         Kind::Env => engine.laravel_env_prepare_rename(&doc.path, &doc.text, at),
         Kind::TranslationJson => engine.laravel_translation_json_prepare_rename(&doc.path, &doc.text, at),
+        Kind::WordPressScript => engine.wordpress_script_prepare_rename(&doc.path, &doc.text, at).flatten(),
         Kind::Twig | Kind::Other => None,
     };
     match found {
@@ -702,6 +729,7 @@ pub fn rename(state: &State, p: lsp::RenameParams, cancel: &CancellationToken) -
         Kind::Blade => engine.blade_rename(&doc.blade(), at, new, cancel),
         Kind::Env => engine.laravel_env_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::TranslationJson => engine.laravel_translation_json_rename(&doc.path, &doc.text, at, new, cancel),
+        Kind::WordPressScript => engine.wordpress_script_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::Twig | Kind::Other => None,
     };
     match found {

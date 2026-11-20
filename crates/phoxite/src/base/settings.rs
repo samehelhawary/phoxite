@@ -24,7 +24,7 @@ pub struct PhpConfig {
     /// or relative to the project.
     pub include_paths: Vec<String>,
     /// Stub sets on top of the defaults and the `ext-*` entries of
-    /// `composer.json` (`wordpress`).
+    /// `composer.json` (`swoole`).
     pub stubs: Vec<String>,
     /// Globs of excluded files and folders, relative to the project
     /// (`node_modules`, `/storage`).
@@ -340,8 +340,8 @@ mod tests {
             r#"{"require": {"ext-redis": "*", "ext-ffi": "*", "ext-json": "*"}}"#,
         )
         .unwrap();
-        let config = PhpConfig { stubs: vec!["wordpress".into(), "Redis".into()], ..PhpConfig::default() };
+        let config = PhpConfig { stubs: vec!["swoole".into(), "Redis".into()], ..PhpConfig::default() };
         let sets = config.stub_sets(dir.path());
-        assert_eq!(&sets[DEFAULT_STUBS.len()..], ["redis", "FFI", "wordpress"]);
+        assert_eq!(&sets[DEFAULT_STUBS.len()..], ["redis", "FFI", "swoole"]);
     }
 }

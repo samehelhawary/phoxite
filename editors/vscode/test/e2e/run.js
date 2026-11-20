@@ -1,8 +1,9 @@
 // Runs the end-to-end suite (suite.js) inside VS Code on a copy of the Laravel
-// fixture, with only this extension loaded.
+// fixture (and once on the WordPress one), with only this extension loaded.
 //
 //   node test/e2e/run.js [path to Code executable]
 //
+// PHOXITE_E2E_ONLY=wordpress (or one-project, two-projects) runs that part alone.
 // Without a path it downloads a VS Code build. The extension needs a server:
 // server/phoxite-lsp(.exe), or PHOXITE_SERVER pointing at one.
 
@@ -24,15 +25,19 @@ function copyDir(from, to) {
 /**
  * Runs the suite in a fresh VS Code on a fresh copy of the fixture. In mode `two-projects`
  * the workspace has two folders, each a copy of the fixture, and the suite runs the
- * checks about that instead.
+ * checks about that instead. In mode `wordpress` the project is the WordPress fixture.
  */
 async function run(mode) {
   const extension = path.resolve(__dirname, "../..");
   const fixtures = path.resolve(extension, "../../fixtures");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "phoxite-e2e-"));
   const project = path.join(tmp, "app");
-  copyDir(path.join(fixtures, "laravel-app"), project);
-  copyDir(path.join(fixtures, "laravel-stubs"), path.join(project, "vendor"));
+  if (mode === "wordpress") {
+    copyDir(path.join(fixtures, "wordpress-app"), project);
+  } else {
+    copyDir(path.join(fixtures, "laravel-app"), project);
+    copyDir(path.join(fixtures, "laravel-stubs"), path.join(project, "vendor"));
+  }
   const userData = path.join(tmp, "user-data");
   const settings = path.join(userData, "User", "settings.json");
   fs.mkdirSync(path.dirname(settings), { recursive: true });
@@ -66,8 +71,10 @@ async function run(mode) {
 
 async function main() {
   try {
-    await run("one-project");
-    await run("two-projects");
+    const only = process.env.PHOXITE_E2E_ONLY;
+    for (const mode of ["one-project", "two-projects", "wordpress"]) {
+      if (!only || only === mode) await run(mode);
+    }
   } catch (e) {
     console.error("the end-to-end tests failed", e);
     process.exitCode = 1;

@@ -16,6 +16,7 @@ mod moves;
 mod references;
 mod rename;
 mod symfony;
+mod wordpress;
 
 const WAIT: Duration = Duration::from_secs(60);
 const CARET: &str = "/*|*/";

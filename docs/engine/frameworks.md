@@ -9,7 +9,8 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | --- | --- | --- | --- |
 | Laravel | yes | `types::provider::LaravelProvider` | 24 kinds (`frameworks::laravel::refs`) |
 | Symfony, Doctrine | yes | `types::provider::SymfonyProvider` | route names, template names, service ids, parameters, translation keys and Doctrine fields (`frameworks::symfony::refs`) |
-| WordPress, Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
+| WordPress | yes | none (hook callbacks and `global` variables are typed by the engine itself, from name facts) | hooks, shortcodes, post types, taxonomies, script and style handles, options, image sizes, menu locations, template parts (`frameworks::wordpress::refs`; see [`wordpress.md`](wordpress.md)) |
+| Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
 
 Twig templates are not a framework in this sense: `phoxite::twig` reads a template's text
 and the project's template folders, needs no engine, and is served for every `*.twig` file.
@@ -79,9 +80,13 @@ arguments), and the handling of a few Laravel kinds in `undefined_references`.
    that `refs::framework_kinds` returns for the framework. A kind with an "undefined …"
    inspection of its own adds its list to `INSPECTIONS` in `inspect/laravel.rs`; route names
    are reported by `inspect/routes.rs` (`PhpUndefinedRoute`).
-4. **Facts from PHP files.** A struct in `summary/`, a field of `FileSummary`, the walker
-   hooks in `summary/extract.rs`, an index key in `index/tables.rs`, and a bump of
-   `SCHEMA_VERSION` (`summary/mod.rs`).
+4. **Facts from PHP files.** For a name a call declares (a hook, a post type): a
+   `DeclaredKind` in `summary/names.rs` and a row of the table in
+   `summary/extract/names.rs`. `PhpEngine::names()` then lists every declaration with its
+   file (`frameworks::names`), and a reference kind reads it from there; nothing else
+   needs plumbing. For other facts: a struct in `summary/`, a field of `FileSummary`, the
+   walker hooks in `summary/extract.rs` and an index key in `index/tables.rs`. Either way,
+   a bump of `SCHEMA_VERSION` (`summary/mod.rs`).
 5. **Configuration that isn't PHP.** `base::yaml` reads the YAML that Symfony's and
    Drupal's files use.
 6. **Design inputs.** The framework's public documentation, and its source where the
@@ -92,8 +97,5 @@ arguments), and the handling of a few Laravel kinds in `undefined_references`.
 
 ## Not built yet
 
-- One summary struct for the names a framework declares and uses (hooks, events), so that
-  step 4 isn't repeated for each framework. It will be built with its first user, WordPress
-  hooks.
 - A reader for PHP files that return an array (Yii, CakePHP and Laminas configuration),
   generalised from `frameworks/laravel/config.rs`.

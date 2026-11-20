@@ -156,6 +156,12 @@ fn client_support(caps: &lsp::ClientCapabilities) -> ClientSupport {
             .and_then(|w| w.did_change_watched_files.as_ref())
             .and_then(|w| w.dynamic_registration)
             .unwrap_or(false),
+        document_registration: caps
+            .text_document
+            .as_ref()
+            .and_then(|t| t.synchronization.as_ref())
+            .and_then(|s| s.dynamic_registration)
+            .unwrap_or(false),
         markdown: hover_markdown,
         dialogs: caps
             .experimental
@@ -206,6 +212,7 @@ pub fn run(connection: Connection) -> Result<(), String> {
         progress_open: false,
         shutting_down: false,
         laravel: None,
+        scripts: false,
         failure: None,
     };
     server.watch_files();
@@ -223,7 +230,9 @@ struct Server {
     /// `shutdown` came; only `exit` is left.
     shutting_down: bool,
     /// The Laravel folders the client was last told about; none before the first time.
-    laravel: Option<Vec<Url>>,
+    laravel: Option<(Vec<Url>, Vec<&'static str>)>,
+    /// The client was asked to send the scripts of a WordPress project.
+    scripts: bool,
     /// Why indexing last failed, once the client was told; none after it worked again.
     failure: Option<String>,
 }
@@ -306,13 +315,66 @@ impl Server {
     /// since it was last told: a client shows its Laravel tools on it without asking again.
     fn laravel_status(&mut self) {
         let folders = crate::laravel::folders(&self.state);
-        if self.laravel.as_ref() == Some(&folders) {
+        let frameworks = crate::laravel::frameworks(&self.state);
+        if self.laravel.as_ref() == Some(&(folders.clone(), frameworks.clone())) {
             return;
         }
-        let params = serde_json::json!({ "laravel": !folders.is_empty(), "folders": folders });
-        self.laravel = Some(folders);
+        self.register_scripts(frameworks.contains(&"WordPress"));
+        let params =
+            serde_json::json!({ "laravel": !folders.is_empty(), "folders": folders, "frameworks": frameworks });
+        self.laravel = Some((folders, frameworks));
         let notification = Notification::new(crate::laravel::STATUS_CHANGED.to_owned(), params);
         let _ = self.state.sender.send(Message::Notification(notification));
+    }
+
+    /// Asks the client for the scripts and `block.json` files while a WordPress project
+    /// is open (`wanted`), and to stop when none is: their documents, and the requests
+    /// the server answers in them. A client that doesn't take registrations sends them
+    /// only if it is set up to.
+    fn register_scripts(&mut self, wanted: bool) {
+        if wanted == self.scripts || !self.state.support.document_registration {
+            return;
+        }
+        self.scripts = wanted;
+        let id = |method: &str| format!("phoxite/scripts/{method}");
+        let request = if wanted {
+            let selector = serde_json::json!([
+                { "scheme": "file", "language": "javascript" },
+                { "scheme": "file", "language": "javascriptreact" },
+                { "scheme": "file", "language": "typescript" },
+                { "scheme": "file", "language": "typescriptreact" },
+                { "scheme": "file", "pattern": "**/block.json" },
+            ]);
+            let registrations = SCRIPT_METHODS
+                .iter()
+                .map(|method| {
+                    let mut options = serde_json::json!({ "documentSelector": selector });
+                    match *method {
+                        "textDocument/didChange" => options["syncKind"] = serde_json::json!(2),
+                        "textDocument/completion" => options["triggerCharacters"] = serde_json::json!(["'", "\"", "/"]),
+                        "textDocument/rename" => options["prepareProvider"] = serde_json::json!(true),
+                        _ => {}
+                    }
+                    lsp::Registration { id: id(method), method: (*method).to_owned(), register_options: Some(options) }
+                })
+                .collect();
+            Request::new(
+                RequestId::from("phoxite/scripts".to_owned()),
+                r::RegisterCapability::METHOD.to_owned(),
+                lsp::RegistrationParams { registrations },
+            )
+        } else {
+            let unregisterations = SCRIPT_METHODS
+                .iter()
+                .map(|method| lsp::Unregistration { id: id(method), method: (*method).to_owned() })
+                .collect();
+            Request::new(
+                RequestId::from("phoxite/scripts/stop".to_owned()),
+                r::UnregisterCapability::METHOD.to_owned(),
+                lsp::UnregistrationParams { unregisterations },
+            )
+        };
+        let _ = self.state.sender.send(Message::Request(request));
     }
 
     /// Indexing as a work-done progress, when the client shows them.
@@ -485,7 +547,7 @@ impl Server {
 
 /// The files on disk the index is built from, as glob patterns: what a client watches
 /// for the server.
-pub const WATCHED_FILES: [&str; 11] = [
+pub const WATCHED_FILES: [&str; 12] = [
     "**/*.php",
     // Twig templates, and the YAML configuration that names template
     // folders, services and routes.
@@ -501,6 +563,20 @@ pub const WATCHED_FILES: [&str; 11] = [
     "**/lang/**/*.json",
     "**/ide.json",
     "**/.phpstorm.meta.php",
+    // The blocks of a WordPress plugin or theme.
+    "**/block.json",
+];
+
+/// What the server is sent and asked in the scripts of a WordPress project.
+const SCRIPT_METHODS: [&str; 8] = [
+    "textDocument/didOpen",
+    "textDocument/didChange",
+    "textDocument/didClose",
+    "textDocument/completion",
+    "textDocument/hover",
+    "textDocument/definition",
+    "textDocument/references",
+    "textDocument/rename",
 ];
 
 impl Server {

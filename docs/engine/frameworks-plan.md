@@ -17,7 +17,7 @@ Last updated: 2026-11-20.
 | 1 | Twig, end to end | Done |
 | 2 | Symfony and Doctrine, deeper | Done |
 | 2.5 | Callable-string references | Done |
-| 3 | WordPress | Not started |
+| 3 | WordPress | Done |
 | 4 | Drupal | Not started |
 | 5 | CodeIgniter 4 | Not started |
 | 6 | Yii 2 | Not started |
@@ -263,27 +263,97 @@ expects, a closure's own return type, a default value.
 
 ## Phase 3 — WordPress
 
-Needs phase 2.5.
+On branch `wordpress`, uncommitted.
 
-- [ ] First: the generic name facts. One summary struct for the names a framework declares
-      and uses (`summary/names.rs`), one index key per kind, one resolver slot; shaped by
-      hooks (interpolated names, callback targets, the arguments at the firing site).
-- [ ] Hooks: declared by `do_action` / `apply_filters`, used by `add_action`, `add_filter`,
-      `remove_*`, `has_*`, `did_action`, `doing_*`. Completion, goto, usages, rename;
-      interpolated names matched by pattern; the undefined-hook inspection off by default.
-- [ ] Callbacks of `add_action`, `add_filter`, `add_shortcode`, activation hooks, REST and
-      AJAX callbacks (the phase 2.5 kind).
-- [ ] String callables where phase 2.5 doesn't see them yet (moved from there;
-      `navigate/callable.rs`): a callable an array's value type expects
-      (`['callback' => [$this, 'run']]` for an `array{callback: callable}`, WordPress's way
-      of passing REST and settings callbacks), a closure's own return type, a default
-      value. Decide first whether the shapes of the indexed core say enough to read them.
-- [ ] Shortcode tags, post types and taxonomies, script and style handles, option names,
-      image sizes, nav-menu locations, template parts.
-- [ ] Parameter types of a hook callback from the hook's firing site.
-- [ ] Types of `global $wpdb, $post, $wp_query…` from the `@global` tags of the indexed core.
-- [ ] Remove the `wordpress` stub examples (`base/settings.rs`, `package.json`, the schema)
-      and document the plugin-only setup (`includePaths` or a stubs package).
+- [x] The generic name facts: `summary/names.rs` (`NameFacts`: what a call declares, by
+      `DeclaredKind`), a table of declaring calls in `summary/extract/names.rs`, one index
+      key for the files that have some, and `PhpEngine::names()` (`frameworks/names.rs`). A
+      new kind of name is an enum variant and a table row. Only declarations are facts:
+      usages are found through the word index like those of any string reference, so the
+      planned "used" half wasn't needed. Summary schema 39.
+- [x] Hooks (`wordpressHook`): fired by `do_action` / `apply_filters` and their
+      `_ref_array` and `_deprecated` forms; named in `add_action`, `add_filter`,
+      `remove_*`, `has_*`, `did_*`, `doing_*`. Completion, goto, usages, hover, rename
+      (the project's own: not WordPress's or a library's). A name put together at run time
+      is a pattern (`save_post_*`).
+- [x] `PhpUndefinedHook`, off by default: the first opt-in inspection
+      (`inspect::OPT_IN`, turned on with `"enabled": true`).
+- [x] Callbacks of `add_action`, `add_filter`, `add_shortcode` and the rest: the phase 2.5
+      string callables, from the `@param callable` of WordPress's own docblocks.
+- [x] Callbacks under a key of an array argument (`register_rest_route(…, ['callback' =>
+      …])`, `sanitize_callback`, `render_callback`…): a table in `navigate/callable.rs`
+      (`KEYED`), since WordPress documents those arrays in prose, not as shapes.
+- [x] Shortcode tags, post types, taxonomies, script and style handles, option names, image
+      sizes and nav-menu locations: one `WordPressName` per registry
+      (`frameworks/wordpress/refs/names.rs`), with the same features as hooks.
+- [x] Template parts (`wordpressTemplatePart`): `get_template_part()` goes to the theme's
+      file and completes its templates. No rename.
+- [x] Parameter types of a hook's callback, for a closure or arrow function given to
+      `add_action` / `add_filter`: the `@param` types of the docblock in front of the
+      firing statement (`DeclaredName::params`, `Resolver::hook_parameters`).
+- [x] Types of `global $wpdb, $post…`: the function's own `@global` tag, else what the
+      project's `@global` tags say of the name (`Resolver::global_type`). In any PHP
+      project.
+- [x] The `wordpress` stub examples are gone (`base/settings.rs`, `package.json`, the
+      schema); the READMEs document the plugin-only setup (`includePaths` or a stubs
+      package).
+- [x] Tests: `navigate/tests/wordpress.rs` on a stand-in for WordPress's API written for
+      the tests, and a server test of a plugin opened on its own.
+
+Left over from phase 3:
+
+- [x] A function or method registered as a hook's callback by name (`'shop_saved'`,
+      `[$this, 'saved']`, `[Foo::class, 'saved']`) gets the parameters nothing else types
+      from the hooks it is registered for (`NameFacts::callbacks`,
+      `Resolver::hook_callback_parameter`).
+- [x] A global variable read at the top level of a file without being set there, and
+      `$GLOBALS['name']`, have the documented type too.
+- [x] WordPress itself: `tests/wordpress_corpus.rs` (ignored, on the `wordpress` corpus
+      that `scripts/php-corpus.sh` already had). It found that `init` is fired from
+      `wp-settings.php`, beside the core's folders, which the rename rule didn't count as
+      WordPress's; fixed. The undefined-member check on the corpus reports the same 2
+      problems with and without this phase (1,301 files).
+- [x] The VS Code status item names the frameworks of the open projects, Symfony and
+      Laravel included: the server's Laravel status request and notification carry
+      `frameworks`.
+- [x] `docs/engine/wordpress.md`.
+
+- [x] Lists of names: `is_singular(['book', 'page'])`, `'post_type' => ['book']` in a
+      query, the post types of a taxonomy and the taxonomies of a post type
+      (`Position::ListOfKey` for a list under a key).
+- [x] The theme's other files (`wordpressThemeFile`): `get_header('name')`,
+      `get_footer()`, `get_sidebar()`, `locate_template()`, `get_theme_file_path()` and
+      `get_theme_file_uri()`.
+- [x] Blocks registered in PHP by name (`wordpressBlock`, `DeclaredKind::Block`,
+      `SCHEMA_VERSION` 40).
+- [x] `fixtures/wordpress-app` (a plugin and a theme on a stand-in API written for it)
+      and `tests/wordpress_fixture.rs`: nothing in the plugin or the theme is reported,
+      and one name of each kind resolves.
+
+- [x] Blocks a `block.json` declares (`frameworks/wordpress/assets.rs`,
+      `PhpEngine::wordpress_blocks`; the server watches `**/block.json`).
+- [x] REST routes (`wordpressRestRoute`, `DeclaredKind::RestRoute`, `SCHEMA_VERSION` 41):
+      a namespace and a route declared, one path named; patterns as `*`.
+- [x] Scripts in Find References and Rename, searched as text: a block's name, a REST
+      route's path, the action of an AJAX request for its `wp_ajax_…` hook.
+- [x] A child theme's parent, from the `Template:` header of its `style.css`.
+- [x] A string under a key named `callback`, `…_callback` or `…_cb` is a callable in any
+      call (`navigate/callable.rs`), not only the listed ones.
+
+- [x] REST routes whose namespace and base are properties of the controller
+      (WordPress's own), and rename of a route's last part (`SCHEMA_VERSION` 42).
+- [x] Rename of an AJAX action: both hooks and the scripts
+      (`ReferenceKind::site_rename_range`, `other_renames`).
+- [x] `register_block_type('build/price')` is a folder when there is one.
+- [x] Scripts and `block.json` as documents (`frameworks/wordpress/scripts.rs`, the
+      server's `Kind::WordPressScript`): goto, hover,
+      Find References, Rename and completion of blocks, REST routes and AJAX actions.
+- [x] Scripts are sent to the server only in a WordPress project: the server registers
+      for them (`Server::register_scripts`), the extension's selector doesn't list them.
+      The end-to-end suite runs once on `fixtures/wordpress-app`: 12 checks in VS Code,
+      one per feature of this phase.
+
+What is left is at the end of `wordpress.md`: a script is read as text, not parsed.
 
 ## Phase 4 — Drupal (8 and later)
 

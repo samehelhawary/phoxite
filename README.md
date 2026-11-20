@@ -35,6 +35,9 @@ servers. What it does:
   completion, goto, usages and rename, in PHP and in the templates; service ids,
   parameters, translation keys and the fields in a repository's criteria. Templates know
   the variables their controllers pass them and the project's own Twig filters.
+- **WordPress:** hooks, shortcodes, post types, taxonomies, script and style handles,
+  options, image sizes and menu locations with completion, goto, usages and rename;
+  template parts; the types of a hook callback's parameters and of `global $wpdb`.
 
 ## Performance
 

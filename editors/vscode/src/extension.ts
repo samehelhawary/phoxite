@@ -85,6 +85,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Phoxit
     output,
     statusItem,
     laravel.onDidChange((active) => show({ laravel: active })),
+    laravel.onDidChangeFrameworks((frameworks) => show({ frameworks })),
     vscode.commands.registerCommand(
       "phoxite.status",
       guarded(() => statusActions(context)),
@@ -192,6 +193,8 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
       // Environment keys and JSON translations: usages and rename.
       { scheme: "file", pattern: "**/.env*" },
       { scheme: "file", pattern: "**/lang/**/*.json" },
+      // The scripts and `block.json` files of a WordPress project aren't listed: the
+      // server registers for them when it finds one open.
     ],
     // The server registers the files it wants watched itself
     // (`workspace/didChangeWatchedFiles`), as for every other editor.

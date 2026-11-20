@@ -8,6 +8,8 @@ export interface ServerStatus {
   indexing: boolean;
   /** The workspace is a Laravel project, as far as the server said. */
   laravel: boolean;
+  /** The frameworks of the open projects, as the server names them (`WordPress`). */
+  frameworks?: readonly string[];
   /** The server's version, once it said it. */
   version?: string;
   /** What the last indexing found: `1204 files, 9310 declarations`. */
@@ -21,6 +23,13 @@ export interface StatusView {
   detail: string;
   busy: boolean;
   severity: "information" | "error";
+}
+
+/** `Phoxite: Laravel`, `Phoxite: Symfony, WordPress`, or `Phoxite` in a project of no framework. */
+function frameworksText(status: ServerStatus): string {
+  // A server that doesn't name the frameworks still says whether the project is a Laravel one.
+  const names = status.frameworks?.length ? status.frameworks : status.laravel ? ["Laravel"] : [];
+  return names.length ? `Phoxite: ${names.join(", ")}` : "Phoxite";
 }
 
 export function statusView(status: ServerStatus): StatusView {
@@ -44,7 +53,7 @@ export function statusView(status: ServerStatus): StatusView {
       const parts = [`phoxite-lsp${version}`];
       if (status.indexed) parts.push(status.indexed);
       return {
-        text: status.laravel ? "Phoxite: Laravel" : "Phoxite",
+        text: frameworksText(status),
         detail: parts.join(" · "),
         busy: false,
         severity: "information",

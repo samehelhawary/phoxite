@@ -90,6 +90,7 @@ struct Builder {
     methods: Entries<DocMethod>,
     type_aliases: Entries<DocTypeAlias>,
     asserts: Entries<DocAssert>,
+    globals: Entries<DocVar>,
 }
 
 impl Builder {
@@ -123,6 +124,7 @@ impl Builder {
             methods: items(self.methods),
             type_aliases: items(self.type_aliases),
             asserts: items(self.asserts),
+            globals: items(self.globals),
         }
     }
 }
@@ -418,6 +420,17 @@ impl Extractor<'_> {
                 };
                 upsert(&mut b.asserts, priority, item, |a, b| a.when == b.when && a.param == b.param);
             }
+            // `@global wpdb $wpdb The database.`: a type made of names, then the variable.
+            TagValue::Generic(generic) if tag.name.value.eq_ignore_ascii_case(b"global") => {
+                let text = self.doc_text(generic.value.span);
+                let mut words = text.split_whitespace();
+                let (Some(written), Some(variable)) = (words.next(), words.next()) else { return };
+                let Some(name) = variable.strip_prefix('$').filter(|name| !name.is_empty()) else { return };
+                if let Some(ty) = self.simple_union(written, names) {
+                    let global = DocVar { name: Some(name.to_owned()), ty };
+                    upsert(&mut b.globals, priority, global, |a, b| a.name == b.name);
+                }
+            }
             TagValue::Invalid(invalid) => self.invalid_tag(tag, invalid, names, b),
             _ => {}
         }
@@ -470,8 +483,14 @@ impl Extractor<'_> {
         if !opens {
             return None;
         }
+        self.simple_union(ty, names)
+    }
+
+    /// The type `written` is when it is a union of plain names (`WP_Post|null`,
+    /// `string[]` isn't one), its class names resolved.
+    fn simple_union(&self, written: &str, names: &[String]) -> Option<DocType> {
         let mut parts = Vec::new();
-        for part in ty.split('|') {
+        for part in written.split('|') {
             let simple = !part.is_empty() && part.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '\\');
             if !simple {
                 return None;

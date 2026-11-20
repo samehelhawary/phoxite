@@ -62,6 +62,13 @@ test("the status item says what the server does", () => {
     { text: "Phoxite: Laravel", detail: "phoxite-lsp 0.3.0 · 50 files, 312 declarations", busy: false, severity: "information" },
   );
   assert.equal(statusView({ ...base, server: "running" }).text, "Phoxite");
+  // The frameworks the server names; an older server only says whether it is Laravel.
+  assert.equal(statusView({ ...base, server: "running", frameworks: ["WordPress"] }).text, "Phoxite: WordPress");
+  assert.equal(
+    statusView({ ...base, server: "running", laravel: true, frameworks: ["Laravel", "Symfony"] }).text,
+    "Phoxite: Laravel, Symfony",
+  );
+  assert.equal(statusView({ ...base, server: "running", frameworks: [] }).text, "Phoxite");
 });
 
 test("the server's commands run under the extension's own names", () => {

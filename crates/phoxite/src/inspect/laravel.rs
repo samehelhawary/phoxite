@@ -33,7 +33,11 @@
 //!   `$this->call`, `Schedule::command`, `$this->artisan`) no command has;
 //!   only with `vendor/` installed, so the packages' commands are known.
 //!
-//! They run only while the indexes are ready, in Laravel projects.
+//! - `PhpUndefinedTemplate` (Symfony) and `PhpUndefinedHook` (WordPress,
+//!   off by default) are of the other frameworks' kinds.
+//!
+//! They run only while the indexes are ready, each in projects of its
+//! framework.
 
 use crate::base::Severity;
 
@@ -57,7 +61,11 @@ type Inspections = &'static [(&'static str, &'static dyn ReferenceKind)];
 /// …" inspections of its own adds its list here. A kind is only asked in a
 /// project of its framework ([`crate::frameworks::refs::kinds_for`]), so an
 /// inspection reports nothing elsewhere.
-const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY];
+const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS];
+
+/// WordPress's: `PhpUndefinedHook`, a hook listened to that nothing indexed
+/// fires. Off unless turned on ([`super::OPT_IN`]).
+const WORDPRESS: Inspections = &[("PhpUndefinedHook", &crate::frameworks::wordpress::refs::HOOK)];
 
 /// Symfony's: `PhpUndefinedTemplate`, a Twig template PHP names that the
 /// project's template folders don't have.

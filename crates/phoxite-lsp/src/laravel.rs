@@ -53,7 +53,8 @@ pub const CREATE_TRANSLATION: &str = "phoxite/laravel/createTranslation";
 pub const TEMPLATES: &str = "phoxite/laravel/templates";
 pub const REFRESH_SCHEMA: &str = "phoxite/laravel/refreshSchema";
 /// The notification a client gets when a workspace folder turns out to be a Laravel
-/// project, or stops being one: `{ laravel, folders }`.
+/// project, or stops being one, or when the frameworks of the open projects change:
+/// `{ laravel, folders, frameworks }`, `frameworks` being their names (`WordPress`).
 pub const STATUS_CHANGED: &str = "phoxite/laravel/statusChanged";
 
 /// Every request of this module.
@@ -205,6 +206,18 @@ pub fn folders(state: &State) -> Vec<Url> {
         .collect()
 }
 
+/// The frameworks of the open projects by name (`Laravel`, `WordPress`), in
+/// the engine's order, each once.
+pub fn frameworks(state: &State) -> Vec<&'static str> {
+    let workspaces = state.workspaces.read();
+    let found: Vec<_> = workspaces.iter().map(|w| w.engine.frameworks()).collect();
+    phoxite::frameworks::Framework::ALL
+        .into_iter()
+        .filter(|framework| found.iter().any(|set| set.contains(*framework)))
+        .map(phoxite::frameworks::Framework::title)
+        .collect()
+}
+
 /// The engine of the Laravel project `folder` is in, else of the first
 /// Laravel project.
 fn project(state: &State, folder: &Option<Url>) -> Option<(PathBuf, Arc<PhpEngine>)> {
@@ -302,7 +315,7 @@ pub fn request(state: &State, method: &str, params: Value) -> Result<Value> {
     };
     let found = project(state, &p.folder);
     match method {
-        STATUS => json(serde_json::json!({ "laravel": found.is_some() })),
+        STATUS => json(serde_json::json!({ "laravel": found.is_some(), "frameworks": frameworks(state) })),
         ROUTES => {
             let routes: Vec<RouteInfo> =
                 found.and_then(|(_, engine)| engine.laravel_route_list(&p.query)).unwrap_or_default();

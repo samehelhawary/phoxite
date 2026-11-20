@@ -535,7 +535,10 @@ impl<'t, 'a, 'r> Builder<'t, 'a, 'r> {
             Statement::Global(global) => {
                 for variable in global.variables.iter() {
                     match variable {
-                        Variable::Direct(direct) => self.write(direct, Type::Mixed),
+                        Variable::Direct(direct) => {
+                            let ty = self.types.global_type(name_of(direct), self.frames);
+                            self.write(direct, ty);
+                        }
                         other => self.variable(other),
                     }
                 }
@@ -1235,6 +1238,16 @@ impl<'t, 'a, 'r> Builder<'t, 'a, 'r> {
                 String::new()
             }
         };
+        // A hook's callback: its parameters are what the hook passes.
+        if matches!(name.rsplit('\\').next(), Some("add_action" | "add_filter")) {
+            let mut arguments = call.argument_list.arguments.iter().map(argument_value);
+            if let (Some(hook), Some(callback)) = (arguments.next().and_then(string_literal), arguments.next())
+                && let Some(start) = function_start(callback)
+                && let Some(params) = self.types.resolver.hook_parameters(&hook)
+            {
+                self.types.expected.borrow_mut().insert(start, params);
+            }
+        }
         match name.as_str() {
             "assert" => {
                 let mut arguments = call.argument_list.arguments.iter();

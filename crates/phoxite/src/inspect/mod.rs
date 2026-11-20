@@ -97,6 +97,13 @@ pub trait Inspection: Send + Sync {
     fn check(&self, cx: &InspectionContext<'_>, out: &mut Problems);
 }
 
+/// The inspections that are off until the settings turn them on
+/// (`"enabled": true`): they report what is often right.
+///
+/// - `PhpUndefinedHook`: a WordPress hook can be fired by a plugin that
+///   isn't in the workspace.
+pub const OPT_IN: &[&str] = &["PhpUndefinedHook"];
+
 /// The set of inspections the engine runs, in order.
 #[derive(Clone, Default)]
 pub struct Inspections {
@@ -112,7 +119,8 @@ impl Inspections {
 
     /// The engine's own inspections, the call and type checks in `mode`.
     pub fn builtin_with(mode: TypeCheckMode) -> Self {
-        Self::builtin_modes(&|_| mode)
+        let all = Self::builtin_modes(&|_| mode);
+        Self::new(all.list.into_iter().filter(|i| !OPT_IN.contains(&i.id())).collect())
     }
 
     /// The engine's own inspections as the settings configure them: the
@@ -210,6 +218,8 @@ pub struct InspectionConfig {
     pub all_disabled: bool,
     /// Ids of the inspections turned off.
     pub disabled: BTreeSet<String>,
+    /// Ids of the inspections turned on (what [`OPT_IN`] ones need).
+    pub on: BTreeSet<String>,
     /// Ids of the call and type inspections in strict mode.
     pub strict: BTreeSet<String>,
 }
@@ -227,6 +237,9 @@ impl InspectionConfig {
             if o.enabled == Some(false) {
                 config.disabled.insert(id.to_owned());
             }
+            if o.enabled == Some(true) {
+                config.on.insert(id.to_owned());
+            }
             if o.options.as_ref().and_then(|options| options.get(STRICT_OPTION)) == Some(&true) {
                 config.strict.insert(id.to_owned());
             }
@@ -235,7 +248,7 @@ impl InspectionConfig {
     }
 
     pub fn enabled(&self, id: &str) -> bool {
-        !self.all_disabled && !self.disabled.contains(id)
+        !self.all_disabled && !self.disabled.contains(id) && (!OPT_IN.contains(&id) || self.on.contains(id))
     }
 
     pub fn mode(&self, id: &str) -> TypeCheckMode {

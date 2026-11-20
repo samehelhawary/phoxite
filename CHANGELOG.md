@@ -2,6 +2,54 @@
 
 ## Unreleased
 
+- **WordPress.** In a WordPress project (its core, a plugin or a theme), the names
+  WordPress keeps in its registries are references: hooks (`add_action('init', …)` ↔
+  `do_action('init')`, filters alike), shortcodes, post types, taxonomies, script and
+  style handles, options, image sizes, menu locations, blocks (registered in PHP or
+  declared by a `block.json`) and REST routes (`rest_url('shop/v1/books')` ↔
+  `register_rest_route('shop/v1', '/books')`, patterns in the route included). A
+  list of names counts where one is taken (`is_singular(['book', 'page'])`,
+  `'post_type' => ['book']`). Each completes, goes to the
+  call that fires or registers it, has Find References and a hover, and is renamed when
+  the project declares it itself (not a name of WordPress or of a library). A hook fired
+  under a name put together at run time (`"save_post_{$post->post_type}"`) is found by
+  its pattern.
+  - `get_template_part('template-parts/content', 'page')` goes to the theme's file and
+    completes the theme's templates. So do `get_header('shop')`, `get_footer()`,
+    `get_sidebar()`, `locate_template()`, `get_theme_file_path()` and
+    `get_theme_file_uri()`. A child theme's file is looked for first, then its parent's.
+  - Find References lists the project's scripts too, searched as text: a block's name, a
+    REST route's path, and the `action` of an AJAX request for its `wp_ajax_…` hook.
+    Renaming a block, the last part of a REST route or the action of an AJAX hook
+    changes PHP, the scripts and the `block.json`.
+  - In a script and in a `block.json`, a string naming a block, a REST route or an AJAX
+    action has Go to Definition, hover, Find References, Rename and completion. The
+    server asks the client for those documents only while a WordPress project is open
+    (it registers for them, and unregisters when none is left): in other projects
+    scripts aren't sent to it.
+  - A hook's callback knows what the hook passes: the parameters of a closure given to
+    `add_action()` or `add_filter()`, and of a function or method registered by name
+    (`'shop_saved'`, `[$this, 'saved']`), take the types the docblock at the firing call
+    documents.
+  - `global $wpdb, $post;` has the types the `@global` tags document: the function's
+    own, else what the project's functions (WordPress's among them) say of that name.
+    So have `$GLOBALS['wpdb']` and a variable a file reads at its top level without
+    setting it (a theme's template reads `$post`). This holds in any PHP project.
+  - Callbacks given under a key of an array (`register_rest_route(…, ['callback' =>
+    [$this, 'run']])`, `sanitize_callback`, `render_callback`…) are string callables
+    like the others.
+  - `PhpUndefinedHook` reports a hook listened to that nothing fires. It is off until
+    turned on (`"PhpUndefinedHook": { "enabled": true }`): a hook may be fired by a
+    plugin that isn't in the workspace.
+
+  Nothing of WordPress is bundled. A plugin or theme opened on its own knows WordPress's
+  functions and hooks from a stubs package installed with Composer
+  (`php-stubs/wordpress-stubs`) or from a WordPress folder named in `includePaths`.
+- The status item names the frameworks of the open projects (`Phoxite: WordPress`,
+  `Phoxite: Laravel, Symfony`), not only Laravel. The server says them in
+  `phoxite/laravel/status` and `phoxite/laravel/statusChanged` (`frameworks`).
+- The `stubs` setting's description no longer names a `wordpress` stub set: there is
+  none.
 - A string that names a function or a method where a callable is expected is a name like
   any other: `array_map('App\\trim_all', …)`, `call_user_func('Foo::make')`,
   `usort($rows, [$this, 'compare'])`, `[Foo::class, 'make']`. Go to Definition and hover

@@ -35,6 +35,7 @@
 
 mod extract;
 mod laravel;
+mod names;
 mod render;
 mod symfony;
 
@@ -43,6 +44,7 @@ pub use laravel::{
     Binding, Cast, Column, CountedRelation, LaravelFacts, Macro, ModelCasts, PestUses, RenamedColumn, RequestRules,
     RouteFileKind, RoutePath, RouteRegistration, RuleEntry, RuleMethod, Table, counted_spec,
 };
+pub use names::{DeclaredKind, DeclaredName, GlobalVariable, HookCallback, NameFacts, callback_key, matches_pattern};
 pub use symfony::{Association, RepositoryEntity, RouteAttribute, SymfonyFacts, TwigName, TwigNameKind};
 
 use std::fmt;
@@ -69,7 +71,7 @@ use crate::types::LazyType;
 /// shapes of inferred array literals; 21: shapes of constant array values;
 /// 22: only `$withCount` counts relations, with its class), so stored
 /// summaries are rebuilt.
-pub const SCHEMA_VERSION: u32 = 38;
+pub const SCHEMA_VERSION: u32 = 42;
 
 /// A source location: byte offsets (end exclusive) and the IDE range.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -130,6 +132,10 @@ pub struct FileSummary {
     /// `#[Route]` names and repository entities, for the Symfony type
     /// provider.
     pub symfony: SymfonyFacts,
+    /// The names the file declares for a framework (the WordPress hooks it
+    /// fires).
+    #[serde(default)]
+    pub names: NameFacts,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -455,12 +461,20 @@ pub struct DocBlock {
     /// `@phpstan-assert`, `@psalm-assert-if-true` and the like, on
     /// parameters.
     pub asserts: Vec<DocAssert>,
+    /// `@global Type $name`: the global variables a function uses.
+    #[serde(default)]
+    pub globals: Vec<DocVar>,
 }
 
 impl DocBlock {
     /// True when no tag was kept.
     pub fn is_empty(&self) -> bool {
         self == &Self::default()
+    }
+
+    /// The `@global` type of the global variable `name` (without `$`).
+    pub fn global_type(&self, name: &str) -> Option<&DocType> {
+        self.globals.iter().find(|global| global.name.as_deref() == Some(name)).map(|global| &global.ty)
     }
 
     /// The `@var` type for a variable or property name (without `$`): one

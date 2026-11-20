@@ -11,6 +11,13 @@ the usages of a template name, rename of blocks and macros, formatting (indentat
 spacing inside tags), semantic tokens and their syntax errors. Highlighting of the tags themselves
 is the editor's.
 
+In a WordPress project the server also answers in JavaScript and TypeScript files and in
+`block.json` (Go to Definition, hover, references, rename and completion of the blocks,
+REST routes and AJAX actions their strings name). It registers for those documents itself
+while a WordPress project is open, so a client that takes such registrations (VS Code's
+client) needs nothing; in another client, attach the server to those filetypes
+beside your JavaScript server. It answers nothing in them in other projects.
+
 Turn off other PHP language servers (Intelephense, Phpactor) for the same files; otherwise
 completions and problems show twice.
 

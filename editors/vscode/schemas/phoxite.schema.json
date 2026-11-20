@@ -19,7 +19,7 @@
       "default": []
     },
     "stubs": {
-      "description": "Extra phpstorm-stubs sets (`redis`, `swoole`, `wordpress`…) on top of the defaults and the `ext-*` requirements of `composer.json`.",
+      "description": "Extra phpstorm-stubs sets (`redis`, `swoole`, `mongodb`…) on top of the defaults and the `ext-*` requirements of `composer.json`.",
       "type": "array",
       "items": { "type": "string" },
       "default": []

@@ -12,13 +12,21 @@
 //! resolved against the file's namespace or imports), or a method of the
 //! class before `::`, of `Foo::class`, or of the object's type.
 //!
+//! A callable can also be the value of a key of an array argument, which
+//! no parameter type says: WordPress registers callbacks that way
+//! (`register_rest_route($ns, $route, ['callback' => [$this, 'run']])`).
+//! [`KEYED`] lists those the WordPress developer reference documents, and
+//! a key named as a callback (`callback`, `…_callback`, `…_cb`) is one
+//! in any call.
+//!
 //! Such a string is then a name like any other: goto, hover, usages and
 //! rename see through it ([`Lookup::callable_at`], and the usage scan), and
 //! function names complete in it.
 
 use mago_span::HasSpan;
 use mago_syntax::cst::{
-    Access, Argument, ArgumentList, ArrayElement, ClassLikeMemberSelector, Expression, Literal, LiteralString, Return,
+    Access, Argument, ArgumentList, ArrayElement, Call, ClassLikeMemberSelector, Expression, Literal, LiteralString,
+    Return,
 };
 use mago_syntax::walker::Walker;
 
@@ -46,6 +54,9 @@ pub(super) struct Candidate<'a> {
     pub text: String,
     /// For the method of a callable array, the element before it.
     pub receiver: Option<&'a Expression<'a>>,
+    /// It sits where only a callable goes ([`KEYED`]), whatever the
+    /// parameter's type says.
+    pub keyed: bool,
 }
 
 impl Candidate<'_> {
@@ -83,7 +94,7 @@ fn literal<'a>(expr: &'a Expression<'a>) -> Option<(&'a LiteralString<'a>, Strin
 /// second element of a two-element array.
 pub(super) fn candidate<'a>(value: &'a Expression<'a>, index: usize) -> Option<Candidate<'a>> {
     if let Some((string, text)) = literal(value) {
-        return Some(Candidate { index, string, text, receiver: None });
+        return Some(Candidate { index, string, text, receiver: None, keyed: false });
     }
     let elements = match value {
         Expression::Array(array) => &array.elements,
@@ -98,7 +109,92 @@ pub(super) fn candidate<'a>(value: &'a Expression<'a>, index: usize) -> Option<C
         return None;
     };
     let (string, text) = literal(method)?;
-    Some(Candidate { index, string, text, receiver: Some(object) })
+    Some(Candidate { index, string, text, receiver: Some(object), keyed: false })
+}
+
+/// A function, the position of its array argument, and the keys of that
+/// array whose values are callables. An array of such arrays (the
+/// endpoints of a REST route) is read the same.
+const KEYED: &[(&str, usize, &[&str])] = &[
+    ("register_rest_route", 2, &["callback", "permission_callback"]),
+    ("register_rest_field", 2, &["get_callback", "update_callback"]),
+    ("register_setting", 2, &["sanitize_callback"]),
+    ("register_meta", 2, &["sanitize_callback", "auth_callback"]),
+    ("register_post_meta", 2, &["sanitize_callback", "auth_callback"]),
+    ("register_term_meta", 2, &["sanitize_callback", "auth_callback"]),
+    ("register_post_type", 1, &["register_meta_box_cb"]),
+    ("register_taxonomy", 2, &["meta_box_cb", "update_count_callback"]),
+    ("register_block_type", 1, &["render_callback"]),
+];
+
+/// Whether a key says by its name that its value is a callback:
+/// `callback`, `sanitize_callback`, `meta_box_cb`. No documentation lists
+/// every array that has one (`$wp_customize->add_setting($id,
+/// ['sanitize_callback' => 'absint'])`, a plugin's own registry).
+fn callback_key(key: &str) -> bool {
+    key == "callback" || key.ends_with("_callback") || key.ends_with("_cb")
+}
+
+/// The strings of `call` that are callables under a key of an array
+/// argument: one of [`KEYED`], or one [named as a callback](callback_key).
+pub(super) fn keyed_candidates<'a>(call: &'a Expression<'a>) -> Vec<Candidate<'a>> {
+    let (list, function) = match call {
+        Expression::Call(Call::Function(call)) => (&call.argument_list, Some(call.function)),
+        Expression::Call(Call::Method(call)) => (&call.argument_list, None),
+        Expression::Call(Call::NullSafeMethod(call)) => (&call.argument_list, None),
+        Expression::Call(Call::StaticMethod(call)) => (&call.argument_list, None),
+        Expression::Instantiation(new) => match &new.argument_list {
+            Some(list) => (list, None),
+            None => return Vec::new(),
+        },
+        _ => return Vec::new(),
+    };
+    let listed = function.and_then(|function| {
+        let Expression::Identifier(name) = function else { return None };
+        let name = name.value().rsplit(|byte| *byte == b'\\').next()?;
+        KEYED.iter().find(|(known, ..)| name.eq_ignore_ascii_case(known.as_bytes()))
+    });
+    let mut out = Vec::new();
+    for (index, argument) in list.arguments.iter().enumerate() {
+        let Argument::Positional(argument) = argument else { continue };
+        if !matches!(argument.value, Expression::Array(_) | Expression::LegacyArray(_)) {
+            continue;
+        }
+        let keys: &[&str] = match listed {
+            Some((_, at, keys)) if *at == index => keys,
+            _ => &[],
+        };
+        keyed_values(argument.value, index, keys, 0, &mut out);
+    }
+    out
+}
+
+fn keyed_values<'a>(
+    value: &'a Expression<'a>,
+    index: usize,
+    keys: &[&str],
+    depth: usize,
+    out: &mut Vec<Candidate<'a>>,
+) {
+    let elements = match value {
+        Expression::Array(array) => &array.elements,
+        Expression::LegacyArray(array) => &array.elements,
+        _ => return,
+    };
+    for element in elements.iter() {
+        match element {
+            ArrayElement::KeyValue(element) => {
+                let named =
+                    literal(element.key).is_some_and(|(_, key)| keys.contains(&key.as_str()) || callback_key(&key));
+                if named && let Some(found) = candidate(element.value, index) {
+                    out.push(Candidate { keyed: true, ..found });
+                }
+            }
+            // One endpoint among several.
+            ArrayElement::Value(element) if depth == 0 => keyed_values(element.value, index, keys, 1, out),
+            _ => {}
+        }
+    }
 }
 
 /// The strings of `list` that can be callables.
@@ -156,6 +252,9 @@ pub(crate) fn takes(param: &Type, array: bool) -> Takes {
 impl<'a> Lookup<'a, '_> {
     /// Whether what `candidate` is given to at `place` takes a callable.
     pub(super) fn takes_callable(&self, place: Place<'a>, candidate: &Candidate<'_>, frames: &[Frame<'a>]) -> Takes {
+        if candidate.keyed {
+            return Takes::Callable;
+        }
         let context = self.types.context(frames);
         let expected = match place {
             Place::Argument(call) => {
@@ -256,11 +355,15 @@ impl<'a> Lookup<'a, '_> {
         let mut find = Find { offset, found: None };
         FindWalker.walk_program(self.parsed.program(), &mut find);
         let (place, value, index) = find.found?;
-        let candidate = candidate(value, index)?;
-        let inside = candidate.string.span;
-        if offset <= inside.start.offset || inside.end.offset <= offset {
-            return None;
-        }
+        let around = |candidate: &Candidate<'_>| {
+            let inside = candidate.string.span;
+            inside.start.offset < offset && offset < inside.end.offset
+        };
+        let keyed = || match place {
+            Place::Argument(call) => keyed_candidates(call).into_iter().find(|candidate| around(candidate)),
+            _ => None,
+        };
+        let candidate = candidate(value, index).filter(|candidate| around(candidate)).or_else(keyed)?;
         let frames = self.types.locate(offset).expression.map(|(_, frames)| frames).unwrap_or_default();
         if self.takes_callable(place, &candidate, &frames) != Takes::Callable {
             return None;

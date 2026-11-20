@@ -38,7 +38,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use super::callable::{Candidate, Place, Takes, candidate, candidates};
+use super::callable::{Candidate, Place, Takes, candidate, candidates, keyed_candidates};
 use crate::base::{CancellationToken, DocId, IdeError, IdeResult, Pos, Range};
 use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
@@ -929,7 +929,9 @@ impl<'a> Scan<'a, '_, '_> {
 
     /// String callables among the arguments of `call`.
     fn callable_arguments(&mut self, call: &'a Expression<'a>, list: &'a ArgumentList<'a>) {
-        self.callable_strings(Place::Argument(call), candidates(list));
+        let mut found = candidates(list);
+        found.extend(keyed_candidates(call));
+        self.callable_strings(Place::Argument(call), found);
     }
 
     /// A string callable a function returns or a property is assigned.

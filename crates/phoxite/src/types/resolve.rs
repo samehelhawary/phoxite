@@ -158,6 +158,12 @@ pub trait Declarations {
     fn symfony(&self) -> SymfonyProject {
         SymfonyProject::default()
     }
+    /// The names the project's files declare for a framework and the
+    /// global variables their `@global` tags document, file by file. The
+    /// [`Resolver`] caches what it makes of them.
+    fn name_facts(&self) -> Vec<crate::summary::NameFacts> {
+        Vec::new()
+    }
 }
 
 /// [`Declarations`] over a fixed set of summaries, the first declaration
@@ -223,6 +229,10 @@ impl Declarations for SummarySet {
     fn symfony(&self) -> SymfonyProject {
         SymfonyProject::new(self.symfony_config.clone(), self.summaries.iter().map(|summary| (None, &summary.symfony)))
     }
+
+    fn name_facts(&self) -> Vec<crate::summary::NameFacts> {
+        self.summaries.iter().map(|summary| summary.names.clone()).filter(|facts| !facts.is_empty()).collect()
+    }
 }
 
 /// A cached declaration.
@@ -275,6 +285,30 @@ struct CacheState {
     user_models: Option<Arc<UserModels>>,
     /// The Symfony configuration and facts.
     symfony: Option<Arc<SymfonyProject>>,
+    /// The types of the documented global variables, by name.
+    globals: Option<Arc<HashMap<String, Type>>>,
+    /// What the hooks pass their callbacks.
+    hooks: Option<Arc<HookParameters>>,
+}
+
+/// What each hook passes its callbacks: by name, and for the hooks fired
+/// under a name put together at run time, by pattern.
+#[derive(Debug, Default)]
+struct HookParameters {
+    named: HashMap<String, Vec<Type>>,
+    dynamic: Vec<(String, Vec<Type>)>,
+    /// By a function or method ([`crate::summary::callback_key`]): the
+    /// hooks it is registered for by name.
+    callbacks: HashMap<String, Vec<String>>,
+}
+
+impl HookParameters {
+    fn of(&self, name: &str) -> Option<&Vec<Type>> {
+        self.named.get(name).or_else(|| {
+            let found = self.dynamic.iter().find(|(pattern, _)| crate::summary::matches_pattern(pattern, name));
+            found.map(|(_, params)| params)
+        })
+    }
 }
 
 impl CacheState {
@@ -288,6 +322,8 @@ impl CacheState {
             self.macros = None;
             self.user_models = None;
             self.symfony = None;
+            self.globals = None;
+            self.hooks = None;
             self.generation = generation;
         }
         self
@@ -391,6 +427,30 @@ impl TypeCache {
 
     fn insert_symfony(&self, generation: u64, project: Arc<SymfonyProject>) {
         self.state.write().at(generation).symfony = Some(project);
+    }
+
+    fn globals(&self, generation: u64) -> Option<Arc<HashMap<String, Type>>> {
+        let state = self.state.read();
+        if state.generation != generation {
+            return None;
+        }
+        state.globals.clone()
+    }
+
+    fn insert_globals(&self, generation: u64, globals: Arc<HashMap<String, Type>>) {
+        self.state.write().at(generation).globals = Some(globals);
+    }
+
+    fn hooks(&self, generation: u64) -> Option<Arc<HookParameters>> {
+        let state = self.state.read();
+        if state.generation != generation {
+            return None;
+        }
+        state.hooks.clone()
+    }
+
+    fn insert_hooks(&self, generation: u64, hooks: Arc<HookParameters>) {
+        self.state.write().at(generation).hooks = Some(hooks);
     }
 
     /// Drops the models of the class-likes `fqns` and of every class-like
@@ -697,6 +757,94 @@ impl<'a> Resolver<'a> {
         let models = Arc::new(self.decls.user_models());
         self.cache.insert_user_models(self.generation, models.clone());
         models
+    }
+
+    /// The type the project's `@global` tags give the global variable
+    /// `name` (without `$`): the one most of them write, the first of
+    /// those in path order when several are written as often.
+    pub fn global_type(&self, name: &str) -> Option<Type> {
+        if let Some(globals) = self.cache.globals(self.generation) {
+            return globals.get(name).cloned();
+        }
+        // By name: each documented type and how often it is written, in the order met.
+        let mut counted: HashMap<String, Vec<(crate::summary::DocType, usize)>> = HashMap::new();
+        for global in self.decls.name_facts().into_iter().flat_map(|facts| facts.globals) {
+            let types = counted.entry(global.name).or_default();
+            match types.iter_mut().find(|(ty, _)| *ty == global.ty) {
+                Some((_, count)) => *count += 1,
+                None => types.push((global.ty, 1)),
+            }
+        }
+        let mut globals: HashMap<String, Type> = HashMap::new();
+        for (name, types) in counted {
+            let most = types.iter().map(|(_, count)| *count).max().unwrap_or_default();
+            if let Some((ty, _)) = types.into_iter().find(|(_, count)| *count == most) {
+                let ty = self.finish(&Type::from_doc(&ty, &[]), &Context::default());
+                if ty != Type::Mixed {
+                    globals.insert(name, ty);
+                }
+            }
+        }
+        let globals = Arc::new(globals);
+        self.cache.insert_globals(self.generation, globals.clone());
+        globals.get(name).cloned()
+    }
+
+    /// The types of what the hook `name` passes its callbacks (a filter's
+    /// value first): those the docblock at a place firing it documents,
+    /// the first such place in path order. `None` when no place firing it
+    /// documents any.
+    pub fn hook_parameters(&self, name: &str) -> Option<Vec<Type>> {
+        self.hooks().of(name).cloned()
+    }
+
+    /// The type of parameter `index` of the function or method `callback`
+    /// ([`crate::summary::callback_key`]) from the hooks it is registered
+    /// for by name: what each passes there, when a firing call documents it.
+    pub fn hook_callback_parameter(&self, callback: &str, index: usize) -> Option<Type> {
+        let hooks = self.hooks();
+        let registered = hooks.callbacks.get(callback)?;
+        let mut passed: Vec<Type> = Vec::new();
+        for hook in registered {
+            if let Some(ty) = hooks.of(hook).and_then(|params| params.get(index))
+                && *ty != Type::Mixed
+                && !passed.contains(ty)
+            {
+                passed.push(ty.clone());
+            }
+        }
+        (!passed.is_empty()).then(|| Type::union(passed))
+    }
+
+    fn hooks(&self) -> Arc<HookParameters> {
+        if let Some(hooks) = self.cache.hooks(self.generation) {
+            return hooks;
+        }
+        let mut hooks = HookParameters::default();
+        for facts in self.decls.name_facts() {
+            for registered in facts.callbacks {
+                let known = hooks.callbacks.entry(registered.callback).or_default();
+                if !known.contains(&registered.hook) {
+                    known.push(registered.hook);
+                }
+            }
+            for declared in facts.declared {
+                if declared.params.is_empty() {
+                    continue;
+                }
+                let context = Context::default();
+                let params = declared.params.iter().map(|ty| self.finish(&Type::from_doc(ty, &[]), &context));
+                let params: Vec<Type> = params.collect();
+                if declared.dynamic {
+                    hooks.dynamic.push((declared.name, params));
+                } else {
+                    hooks.named.entry(declared.name).or_insert(params);
+                }
+            }
+        }
+        let hooks = Arc::new(hooks);
+        self.cache.insert_hooks(self.generation, hooks.clone());
+        hooks
     }
 
     /// The project's Symfony configuration, `#[Route]` names and

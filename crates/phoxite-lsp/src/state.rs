@@ -37,6 +37,9 @@ pub enum Kind {
     Env,
     /// `lang/*.json`: translation keys.
     TranslationJson,
+    /// A script or a `block.json`: in a WordPress project, the blocks,
+    /// REST routes and AJAX actions its strings name.
+    WordPressScript,
     Other,
 }
 
@@ -55,6 +58,11 @@ impl Kind {
             && path.parent().is_some_and(|dir| dir.components().any(|c| c.as_os_str() == "lang"))
         {
             Kind::TranslationJson
+        } else if name == "block.json"
+            || matches!(language, "javascript" | "javascriptreact" | "typescript" | "typescriptreact")
+            || [".js", ".jsx", ".mjs", ".ts", ".tsx"].iter().any(|ext| name.ends_with(ext))
+        {
+            Kind::WordPressScript
         } else {
             Kind::Other
         }
@@ -126,6 +134,9 @@ pub struct ClientSupport {
     /// The client watches files for a server that registers for it
     /// (`workspace.didChangeWatchedFiles.dynamicRegistration`).
     pub watched_files: bool,
+    /// The client syncs more documents when the server registers for them
+    /// (`textDocument.synchronization.dynamicRegistration`).
+    pub document_registration: bool,
     pub markdown: bool,
     /// The client has the dialogs of the refactorings that ask something first
     /// (`experimental.phoxite.dialogs`).

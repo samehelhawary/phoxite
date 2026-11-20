@@ -53,6 +53,7 @@ impl Client {
                 "didChangeWatchedFiles": { "dynamicRegistration": watches_files }
             },
             "textDocument": {
+                "synchronization": { "dynamicRegistration": watches_files },
                 "completion": { "completionItem": { "snippetSupport": true, "insertReplaceSupport": true } },
                 "hover": { "contentFormat": ["markdown"] }
             },
@@ -361,6 +362,134 @@ fn symfony_route_names_go_to_their_route_and_rename_with_it() {
     let edit = c.request::<r::Rename>(rename).to_string();
     assert!(edit.contains("config/routes.yaml") && edit.contains("HomeController.php"), "{edit}");
     assert!(edit.contains("about_us"), "{edit}");
+    c.shutdown();
+}
+
+#[test]
+fn wordpress_hooks_in_a_plugin_opened_on_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    // A plugin's folder is the workspace: its header makes it a WordPress project.
+    let plugin = root.join("shop.php");
+    let files = [
+        (
+            "stubs/wordpress.php",
+            "<?php\n/** @param callable $callback */\nfunction add_action($hook_name, $callback, $priority = 10, $accepted_args = 1) {}\nfunction do_action($hook_name, ...$arg) {}\n",
+        ),
+        (
+            "shop.php",
+            "<?php\n/*\n * Plugin Name: Shop\n */\n\nfunction shop_boot() {}\n\ndo_action('shop_loaded', 1);\nadd_action('shop_loaded', 'shop_boot');\nadd_action('', 'shop_boot');\n",
+        ),
+    ];
+    for (rel, text) in files {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let mut c = Client::start(&root);
+    let uri = c.open(&plugin, "php");
+
+    // The hook goes to where it is fired, the callback to its function.
+    let (line, col) = find(&plugin, "add_action('shop_loaded'", 14);
+    let found =
+        c.request_until::<r::GotoDefinition>(at(&uri, line, col), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    assert_eq!(found[0]["range"]["start"]["line"], 7, "{found}");
+    let (line, col) = find(&plugin, "'shop_loaded', 'shop_boot'", 18);
+    // (Once the index has the file declaring `add_action`.)
+    let found =
+        c.request_until::<r::GotoDefinition>(at(&uri, line, col), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    assert_eq!(found[0]["range"]["start"]["line"], 5, "{found}");
+
+    // Completion offers the hooks fired, and a rename changes every call.
+    let (line, col) = find(&plugin, "add_action('', ", 12);
+    let items = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(items.contains("\"shop_loaded\""), "{items}");
+    let (line, col) = find(&plugin, "do_action('shop_loaded'", 12);
+    let mut rename = at(&uri, line, col);
+    rename["newName"] = json!("shop_ready");
+    let edit = c.request::<r::Rename>(rename).to_string();
+    assert_eq!(edit.matches("shop_ready").count(), 2, "{edit}");
+
+    // The client is told what the project is, for its status item.
+    let status = c.call(crate::laravel::STATUS, json!({})).expect("answered");
+    assert_eq!(status["frameworks"], json!(["WordPress"]), "{status}");
+    assert_eq!(status["laravel"], false);
+    c.shutdown();
+}
+
+#[test]
+fn a_script_of_a_wordpress_plugin_names_what_php_declares() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let script = root.join("assets/shop.js");
+    let files = [
+        (
+            "stubs/wordpress.php",
+            "<?php\n/** @param callable $callback */\nfunction add_action($hook_name, $callback, $priority = 10, $accepted_args = 1) {}\nfunction register_block_type($block_type, $args = []) {}\nfunction register_rest_route($route_namespace, $route, $args = []) {}\n",
+        ),
+        (
+            "shop.php",
+            "<?php\n/*\n * Plugin Name: Shop\n */\n\nregister_block_type('shop/price');\nregister_rest_route('shop/v1', '/books', []);\nadd_action('wp_ajax_shop_add', 'shop_add');\nfunction shop_add() {}\n",
+        ),
+        (
+            "assets/shop.js",
+            "registerBlockType('shop/price', {});\napiFetch({ path: '/shop/v1/books' });\njQuery.post(ajaxurl, { action: 'shop_add' });\njQuery.post(ajaxurl, { action: '' });\n",
+        ),
+    ];
+    for (rel, text) in files {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let mut c = Client::start(&root);
+    let uri = c.open(&script, "javascript");
+    let filled = |v: &serde_json::Value| v.as_array().is_some_and(|a| !a.is_empty());
+
+    // A block, a REST route and an AJAX action go to the PHP declaring or handling them.
+    for (needle, line) in [("'shop/price'", 5), ("'/shop/v1/books'", 6), ("'shop_add'", 7)] {
+        let (at_line, col) = find(&script, needle, 4);
+        let found = c.request_until::<r::GotoDefinition>(at(&uri, at_line, col), filled);
+        assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("shop.php")), "{found}");
+        assert_eq!(found[0]["range"]["start"]["line"], line, "{needle}: {found}");
+    }
+    let (line, col) = find(&script, "'shop/price'", 4);
+    let hover = c.request::<r::HoverRequest>(at(&uri, line, col)).to_string();
+    assert!(hover.contains("shop/price"), "{hover}");
+    let mut references = at(&uri, line, col);
+    references["context"] = json!({ "includeDeclaration": true });
+    let found = c.request::<r::References>(references);
+    assert_eq!(found.as_array().map(Vec::len), Some(2), "{found}");
+
+    // Completion of an action, and a rename of one from the script.
+    let (line, col) = find(&script, "action: ''", 9);
+    let items = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(items.contains("\"shop_add\""), "{items}");
+    let (line, col) = find(&script, "'shop_add'", 4);
+    let mut rename = at(&uri, line, col);
+    rename["newName"] = json!("shop_put");
+    let edit = c.request::<r::Rename>(rename).to_string();
+    assert_eq!(edit.matches("shop_put").count(), 2, "{edit}");
+
+    // The client was asked for the scripts, as this is a WordPress project.
+    let asked = |c: &Client| {
+        c.requests
+            .iter()
+            .filter(|r| r.method == "client/registerCapability")
+            .flat_map(|r| r.params["registrations"].as_array().cloned().unwrap_or_default())
+            .filter(|registration| registration["id"].as_str().is_some_and(|id| id.starts_with("phoxite/scripts/")))
+            .collect::<Vec<_>>()
+    };
+    let registrations = asked(&c);
+    assert_eq!(registrations.len(), 8, "{registrations:?}");
+    assert_eq!(registrations[0]["method"], "textDocument/didOpen");
+    assert_eq!(registrations[0]["registerOptions"]["documentSelector"][0]["language"], "javascript");
+    c.shutdown();
+
+    // Not in another project.
+    let (_dir, root) = laravel_project();
+    let mut c = Client::start(&root);
+    c.call_until(crate::laravel::ROUTES, json!({}), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    assert!(asked(&c).is_empty());
     c.shutdown();
 }
 
@@ -1593,6 +1722,7 @@ fn the_client_is_told_which_folders_are_laravel_projects() {
     assert_eq!(told.len(), 1, "once, not with every index pass: {told:?}");
     assert_eq!(told[0]["laravel"], true);
     assert_eq!(told[0]["folders"], json!([Url::from_file_path(&root).unwrap()]));
+    assert_eq!(told[0]["frameworks"], json!(["Laravel"]));
 
     // The folder leaves the workspace: no Laravel project is left.
     c.notify::<n::DidChangeWorkspaceFolders>(json!({ "event": {
@@ -1600,7 +1730,7 @@ fn the_client_is_told_which_folders_are_laravel_projects() {
         "removed": [{ "uri": Url::from_file_path(&root).unwrap(), "name": "fixture" }],
     } }));
     c.call_until(l::STATUS, json!({}), |v| v["laravel"] == false);
-    let gone = json!({ "laravel": false, "folders": [] });
+    let gone = json!({ "laravel": false, "folders": [], "frameworks": [] });
     wait(&mut c, &|told| told.last() == Some(&gone));
     c.shutdown();
 
@@ -1608,7 +1738,7 @@ fn the_client_is_told_which_folders_are_laravel_projects() {
     let mut c = Client::start(&fixture("php-library"));
     c.call_until("workspace/symbol", json!({ "query": "Library" }), |v| v.as_array().is_some_and(|a| !a.is_empty()));
     wait(&mut c, &|told| !told.is_empty());
-    assert_eq!(status(&c), [json!({ "laravel": false, "folders": [] })]);
+    assert_eq!(status(&c), [json!({ "laravel": false, "folders": [], "frameworks": [] })]);
     c.shutdown();
 }
 

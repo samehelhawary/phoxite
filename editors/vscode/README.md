@@ -127,6 +127,51 @@ the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
   $post])`), what follows a `.` after them (`post.title`, `post.author.name`, a loop's
   variable too), and the filters, functions and tests of the project's own Twig extensions
 
+## WordPress
+
+In WordPress itself, a plugin or a theme (detected from WordPress's files, a plugin or
+theme header, or Composer):
+
+- Hooks: `add_action('init', …)`, `add_filter()`, `remove_action()`, `has_filter()`… name
+  what `do_action()` and `apply_filters()` fire. Completion of the hooks fired, Go to
+  Definition to the firing call, Find All References, hover, and Rename for the hooks the
+  project fires itself. A hook fired as `"save_post_{$post->post_type}"` is found from
+  `'save_post_book'`
+- The same for shortcodes (`add_shortcode()`), post types (`register_post_type()`,
+  `'post_type' => 'book'` in a query), taxonomies, script and style handles
+  (`wp_enqueue_script('app')`, a dependency list), options (`get_option()`), image sizes,
+  menu locations and blocks (`register_block_type('shop/price')`, or the `name` of a
+  `block.json`). A list of names counts too: `is_singular(['book', 'page'])`,
+  `'post_type' => ['book']`
+- REST routes: `rest_url('shop/v1/books')` and `new WP_REST_Request('GET',
+  '/shop/v1/books')` go to the `register_rest_route()` call, patterns in the route
+  included (`/books/12` to `/books/(?P<id>\d+)`)
+- Find All References also lists the project's scripts: a block's name, a REST route's
+  path, and the `action` of an AJAX request for its `wp_ajax_…` hook. Renaming a block,
+  the last part of a REST route or an AJAX action changes PHP, the scripts and the
+  `block.json`
+- In a JavaScript or TypeScript file and in a `block.json`: Go to Definition, hover, Find
+  All References and Rename on a string naming a block, a REST route or (after
+  `action:`) an AJAX action, and completion of them. `"file:./render.php"` in a
+  `block.json` goes to the file
+- `get_template_part('template-parts/content', 'page')`: Go to Definition to the theme's
+  file (a child theme's, else its parent's), completion of the theme's templates. The same for `get_header('shop')`,
+  `get_footer()`, `get_sidebar()`, `locate_template()` and `get_theme_file_uri()`
+- The callback of a hook is a callable (`'my_function'`, `[$this, 'save']`): Go to
+  Definition, Find All References and Rename see it. So are the callbacks given under a
+  key: `register_rest_route(…, ['callback' => [$this, 'run']])`, and under any key named
+  `callback`, `…_callback` or `…_cb`
+- A hook's callback, a closure or a function registered by name, has its parameters
+  typed from the docblock at the hook's firing call; `global $wpdb, $post;`,
+  `$GLOBALS['wpdb']` and the globals a template reads have the types the `@global` tags
+  document
+- `"PhpUndefinedHook": { "enabled": true }` in `phoxite.inspections` warns of a hook
+  nothing fires (off by default: a plugin outside the workspace may fire it)
+
+Nothing of WordPress is bundled. A plugin or theme opened on its own needs WordPress's
+functions from somewhere: install `php-stubs/wordpress-stubs` with Composer, or add a
+WordPress folder to `phoxite.includePaths`.
+
 ## Twig
 
 Highlighting of Twig in the text, inside HTML tags and attribute values, and in scripts and

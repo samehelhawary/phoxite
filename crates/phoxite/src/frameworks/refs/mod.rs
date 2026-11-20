@@ -125,6 +125,9 @@ pub enum Position {
     ListValue,
     /// The value under this key of the array argument.
     ValueOfKey(&'static str),
+    /// A list item of the array under this key of the array argument:
+    /// `'book'` in `['post_type' => ['book', 'page']]`.
+    ListOfKey(&'static str),
 }
 
 /// A place a string literal can sit in; see the module documentation.
@@ -178,6 +181,9 @@ impl PlacePattern {
     }
 
     fn position_matches(&self, steps: &[ArrayStep]) -> bool {
+        if let Position::ListOfKey(wanted) = self.position {
+            return matches!(steps, [ArrayStep::Value(Some(key)), ArrayStep::Value(None)] if key == wanted);
+        }
         let Some((last, outer)) = steps.split_last() else { return self.position == Position::Argument };
         let last_matches = match (self.position, last) {
             (Position::Argument, _) => false,
@@ -1042,6 +1048,25 @@ pub trait ReferenceKind: Send + Sync {
         true
     }
 
+    /// The bytes of a usage written `value` that a rename of `target`
+    /// replaces: by default the same as in the key. A kind whose usages
+    /// write the key with something around it (a slash before a REST
+    /// route's path) says where it is.
+    fn site_rename_range(&self, _value: &str, target: &RenameTarget) -> (usize, usize) {
+        target.range
+    }
+
+    /// The ranges a rename of `target` replaces in the files of
+    /// [`other_usages`](Self::other_usages): by default the renamed part of
+    /// each (on one line).
+    fn other_renames(&self, cx: &RefContext<'_>, target: &RenameTarget) -> Vec<(PathBuf, Range)> {
+        let part = |range: Range| {
+            let column = |offset: usize| Pos::new(range.start.line, range.start.col + offset as u32);
+            Range::new(column(target.range.0), column(target.range.1))
+        };
+        self.other_usages(cx, &target.key).into_iter().map(|(path, range)| (path, part(range))).collect()
+    }
+
     /// Usages of `key` (a canonical value) that aren't string literals in
     /// PHP (`<livewire:counter />` tags), as byte ranges of the value in
     /// `text`, the text of the file at `path`.
@@ -1172,6 +1197,7 @@ pub fn framework_kinds(framework: super::Framework) -> &'static [&'static dyn Re
     match framework {
         super::Framework::Laravel => super::laravel::refs::kinds(),
         super::Framework::Symfony => super::symfony::refs::kinds(),
+        super::Framework::WordPress => super::wordpress::refs::kinds(),
         _ => &[],
     }
 }
@@ -1626,8 +1652,9 @@ impl PhpEngine {
         for (path, range) in kind.other_usages(cx, key) {
             usages.push(Usage { path, range, kind: UsageKind::String });
         }
+        // A declaration that is a string site too (a hook's firing call) is listed once, as the declaration.
         usages.sort_by(|a, b| (&a.path, a.range.start).cmp(&(&b.path, b.range.start)));
-        usages.dedup();
+        usages.dedup_by(|b, a| a.path == b.path && a.range == b.range);
         Ok(usages)
     }
 
@@ -1651,7 +1678,8 @@ impl PhpEngine {
             if subject.declaration {
                 lines.range(subject.start, subject.end)
             } else {
-                lines.range(subject.start + target.range.0 as u32, subject.start + target.range.1 as u32)
+                let (from, to) = subject.kind.site_rename_range(&subject.value, &target);
+                lines.range(subject.start + from as u32, subject.start + to as u32)
             }
         }))
     }
@@ -1706,13 +1734,13 @@ impl PhpEngine {
             add(path, range);
         }
         for site in sites {
-            let range = site.lines.range(site.start + target.range.0 as u32, site.start + target.range.1 as u32);
+            let (from, to) = kind.site_rename_range(&site.value, &target);
+            let range = site.lines.range(site.start + from as u32, site.start + to as u32);
             add(site.path, range);
         }
-        // The same part of the value where another kind of file writes it (on one line).
-        for (path, range) in kind.other_usages(cx, &key) {
-            let column = |offset: usize| Pos::new(range.start.line, range.start.col + offset as u32);
-            add(path, Range::new(column(target.range.0), column(target.range.1)));
+        // The same part of the value where another kind of file writes it.
+        for (path, range) in kind.other_renames(cx, &target) {
+            add(path, range);
         }
         let mut edit = WorkspaceEdit::default();
         files.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1818,7 +1846,8 @@ impl PhpEngine {
                 }
                 let Some((start, end)) = file.to_source(site.start, site.end) else { continue };
                 let range = file.lines.range(start, end);
-                out.push(FoundSite { path: path.clone(), range, start, lines: file.lines.clone() });
+                let value = site.value.clone();
+                out.push(FoundSite { path: path.clone(), range, start, lines: file.lines.clone(), value });
             }
         }
         out.extend(self.markup_sites(kind, key, &open, cancel)?);
@@ -1868,7 +1897,13 @@ impl PhpEngine {
             }
             let lines = Arc::new(crate::syntax::LineIndex::new(&text));
             for (start, end) in found {
-                out.push(FoundSite { path: path.clone(), range: lines.range(start, end), start, lines: lines.clone() });
+                out.push(FoundSite {
+                    path: path.clone(),
+                    range: lines.range(start, end),
+                    start,
+                    lines: lines.clone(),
+                    value: key.to_owned(),
+                });
             }
         }
         Ok(out)
@@ -1972,6 +2007,8 @@ pub(crate) struct FoundSite {
     /// inside it).
     start: u32,
     lines: Arc<crate::syntax::LineIndex>,
+    /// The content as written.
+    value: String,
 }
 
 /// One place [`PhpEngine::string_highlights`] marks.

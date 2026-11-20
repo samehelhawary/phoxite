@@ -141,6 +141,22 @@ export class Laravel extends Project {
   private readonly changed = new vscode.EventEmitter<boolean>();
   /** The workspace turned out to be a Laravel project, or stopped being one. */
   readonly onDidChange = this.changed.event;
+  private named: string[] = [];
+  private readonly renamed = new vscode.EventEmitter<readonly string[]>();
+  /** The frameworks of the open projects changed: their names, as the server says them. */
+  readonly onDidChangeFrameworks = this.renamed.event;
+
+  /** The frameworks of the open projects (`Laravel`, `WordPress`); empty when the server doesn't say. */
+  get frameworks(): readonly string[] {
+    return this.named;
+  }
+
+  private setFrameworks(names: unknown): void {
+    const next = Array.isArray(names) ? names.filter((name): name is string => typeof name === "string") : [];
+    if (next.join("\n") === this.named.join("\n")) return;
+    this.named = next;
+    this.renamed.fire(next);
+  }
 
   constructor(client: () => LanguageClient | undefined) {
     super(client);
@@ -194,9 +210,11 @@ export class Laravel extends Project {
       | { phoxite?: { laravelStatus?: boolean } }
       | undefined;
     this.told = experimental?.phoxite?.laravelStatus === true;
-    const listener = client.onNotification(STATUS_CHANGED, (status: { laravel?: boolean; folders?: string[] }) => {
+    type Told = { laravel?: boolean; folders?: string[]; frameworks?: string[] };
+    const listener = client.onNotification(STATUS_CHANGED, (status: Told) => {
       // What the server says now is newer than the answer of a question still on its way.
       this.check++;
+      this.setFrameworks(status?.frameworks);
       const folders = Array.isArray(status?.folders) ? status.folders.map(folderUri) : [];
       void this.set(status?.laravel === true, folders);
     });
@@ -214,8 +232,11 @@ export class Laravel extends Project {
     const tries = this.told ? 1 : STATUS_TRIES;
     let found = false;
     for (let attempt = 0; attempt < tries && check === this.check; attempt++) {
-      found = await this.request<{ laravel: boolean }>("status").then(
-        (status) => status.laravel,
+      found = await this.request<{ laravel: boolean; frameworks?: string[] }>("status").then(
+        (status) => {
+          if (check === this.check) this.setFrameworks(status.frameworks);
+          return status.laravel;
+        },
         () => false,
       );
       if (found || attempt + 1 === tries) break;
@@ -230,6 +251,7 @@ export class Laravel extends Project {
   /** The server stopped: nothing is known until it runs again. */
   async reset(): Promise<void> {
     this.check++;
+    this.setFrameworks([]);
     await this.set(false);
   }
 

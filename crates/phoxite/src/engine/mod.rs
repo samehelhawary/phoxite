@@ -246,9 +246,15 @@ struct Shared {
     /// Where the project's Twig templates are, until a template, a YAML
     /// file or a folder changes.
     twig_paths: Mutex<Option<Arc<crate::twig::TemplatePaths>>>,
+    /// The blocks the project's `block.json` files declare, until one of
+    /// them changes.
+    wordpress_blocks: Mutex<Option<Arc<Vec<crate::frameworks::wordpress::assets::BlockJson>>>>,
     /// Whether Symfony's `FrameworkBundle` class is known, and the
     /// modification count that was asked at.
     symfony_class: Mutex<Option<(u64, bool)>>,
+    /// The names the files declare for a framework, and the edit count
+    /// they were read at.
+    names: Mutex<Option<(u64, Arc<crate::frameworks::names::NamesProject>)>>,
     laravel: Mutex<LaravelCache>,
     /// The Laravel configuration keys for a modification count.
     laravel_config: Mutex<Option<(u64, Arc<ConfigKeys>)>>,
@@ -482,7 +488,9 @@ impl PhpEngine {
             template_texts: Mutex::new(HashMap::new()),
             symfony_translations: Mutex::new(None),
             twig_paths: Mutex::new(None),
+            wordpress_blocks: Mutex::new(None),
             symfony_class: Mutex::new(None),
+            names: Mutex::new(None),
             laravel: Mutex::new(LaravelCache::default()),
             laravel_config: Mutex::new(None),
             laravel_env: Mutex::new(None),
@@ -742,6 +750,10 @@ impl PhpEngine {
         let twig = |p: &PathBuf| p.extension().is_some_and(|ext| ext == "twig") || is_yaml_path(p) || p.is_dir();
         if changed.iter().any(twig) || removed.iter().any(|p| !is_php_path(p)) {
             *self.shared.twig_paths.lock() = None;
+        }
+        let block = |p: &PathBuf| crate::frameworks::wordpress::assets::is_block_json(p) || p.is_dir();
+        if changed.iter().any(block) || removed.iter().any(|p| !is_php_path(p)) {
+            *self.shared.wordpress_blocks.lock() = None;
         }
         if changed.iter().chain(removed).any(|p| is_yaml_path(p) || p.ends_with("config")) {
             // The Symfony configuration is read again on next use.
@@ -1557,6 +1569,29 @@ const CALL_SITE_FILES: usize = 16;
 
 /// Project declarations from the open buffers and the indexes, then the
 /// bundled stubs.
+impl PhpEngine {
+    /// The cache of [`PhpEngine::names`].
+    /// The blocks the project's `block.json` files declare.
+    pub(crate) fn wordpress_blocks(&self) -> Arc<Vec<crate::frameworks::wordpress::assets::BlockJson>> {
+        if let Some(blocks) = self.shared.wordpress_blocks.lock().clone() {
+            return blocks;
+        }
+        let blocks = Arc::new(crate::frameworks::wordpress::assets::blocks(&self.root()));
+        *self.shared.wordpress_blocks.lock() = Some(blocks.clone());
+        blocks
+    }
+
+    pub(crate) fn shared_names(&self) -> &Mutex<Option<(u64, Arc<crate::frameworks::names::NamesProject>)>> {
+        &self.shared.names
+    }
+
+    /// The open documents and their buffers' summaries.
+    pub(crate) fn open_summaries(&self) -> Vec<(PathBuf, Arc<FileSummary>)> {
+        let open: Vec<OpenDocument> = self.shared.documents.lock().values().cloned().collect();
+        open.iter().map(|document| (document.path.clone(), self.open_summary(document))).collect()
+    }
+}
+
 impl Declarations for PhpEngine {
     /// A Laravel global alias (`DB::table()` in a file without a namespace)
     /// is the class it stands for.
@@ -1820,6 +1855,24 @@ impl Declarations for PhpEngine {
         summaries.sort_by(|a, b| a.0.cmp(&b.0));
         let config = SymfonyConfig::clone(&self.symfony_config());
         SymfonyProject::new(config, summaries.iter().map(|(path, summary)| (Some(path.as_path()), &summary.symfony)))
+    }
+
+    /// From the indexed files with name facts (their open buffers first)
+    /// and the open buffers not indexed yet, in path order.
+    fn name_facts(&self) -> Vec<crate::summary::NameFacts> {
+        let indexed = self.index().and_then(|index| index.names_files().ok()).unwrap_or_default();
+        let mut summaries: Vec<(PathBuf, Arc<FileSummary>)> = {
+            use rayon::prelude::*;
+            indexed.par_iter().filter_map(|path| Some((path.clone(), self.shared_summary(path).ok()??))).collect()
+        };
+        let open: Vec<OpenDocument> = self.shared.documents.lock().values().cloned().collect();
+        for document in open {
+            if !indexed.contains(&document.path) {
+                summaries.push((document.path.clone(), self.open_summary(&document)));
+            }
+        }
+        summaries.sort_by(|a, b| a.0.cmp(&b.0));
+        summaries.iter().map(|(_, summary)| summary.names.clone()).filter(|facts| !facts.is_empty()).collect()
     }
 }
 

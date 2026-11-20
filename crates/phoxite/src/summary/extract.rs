@@ -30,6 +30,7 @@ use infer::{Infer, body_return, this_assignments};
 
 mod infer;
 mod laravel;
+mod names;
 mod phpdoc;
 mod symfony;
 
@@ -49,6 +50,7 @@ pub(super) fn extract(file: &ParsedFile) -> FileSummary {
     SummaryWalker.walk_program(file.program(), &mut cx);
     // With every import of the file in scope.
     cx.pest_uses(file.program().statements.iter());
+    cx.documented_globals();
     cx.summary
 }
 
@@ -938,6 +940,7 @@ impl<'ast, 'arena, 'f> Walker<'ast, 'arena, Extractor<'f>> for SummaryWalker {
     }
 
     fn walk_in_function_call(&self, node: &'ast FunctionCall<'arena>, cx: &mut Extractor<'f>) {
+        cx.declared_name(node);
         let mut meta = std::mem::take(&mut cx.summary.meta);
         crate::meta::directive(&cx.scope, node, &|span| cx.source(span), &mut meta);
         cx.summary.meta = meta;

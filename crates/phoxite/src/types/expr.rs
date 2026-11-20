@@ -567,6 +567,15 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
             Expression::Array(array) => self.array(array.elements.iter(), frames),
             Expression::LegacyArray(array) => self.array(array.elements.iter(), frames),
             Expression::ArrayAccess(access) => {
+                // `$GLOBALS['wpdb']`: the global variable, as its `@global` tags document it.
+                if let Expression::Variable(Variable::Direct(direct)) = access.array
+                    && direct.name == b"$GLOBALS"
+                    && let Expression::Literal(mago_syntax::cst::Literal::String(name)) = access.index
+                    && let Some(name) = name.value
+                    && let Some(ty) = self.resolver.global_type(&String::from_utf8_lossy(name))
+                {
+                    return ty;
+                }
                 let base = self.expr(access.array, frames);
                 let key = self.expr(access.index, frames);
                 self.element(&base, &key, frames)
@@ -671,11 +680,15 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
             // An undefined variable reads as `null` (`$x ??= …`, `$x .= …`);
             // shown on its own, it is unknown.
             Some(VarState { defined: Defined::No, .. }) => {
-                if here {
-                    Type::Mixed
-                } else {
-                    Type::Null
+                // At the top level of a file, a variable nothing here sets
+                // may be a global (a theme's template reads `$post`): the
+                // type its `@global` tags document.
+                if scope.is_empty()
+                    && let Some(ty) = self.resolver.global_type(&String::from_utf8_lossy(name))
+                {
+                    return ty;
                 }
+                if here { Type::Mixed } else { Type::Null }
             }
             Some(state) => state.ty,
             // Somewhere the flow doesn't visit (a parameter's default value).
@@ -803,6 +816,14 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
                 let index = decl.params.iter().position(|param| param.name == name)?;
                 let param = &decl.params[index];
                 let undeclared = param.type_hint.is_none() && doc.and_then(|doc| doc.param_type(&name)).is_none();
+                // A hook's callback: what the hook passes.
+                if undeclared
+                    && ty == Type::Mixed
+                    && let Some(passed) =
+                        self.resolver.hook_callback_parameter(&crate::summary::callback_key(None, &decl.fqn), index)
+                {
+                    return Some(passed);
+                }
                 if ((undeclared && ty == Type::Mixed) || ty == Type::Object)
                     && let Some(passed) = self.call_site_function_parameter(decl, index)
                 {
@@ -843,6 +864,14 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
                 // a bare container (`array`, `Collection $items`) takes its
                 // callers' when they all pass that container with its
                 // element types.
+                if undeclared
+                    && ty == Type::Mixed
+                    && let Some(passed) = self
+                        .resolver
+                        .hook_callback_parameter(&crate::summary::callback_key(Some(&class.fqn), &decl.name), index)
+                {
+                    return Some(passed);
+                }
                 let container = self.call_sites.is_some()
                     && (ty == Type::array()
                         || matches!(&ty, Type::Named { fqn, args }
@@ -902,6 +931,30 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
         let mut names = outer;
         names.extend(doc.local_type_names().map(str::to_owned));
         Some(ClosureDoc { doc, names, class, context: self.context(frames) })
+    }
+
+    /// The type of the global variable `name` (without `$`) where a
+    /// `global $name;` inside `frames` binds it: what the `@global` tag of
+    /// the function or method around says, else what the project's
+    /// `@global` tags say of a variable of that name
+    /// ([`Resolver::global_type`]), else `mixed`.
+    pub(crate) fn global_type(&self, name: &[u8], frames: &[Frame<'a>]) -> Type {
+        let name = String::from_utf8_lossy(name);
+        let doc = match frames.iter().rev().find(|frame| !matches!(frame, Frame::Class(_))) {
+            Some(Frame::Function(function)) => self.function_decl(function).and_then(|decl| decl.doc.as_deref()),
+            Some(Frame::Method(method)) => self.frame_class(frames).and_then(|class| {
+                let start = method.name.span.start.offset;
+                class.methods.iter().find(|decl| decl.name_loc.start == start).and_then(|decl| decl.doc.as_deref())
+            }),
+            _ => None,
+        };
+        if let Some(ty) = doc.and_then(|doc| doc.global_type(&name)) {
+            let ty = self.resolver.finish(&Type::from_doc(ty, &[]), &self.context(frames));
+            if ty != Type::Mixed {
+                return ty;
+            }
+        }
+        self.resolver.global_type(&name).unwrap_or(Type::Mixed)
     }
 
     fn function_decl(&self, function: &Function<'_>) -> Option<&'a FunctionDecl> {

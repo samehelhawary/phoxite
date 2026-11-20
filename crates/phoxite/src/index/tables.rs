@@ -52,6 +52,10 @@ pub const MACRO_FILES_KEY: &str = "laravel_macros";
 /// repository entities.
 pub const SYMFONY_FILES_KEY: &str = "symfony";
 
+/// The key of [`META_FILES`] listing the files that declare names for a
+/// framework ([`NameFacts`](crate::summary::NameFacts)).
+pub const NAMES_FILES_KEY: &str = "names";
+
 const MULTIMAPS: [MultiDef; 5] = [FQNS, SHORT_NAMES, SUBCLASSES, NAMESPACES, META_FILES];
 
 /// The id a file's entries in [`WORDS`] use: the first 8 bytes of the blake3
@@ -158,6 +162,10 @@ fn entries(file: &str, summary: &FileSummary) -> Vec<Entry> {
     if !summary.symfony.is_empty() {
         let decl = Decl { kind: DeclKind::Namespace, fqn: String::new(), file: file.to_owned(), index: 0 };
         out.push(Entry { table: 4, key: SYMFONY_FILES_KEY.to_owned(), decl });
+    }
+    if !summary.names.is_empty() {
+        let decl = Decl { kind: DeclKind::Namespace, fqn: String::new(), file: file.to_owned(), index: 0 };
+        out.push(Entry { table: 4, key: NAMES_FILES_KEY.to_owned(), decl });
     }
     // Every namespace that holds a declaration is a child of its parent,
     // up to the global namespace.

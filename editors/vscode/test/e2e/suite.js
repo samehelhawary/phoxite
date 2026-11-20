@@ -504,9 +504,218 @@ const twoProjectChecks = [
   }],
 ];
 
+/** The checks of the WordPress fixture (run.js opens it): a plugin and a theme on a stand-in API. */
+const SHOP = "wp-content/plugins/shop";
+const THEME = "wp-content/themes/shelf";
+const provider = (command, doc, pos, ...rest) => vscode.commands.executeCommand(command, doc.uri, pos, ...rest);
+const relative = (uri) => path.relative(project, uri.fsPath).split(path.sep).join("/");
+const filled = (found) => (found ?? []).length > 0;
+const labelOf = (item) => (typeof item.label === "string" ? item.label : item.label.label);
+
+/** Where Go to Definition lands from `needle` (+ `offset`) of `rel`: `file:line`, lines from 1. */
+async function goes(rel, needle, offset = 2) {
+  const doc = await open(rel);
+  const found = await until(`definition of ${needle}`, () => provider("vscode.executeDefinitionProvider", doc, at(doc, needle, offset)), filled);
+  return found.map((target) => `${relative(target.uri ?? target.targetUri)}:${(target.range ?? target.targetRange).start.line + 1}`);
+}
+
+async function hoverAt(rel, needle, offset = 2) {
+  const doc = await open(rel);
+  const hovers = await until(`hover of ${needle}`, () => provider("vscode.executeHoverProvider", doc, at(doc, needle, offset)), filled);
+  return hovers.flatMap((hover) => hover.contents).map((content) => content.value ?? content).join(" ");
+}
+
+/** The labels completion offers at `needle` (+ `offset`), once `wanted` is among them. */
+async function completes(rel, needle, offset, wanted) {
+  const doc = await open(rel);
+  const list = await until(`completion at ${needle}`, () => provider("vscode.executeCompletionItemProvider", doc, at(doc, needle, offset)),
+    (found) => (found?.items ?? []).some((item) => labelOf(item) === wanted));
+  return list.items.map(labelOf);
+}
+
+async function usagesOf(rel, needle, offset, count) {
+  const doc = await open(rel);
+  const found = await until(`usages of ${needle}`, () => provider("vscode.executeReferenceProvider", doc, at(doc, needle, offset)),
+    (usages) => (usages ?? []).length >= count);
+  return found.map((usage) => `${relative(usage.uri)}:${usage.range.start.line + 1}`).sort();
+}
+
+/** The edits of a rename at `needle`, as `file:line` (nothing is applied); an empty list when it is refused. */
+async function renames(rel, needle, offset, name) {
+  const doc = await open(rel);
+  const edit = await provider("vscode.executeDocumentRenameProvider", doc, at(doc, needle, offset), name).then((found) => found, () => undefined);
+  const places = (edit?.entries() ?? []).flatMap(([uri, edits]) => edits.map((change) => `${relative(uri)}:${change.range.start.line + 1}`));
+  return places.sort();
+}
+
+const wordpressChecks = [
+  ["WordPress: the project is named", async () => {
+    await open(`${SHOP}/shop.php`);
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["WordPress"]);
+    assert.equal(laravel().isActive, false, "not a Laravel project");
+    return names.join(", ");
+  }],
+  ["WordPress: a hook goes to where it is fired", async () => {
+    // Fired beside WordPress's folders, under a name put together, and by the plugin itself.
+    assert.deepEqual(await goes(`${SHOP}/shop.php`, "add_action('init'", 13), ["wp-settings.php:8"]);
+    const pattern = await goes(`${SHOP}/shop.php`, "'save_post_book'", 3);
+    assert.equal(pattern.length, 1);
+    assert.ok(pattern[0].startsWith("wp-includes/api.php:"), pattern[0]);
+    assert.deepEqual(await goes(`${SHOP}/includes/class-shop-catalog.php`, "has_action('shop_loaded'", 13), [`${SHOP}/shop.php:34`]);
+    const hover = await hoverAt(`${SHOP}/shop.php`, "add_action('init'", 13);
+    assert.ok(hover.includes("action") && hover.includes("wp-settings.php"), hover);
+    return `${pattern[0]}; ${hover.replace(/\s+/g, " ").slice(0, 60)}`;
+  }],
+  ["WordPress: hooks complete, without the patterns", async () => {
+    const labels = await completes(`${SHOP}/shop.php`, "add_action('init'", 12, "shop_loaded");
+    for (const hook of ["init", "save_post", "the_title", "admin_init"]) assert.ok(labels.includes(hook), `${hook} in ${labels.join(", ")}`);
+    assert.ok(!labels.some((label) => label.includes("*")), labels.join(", "));
+    return `${labels.length} hooks`;
+  }],
+  ["WordPress: the usages of a hook, and its rename", async () => {
+    const places = [`${SHOP}/includes/class-shop-catalog.php:7`, `${SHOP}/shop.php:14`, `${SHOP}/shop.php:34`];
+    assert.deepEqual(await usagesOf(`${SHOP}/shop.php`, "do_action('shop_loaded'", 12, 3), places);
+    assert.deepEqual(await renames(`${SHOP}/shop.php`, "do_action('shop_loaded'", 12, "shop_ready"), places);
+    // Not a hook WordPress fires.
+    assert.deepEqual(await renames(`${SHOP}/shop.php`, "add_action('init'", 13, "started"), []);
+    return places.join(", ");
+  }],
+  ["WordPress: a callback is the function or the method it names", async () => {
+    assert.deepEqual(await goes(`${SHOP}/shop.php`, "'init', 'shop_register'", 10), [`${SHOP}/shop.php:16`]);
+    assert.deepEqual(await goes(`${SHOP}/shop.php`, "[Shop_Catalog::class, 'refresh']", 24), [`${SHOP}/includes/class-shop-catalog.php:12`]);
+    // Under a key of an array: a REST route's, a block's.
+    assert.deepEqual(await goes(`${SHOP}/shop.php`, "'permission_callback' => 'shop_public'", 27), [`${SHOP}/shop.php:49`]);
+    assert.deepEqual(await goes(`${SHOP}/shop.php`, "'render_callback' => 'shop_price'", 22), [`${SHOP}/shop.php:44`]);
+    // The function's usages count the strings.
+    const usages = await usagesOf(`${SHOP}/shop.php`, "function shop_price", 12, 2);
+    assert.ok(usages.includes(`${SHOP}/shop.php:20`) && usages.includes(`${SHOP}/shop.php:22`), usages.join(", "));
+    return usages.join(", ");
+  }],
+  ["WordPress: a callback's parameters and the globals are typed", async () => {
+    // What `save_post` passes a function registered by name; a closure's; a global in a method and in a template.
+    const post = await completes(`${SHOP}/shop.php`, "$post->post_title);", 7, "post_title");
+    assert.ok(post.includes("post_type"), post.join(", "));
+    assert.deepEqual(await goes(`${SHOP}/shop.php`, "$post->post_title);", 9), ["wp-includes/api.php:13"]);
+    const wpdb = await completes(`${SHOP}/includes/class-shop-catalog.php`, "$wpdb->prepare", 7, "prepare");
+    assert.ok(wpdb.includes("get_results") && wpdb.includes("prefix"), wpdb.join(", "));
+    assert.deepEqual(await goes(`${THEME}/index.php`, "$post->post_title", 9), ["wp-includes/api.php:13"]);
+    return `${post.join(", ")}; ${wpdb.join(", ")}`;
+  }],
+  ["WordPress: the names of the registries go to their registration", async () => {
+    const catalog = `${SHOP}/includes/class-shop-catalog.php`;
+    const functions = `${THEME}/functions.php`;
+    const found = {
+      "post type in a list": await goes(catalog, "'post_type' => ['book']", 18),
+      "post type of is_singular": await goes(`${THEME}/index.php`, "is_singular(['book'])", 15),
+      taxonomy: await goes(`${THEME}/index.php`, "get_the_terms($post, 'genre')", 23),
+      shortcode: await goes(catalog, "shortcode_exists('price')", 19),
+      option: await goes(`${SHOP}/shop.php`, "get_option('shop_currency')", 13),
+      block: await goes(`${SHOP}/shop.php`, "has_block('shop/price')", 12),
+      script: await goes(functions, "wp_enqueue_script('shelf-app')", 20),
+      "script as a dependency": await goes(functions, "['shelf-app']", 3),
+      "image size": await goes(`${THEME}/index.php`, "the_post_thumbnail('card')", 21),
+      "menu location": await goes(`${THEME}/index.php`, "'theme_location' => 'primary'", 22),
+    };
+    assert.deepEqual(found, {
+      "post type in a list": [`${SHOP}/shop.php:18`],
+      "post type of is_singular": [`${SHOP}/shop.php:18`],
+      taxonomy: [`${SHOP}/shop.php:19`],
+      shortcode: [`${SHOP}/shop.php:20`],
+      option: [`${SHOP}/shop.php:21`],
+      block: [`${SHOP}/shop.php:22`],
+      script: [`${functions}:9`],
+      "script as a dependency": [`${functions}:9`],
+      "image size": [`${functions}:7`],
+      "menu location": [`${functions}:8`],
+    });
+    const hover = await hoverAt(catalog, "'post_type' => ['book']", 18);
+    assert.ok(hover.includes("post type") && hover.includes("Registered in"), hover);
+    // Completion offers the kind asked for, and a rename changes every call naming it.
+    const options = await completes(`${SHOP}/shop.php`, "get_option('shop_currency')", 12, "shop_currency");
+    assert.ok(options.includes("shop_last_saved") && !options.includes("book"), options.join(", "));
+    const renamed = await renames(`${SHOP}/shop.php`, "register_post_type('book'", 20, "novel");
+    assert.deepEqual(renamed, [`${catalog}:28`, `${SHOP}/shop.php:18`, `${SHOP}/shop.php:19`, `${THEME}/index.php:3`]);
+    return `${Object.keys(found).length} kinds; rename in ${renamed.length} places`;
+  }],
+  ["WordPress: the files a theme names", async () => {
+    const index = `${THEME}/index.php`;
+    assert.deepEqual(await goes(index, "'template-parts/content', 'book'", 10), [`${THEME}/template-parts/content-book.php:1`]);
+    assert.deepEqual(await goes(index, "get_template_part('template-parts/content');", 25), [`${THEME}/template-parts/content.php:1`]);
+    assert.deepEqual(await goes(index, "get_header('shop')", 13), [`${THEME}/header-shop.php:1`]);
+    assert.deepEqual(await goes(`${THEME}/functions.php`, "get_theme_file_uri('/assets/app.js'))", 22), [`${THEME}/assets/app.js:1`]);
+    assert.deepEqual(await goes(`${THEME}/functions.php`, "'template-parts/content.php']", 5), [`${THEME}/template-parts/content.php:1`]);
+    // Right after the quote: nothing typed narrows the list.
+    const parts = (await completes(index, "get_template_part('template-parts/content');", 19, "template-parts/content-book"))
+      .filter((label) => /^(header|footer|index|functions|template-parts)/.test(label));
+    assert.ok(parts.includes("header-shop") && parts.includes("footer"), parts.join(", "));
+    return parts.join(", ");
+  }],
+  ["WordPress: a REST route by its path", async () => {
+    assert.deepEqual(await goes(`${SHOP}/shop.php`, "rest_url('shop/v1/books')", 14), [`${SHOP}/shop.php:23`]);
+    const hover = await hoverAt(`${SHOP}/shop.php`, "rest_url('shop/v1/books')", 14);
+    assert.ok(hover.includes("REST route") && hover.includes("shop/v1/books"), hover);
+    const routes = await completes(`${SHOP}/shop.php`, "rest_url('shop/v1/books')", 10, "shop/v1/books");
+    // Usages from the route's own string, the script included; a rename is of the last part.
+    const places = [`${SHOP}/assets/shop.js:6`, `${SHOP}/shop.php:23`, `${SHOP}/shop.php:59`];
+    assert.deepEqual(await usagesOf(`${SHOP}/shop.php`, "'shop/v1', '/books'", 14, 3), places);
+    assert.deepEqual(await renames(`${SHOP}/shop.php`, "rest_url('shop/v1/books')", 14, "novels"), places);
+    return `${routes.length} routes; ${places.join(", ")}`;
+  }],
+  ["WordPress: a script names a block, a REST route and an AJAX action", async () => {
+    // The server asks for the scripts once it knows the project: no selector lists them.
+    const script = `${SHOP}/assets/shop.js`;
+    assert.deepEqual(await goes(script, "'shop/stock'", 3), [`${SHOP}/blocks/stock/block.json:3`]);
+    assert.deepEqual(await goes(script, "'/shop/v1/books'", 3), [`${SHOP}/shop.php:23`]);
+    assert.deepEqual(await goes(script, "'shop_add'", 3), [`${SHOP}/shop.php:54`]);
+    const hover = await hoverAt(script, "'shop_add'", 3);
+    assert.ok(hover.includes("AJAX action") && hover.includes("shop.php"), hover);
+    const actions = await completes(script, "action: 'shop_add'", 9, "shop_add");
+    const routes = await completes(script, "path: '/shop/v1/books'", 7, "/shop/v1/books");
+    // A rename of the action from the script: the hook in PHP and the script.
+    const renamed = await renames(script, "'shop_add'", 3, "shop_put");
+    assert.deepEqual(renamed, [`${script}:4`, `${SHOP}/shop.php:54`]);
+    return `${actions.join(", ")}; ${routes.join(", ")}; rename in ${renamed.join(", ")}`;
+  }],
+  ["WordPress: a block.json declares a block", async () => {
+    const json = `${SHOP}/blocks/stock/block.json`;
+    assert.deepEqual(await goes(`${SHOP}/shop.php`, "has_block('shop/stock')", 12), [`${json}:3`]);
+    const places = [`${SHOP}/assets/shop.js:2`, `${json}:3`, `${SHOP}/shop.php:59`];
+    assert.deepEqual(await usagesOf(json, "shop/stock", 3, 3), places);
+    // Renamed from PHP: the file and the script change with the call.
+    assert.deepEqual(await renames(`${SHOP}/shop.php`, "has_block('shop/stock')", 12, "shop/in-stock"), places);
+    const blocks = await completes(`${SHOP}/shop.php`, "has_block('shop/stock')", 11, "shop/stock");
+    assert.ok(blocks.includes("shop/price"), blocks.join(", "));
+    return places.join(", ");
+  }],
+  ["WordPress: a hook nothing fires is reported when the inspection is on", async () => {
+    const doc = await open(`${SHOP}/shop.php`);
+    const hooks = () => vscode.languages.getDiagnostics(doc.uri).filter((problem) => String(problem.code?.value ?? problem.code) === "PhpUndefinedHook");
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(doc.uri, doc.lineAt(doc.lineCount - 1).range.end, "\nadd_action('shop_nothing_fires', 'shop_add');\n");
+    await vscode.workspace.applyEdit(edit);
+    const config = vscode.workspace.getConfiguration("phoxite");
+    try {
+      // Off by default: the file is inspected and says nothing of the hook.
+      await until("the callback's usage", () => provider("vscode.executeDefinitionProvider", doc, at(doc, "'shop_nothing_fires', 'shop_add'", 24)), filled);
+      assert.deepEqual(hooks(), []);
+      await config.update("inspections", { PhpUndefinedHook: { enabled: true } }, vscode.ConfigurationTarget.Global);
+      const found = await until("the hook's problem", async () => hooks(), filled);
+      // Only that one: every other hook of the file is fired somewhere.
+      assert.deepEqual(found.map((problem) => problem.message), ["Hook 'shop_nothing_fires' is not fired anywhere"]);
+      return found[0].message;
+    } finally {
+      await config.update("inspections", undefined, vscode.ConfigurationTarget.Global);
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    }
+  }],
+];
+
 exports.run = async function run() {
   const results = [];
-  const chosen = process.env.PHOXITE_E2E_MODE === "two-projects" ? twoProjectChecks : checks;
+  const byMode = { "two-projects": twoProjectChecks, wordpress: wordpressChecks };
+  const chosen = byMode[process.env.PHOXITE_E2E_MODE] ?? checks;
   for (const [name, check] of chosen) {
     const started = Date.now();
     try {

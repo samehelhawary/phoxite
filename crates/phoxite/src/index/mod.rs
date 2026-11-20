@@ -493,6 +493,11 @@ impl PhpIndex {
         Ok(self.multimap(META_FILES, SYMFONY_FILES_KEY)?.iter().map(Decl::path).collect())
     }
 
+    /// The files declaring names for a framework, sorted.
+    pub fn names_files(&self) -> IdeResult<Vec<PathBuf>> {
+        Ok(self.multimap(META_FILES, NAMES_FILES_KEY)?.iter().map(Decl::path).collect())
+    }
+
     // ------------------------------------------------- Laravel model parts
 
     /// The stored part of the Laravel project model of `kind` for `path`
