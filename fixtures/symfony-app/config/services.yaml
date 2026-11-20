@@ -1,0 +1,9 @@
+parameters:
+    app.sender: 'shop@example.com'
+
+services:
+    _defaults:
+        autowire: true
+    mailer.default:
+        class: App\Service\Mailer
+    mailer: '@mailer.default'

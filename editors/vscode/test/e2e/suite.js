@@ -179,6 +179,49 @@ const checks = [
     assert.ok(target.endsWith(path.join("templates", "base.html.twig")), target);
     return `languageId twig, ${symbols.length} top-level symbols, hover: ${hoverText(hovers).split("\n").find((l) => l.includes("upper"))}`;
   }],
+  ["Callable strings: a function's and a method's name in a string are names", async () => {
+    const CALLABLES = "app/Support/callables.php";
+    const source = [
+      "<?php",
+      "",
+      "namespace App\\Support;",
+      "",
+      "function shorten(string $text): string",
+      "{",
+      "    return substr($text, 0, 10);",
+      "}",
+      "",
+      "class Shortener",
+      "{",
+      "    public static function cut(string $text): string",
+      "    {",
+      "        return shorten($text);",
+      "    }",
+      "}",
+      "",
+      "/** @param list<string> $names */",
+      "function tidy(array $names): array",
+      "{",
+      "    $short = array_map('App\\Support\\shorten', $names);",
+      "",
+      "    return array_map([Shortener::class, 'cut'], $short);",
+      "}",
+      "",
+    ].join("\n");
+    await vscode.workspace.fs.writeFile(file(CALLABLES), Buffer.from(source));
+    // The string goes to the function, the array's to the method.
+    assert.deepEqual(await goes(CALLABLES, "'App\\Support\\shorten'", 16), [`${CALLABLES}:5`]);
+    assert.deepEqual(await goes(CALLABLES, "'cut']", 2), [`${CALLABLES}:12`]);
+    // The string is a usage of the function, and is renamed with it.
+    const sorted = (found) => [...found].sort();
+    const usages = sorted([`${CALLABLES}:5`, `${CALLABLES}:14`, `${CALLABLES}:21`]);
+    assert.deepEqual(sorted(await usagesOf(CALLABLES, "function shorten", 10, 3)), usages);
+    assert.deepEqual(sorted(await renames(CALLABLES, "function shorten", 10, "abbreviate")), usages);
+    const method = sorted([`${CALLABLES}:12`, `${CALLABLES}:23`]);
+    assert.deepEqual(sorted(await usagesOf(CALLABLES, "function cut", 10, 2)), method);
+    assert.deepEqual(sorted(await renames(CALLABLES, "'cut']", 2, "trim")), method);
+    return `${usages.length} usages of a function, ${method.length} of a method, the strings among them`;
+  }],
   ["format a PHP document", async () => {
     const uri = file("app/Messy.php");
     await vscode.workspace.fs.writeFile(uri, Buffer.from("<?php\nnamespace App;\nclass Messy{public function a( $x ){return $x+1;}}\n"));
@@ -999,6 +1042,72 @@ const codeigniterChecks = [
   }],
 ];
 
+/** The checks of the Symfony fixture (run.js opens it): an application on a stand-in API. */
+const BLOG = "src/Controller/BlogController.php";
+const SHOW = "templates/blog/show.html.twig";
+const symfonyChecks = [
+  ["Symfony: the project is named", async () => {
+    await open(BLOG);
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["Symfony"]);
+    return names.join(", ");
+  }],
+  ["Symfony: names in PHP go to the YAML and the template declaring them", async () => {
+    const found = {
+      route: await goes(BLOG, "redirectToRoute('home')", 18),
+      "route with a controller": await goes(BLOG, "generateUrl('blog_show')", 15),
+      template: await goes(BLOG, "render('blog/show.html.twig'", 10),
+      service: await goes(BLOG, "get('mailer.default')", 7),
+      translation: await goes(BLOG, "trans('blog.title')", 9),
+    };
+    assert.deepEqual(found, {
+      route: ["config/routes.yaml:1"],
+      "route with a controller": ["config/routes.yaml:3"],
+      template: [`${SHOW}:1`],
+      service: ["config/services.yaml:7"],
+      translation: ["translations/messages.en.yaml:2"],
+    });
+    const hover = await hoverAt(BLOG, "generateUrl('blog_show')", 15);
+    assert.ok(hover.includes("/blog/{slug}"), hover);
+    return `${Object.keys(found).length} kinds; ${hover.split("\n")[0]}`;
+  }],
+  ["Symfony: names complete, and a service id types what the container gives", async () => {
+    const routes = await completes(BLOG, "redirectToRoute('home')", 17, "blog_show");
+    const templates = await completes(BLOG, "render('blog/show.html.twig'", 8, "base.html.twig");
+    const services = await completes(BLOG, "get('mailer.default')", 5, "mailer");
+    const keys = await completes(BLOG, "trans('blog.title')", 7, "blog.empty");
+    // `$container->get('mailer.default')` is the service's class.
+    assert.deepEqual(await goes(BLOG, "$mailer->send(", 10), ["src/Service/Mailer.php:7"]);
+    return `${routes.length} routes, ${templates.length} templates, ${services.length} services, ${keys.length} keys`;
+  }],
+  ["Symfony: Twig names routes and templates, and a route is renamed everywhere", async () => {
+    assert.deepEqual(await goes(SHOW, "path('blog_show'", 8), ["config/routes.yaml:3"]);
+    assert.deepEqual(await goes(SHOW, "extends 'base.html.twig'", 12), ["templates/base.html.twig:1"]);
+    const usages = await usagesOf(BLOG, "redirectToRoute('home')", 18, 3);
+    assert.deepEqual(usages, ["config/routes.yaml:1", `${BLOG}:15`, "templates/base.html.twig:1"]);
+    assert.deepEqual(await renames(BLOG, "redirectToRoute('home')", 18, "front"), usages);
+    const members = await completes(SHOW, "{{ title }}", 3, "title");
+    assert.ok(members.includes("link"), members.join(", "));
+    return `${usages.length} usages of a route; a template's variables: ${members.filter((name) => name === "title" || name === "link").join(", ")}`;
+  }],
+  ["Symfony: a template that is not there is reported", async () => {
+    const document = await open(BLOG);
+    const edit = new vscode.WorkspaceEdit();
+    const at = document.getText().indexOf("'blog/show.html.twig'");
+    edit.replace(document.uri, new vscode.Range(document.positionAt(at), document.positionAt(at + 21)), "'blog/nope.html.twig'");
+    await vscode.workspace.applyEdit(edit);
+    const problems = await until(
+      "the missing template",
+      async () => vscode.languages.getDiagnostics(document.uri).map((problem) => problem.message),
+      (found) => found.some((message) => message.includes("nope")),
+    );
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    assert.deepEqual(problems, ["Template 'blog/nope.html.twig' not found"]);
+    return problems.join("; ");
+  }],
+];
+
 exports.run = async function run() {
   const results = [];
   const byMode = {
@@ -1006,6 +1115,7 @@ exports.run = async function run() {
     wordpress: wordpressChecks,
     drupal: drupalChecks,
     codeigniter: codeigniterChecks,
+    symfony: symfonyChecks,
   };
   const chosen = byMode[process.env.PHOXITE_E2E_MODE] ?? checks;
   for (const [name, check] of chosen) {

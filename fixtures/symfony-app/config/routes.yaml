@@ -1,0 +1,5 @@
+home:
+    path: /
+blog_show:
+    path: /blog/{slug}
+    controller: App\Controller\BlogController::show
