@@ -7,7 +7,8 @@
 //! ([`PlacePattern`]) says where a string sits (an argument of a function,
 //! of a method of a class or its subclasses, of `new`; by position or by
 //! name; the string itself or a key or value of an array argument, nested
-//! or not), and a **reference kind** ([`ReferenceKind`]) says what such a
+//! or not; an attribute's arguments are its class's `__construct`'s), and a
+//! **reference kind** ([`ReferenceKind`]) says what such a
 //! string names and supplies completion items, targets, usages, rename and
 //! validation.
 //!
@@ -327,13 +328,19 @@ enum SiteCall<'a> {
         name: String,
         at: u32,
     },
+    /// An attribute (`#[Template('page.html.twig')]`): its class (as above)
+    /// and the offset it starts at. Its arguments are its constructor's.
+    Attribute {
+        class: (String, u32),
+        at: u32,
+    },
 }
 
 impl SiteCall<'_> {
     fn start(&self) -> u32 {
         match self {
             SiteCall::Call(call) => call.span().start.offset,
-            SiteCall::Return { at, .. } | SiteCall::Property { at, .. } => *at,
+            SiteCall::Return { at, .. } | SiteCall::Property { at, .. } | SiteCall::Attribute { at, .. } => *at,
         }
     }
 }
@@ -566,6 +573,31 @@ impl<'a> Walker<'a, 'a, Collect<'a, '_>> for SiteWalker {
         cx.strings(&call, item.value, (Some(0), None), &mut Vec::new(), None);
     }
 
+    /// An attribute's arguments are those of its class's constructor.
+    fn walk_in_attribute(&self, attribute: &'a mago_syntax::cst::Attribute<'a>, cx: &mut Collect<'a, '_>) {
+        let Some(list) = &attribute.argument_list else { return };
+        if !cx.names.contains("__construct") {
+            return;
+        }
+        let at = attribute.name.span().start.offset;
+        let call = SiteCall::Attribute { class: (lossy(attribute.name.value()), at), at };
+        let mut positional = 0;
+        for argument in list.arguments.iter() {
+            let mut steps = Vec::new();
+            match argument {
+                mago_syntax::cst::PartialArgument::Positional(argument) => {
+                    cx.strings(&call, argument.value, (Some(positional), None), &mut steps, None);
+                    positional += 1;
+                }
+                mago_syntax::cst::PartialArgument::Named(argument) => {
+                    let name = lossy(argument.name.value);
+                    cx.strings(&call, argument.value, (None, Some(&name)), &mut steps, None);
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn walk_in_expression(&self, expr: &'a Expression<'a>, cx: &mut Collect<'a, '_>) {
         let Some((name, list)) = call_parts(expr) else { return };
         if !cx.names.contains(&name.to_ascii_lowercase()) {
@@ -679,6 +711,18 @@ pub fn sites_with(
                         Resolution::Relative(_) => return None,
                     };
                     CallTarget::Property { class: class.trim_start_matches('\\').to_owned(), name }
+                }
+                SiteCall::Attribute { class: (class, offset), .. } => {
+                    let class = match file_names.scope_at(offset).resolve(NameKind::ClassLike, &class).resolution {
+                        Resolution::Fqn(fqn) | Resolution::Fallback { namespaced: fqn, .. } => fqn,
+                        Resolution::Relative(_) => return None,
+                    };
+                    CallTarget::Method {
+                        classes: vec![class.trim_start_matches('\\').to_owned()],
+                        name: "__construct".to_owned(),
+                        models: Vec::new(),
+                        tables: Vec::new(),
+                    }
                 }
             };
             let class = raw.class.and_then(|(name, offset)| {
@@ -991,10 +1035,24 @@ pub trait ReferenceKind: Send + Sync {
         self.valid_name(name)
     }
 
+    /// Whether `name` can replace the part `target` renames, knowing what
+    /// that part is (the last part of a nested translation key can't get a
+    /// dot). Asked after [`valid_name_for`](Self::valid_name_for).
+    fn valid_rename(&self, _target: &RenameTarget, _name: &str) -> bool {
+        true
+    }
+
     /// Usages of `key` (a canonical value) that aren't string literals in
     /// PHP (`<livewire:counter />` tags), as byte ranges of the value in
     /// `text`, the text of the file at `path`.
     fn markup_usages(&self, _cx: &RefContext<'_>, _path: &Path, _text: &str, _key: &str) -> Vec<(u32, u32)> {
+        Vec::new()
+    }
+
+    /// Usages of `key` (a canonical value) in files the word index doesn't
+    /// have (a Twig template naming a route): the file and the range of
+    /// the value there. A rename replaces the part of each that it renames.
+    fn other_usages(&self, _cx: &RefContext<'_>, _key: &str) -> Vec<(PathBuf, Range)> {
         Vec::new()
     }
 
@@ -1565,6 +1623,9 @@ impl PhpEngine {
         for site in sites {
             usages.push(Usage { path: site.path, range: site.range, kind: UsageKind::String });
         }
+        for (path, range) in kind.other_usages(cx, key) {
+            usages.push(Usage { path, range, kind: UsageKind::String });
+        }
         usages.sort_by(|a, b| (&a.path, a.range.start).cmp(&(&b.path, b.range.start)));
         usages.dedup();
         Ok(usages)
@@ -1628,7 +1689,7 @@ impl PhpEngine {
         cancel: &CancellationToken,
     ) -> IdeResult<WorkspaceEdit> {
         let key = target.key.clone();
-        if !kind.valid_name_for(&key, new_name) {
+        if !kind.valid_name_for(&key, new_name) || !kind.valid_rename(&target, new_name) {
             return Err(IdeError::invalid(format!("'{new_name}' is not a valid name")));
         }
         let sites = self.string_usages(kind, &key, &|value| kind.renames_with(value, &key), cancel)?;
@@ -1647,6 +1708,11 @@ impl PhpEngine {
         for site in sites {
             let range = site.lines.range(site.start + target.range.0 as u32, site.start + target.range.1 as u32);
             add(site.path, range);
+        }
+        // The same part of the value where another kind of file writes it (on one line).
+        for (path, range) in kind.other_usages(cx, &key) {
+            let column = |offset: usize| Pos::new(range.start.line, range.start.col + offset as u32);
+            add(path, Range::new(column(target.range.0), column(target.range.1)));
         }
         let mut edit = WorkspaceEdit::default();
         files.sort_by(|a, b| a.0.cmp(&b.0));

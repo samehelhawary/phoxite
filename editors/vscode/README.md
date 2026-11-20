@@ -107,6 +107,26 @@ attribute values (`<a href="{{ route('home') }}">`, `@class([...])`), in a compo
 bound attributes (`:type="$type"`) and in scripts and styles. Type `@` for snippets of
 the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
 
+## Symfony
+
+- The types of services (`$container->get('mailer')`) and of Doctrine repositories and
+  their finders
+- Route names (`generateUrl()`, `redirectToRoute()`, a URL generator's `generate()`, and
+  `path()` / `url()` in templates) and template names (`render('page.html.twig')`,
+  `{% extends %}`, `{% include %}`…): completion, Go to Definition, Find All References
+  and Rename. Renaming a template moves its file
+- Service ids (`$container->get('mailer')`) and parameters (`getParameter('app.locale')`)
+  from the project's services files: completion, Go to Definition, Find All References
+- Translation keys (`trans('form.title')`, `'form.title'|trans`) from the YAML catalogues
+  of `translations/`: completion, Go to Definition in every locale, Find All References
+- Doctrine: the entities' associations typed from their `#[ORM\…]` attributes, and the
+  entity's fields in the keys of `findBy([...])`
+- `PhpUndefinedTemplate` warns of a template PHP names that isn't in the project's
+  template folders
+- In a template: the variables the controller passes (`render('page.html.twig', ['post' =>
+  $post])`), what follows a `.` after them (`post.title`, `post.author.name`, a loop's
+  variable too), and the filters, functions and tests of the project's own Twig extensions
+
 ## Twig
 
 Highlighting of Twig in the text, inside HTML tags and attribute values, and in scripts and

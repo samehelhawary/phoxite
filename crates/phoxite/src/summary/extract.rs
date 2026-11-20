@@ -832,6 +832,8 @@ impl<'ast, 'arena, 'f> Walker<'ast, 'arena, Extractor<'f>> for SummaryWalker {
         cx.counted_property(&class.fqn, &node.members);
         cx.request_rules(&class.fqn, &node.members);
         cx.routes(&node.attribute_lists, &node.members);
+        cx.twig_attributes(&node.members);
+        cx.associations(&class.fqn, &node.members);
         cx.entity_repository(&class.fqn, class.repository.as_deref());
         cx.repository_scope =
             class.extends.first().filter(|parent| symfony::extends_repository(parent)).map(|_| class.fqn.clone());
@@ -913,6 +915,10 @@ impl<'ast, 'arena, 'f> Walker<'ast, 'arena, Extractor<'f>> for SummaryWalker {
 
     fn walk_out_method(&self, _: &'ast AstMethod<'arena>, cx: &mut Extractor<'f>) {
         cx.in_down = false;
+    }
+
+    fn walk_in_instantiation(&self, node: &'ast mago_syntax::cst::Instantiation<'arena>, cx: &mut Extractor<'f>) {
+        cx.twig_instantiation(node);
     }
 
     fn walk_in_method_call(&self, node: &'ast MethodCall<'arena>, cx: &mut Extractor<'f>) {

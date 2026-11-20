@@ -3,7 +3,8 @@
 //! attributes) where Symfony's documentation on routing and URL generation
 //! takes one: the first argument of `generateUrl()` and `redirectToRoute()`
 //! on a controller, of `generate()` on a URL generator, and of Twig's
-//! `path()` and `url()` when they are called from PHP.
+//! `path()` and `url()` when they are called from PHP. The templates naming a
+//! route in `path()` and `url()` are usages too, and are renamed with it.
 //!
 //! The declaration is the route's key in a YAML routes file, or the `name`
 //! of its `#[Route]` attribute, whose class-level `#[Route]` name prefix
@@ -103,6 +104,22 @@ impl ReferenceKind for SymfonyRoute {
             let target = Target { path: file.clone(), range: route.range };
             if !out.contains(&target) {
                 out.push(target);
+            }
+        }
+        out
+    }
+
+    /// The templates writing the name in `path()` and `url()`.
+    fn other_usages(&self, cx: &RefContext<'_>, key: &str) -> Vec<(std::path::PathBuf, crate::base::Range)> {
+        let paths = cx.engine.twig_paths();
+        let mut out = Vec::new();
+        for template in paths.names() {
+            let Some(file) = paths.resolve(&template) else { continue };
+            let Some(text) = cx.engine.template_text(&file).filter(|text| text.contains(key)) else { continue };
+            for found in crate::twig::route_refs(&text) {
+                if found.name == key {
+                    out.push((file.clone(), found.range));
+                }
             }
         }
         out

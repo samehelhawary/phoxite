@@ -731,3 +731,80 @@ fn goto_from_a_block_inside_an_embed_goes_to_the_embedded_template() {
     let (text, pos) = caret(computed);
     assert_eq!(prepare_rename(&text, pos, &_dir.path().join("templates/x.html.twig"), &paths), None);
 }
+
+// --- What the project answers ----------------------------------------------------
+
+#[test]
+fn the_chain_before_a_dot_and_the_loops_around_the_caret() {
+    let chain = |src: &str| {
+        let (text, pos) = caret(src);
+        access_chain_at(&text, pos).map(|(chain, range)| {
+            let (start, end) = LineIndex::new(&text).byte_range(range);
+            (chain.join("."), text[start as usize..end as usize].to_owned())
+        })
+    };
+    assert_eq!(chain("{{ post./*|*/ }}"), Some(("post".to_owned(), String::new())));
+    assert_eq!(chain("{{ post.author.na/*|*/me }}"), Some(("post.author".to_owned(), "name".to_owned())));
+    assert_eq!(chain("{% if post . author ./*|*/ %}{% endif %}"), Some(("post.author".to_owned(), String::new())));
+    // Not after a call or an index, and not where no `.` is.
+    assert_eq!(chain("{{ find(1)./*|*/ }}"), None);
+    assert_eq!(chain("{{ posts[0]./*|*/ }}"), None);
+    assert_eq!(chain("{{ po/*|*/st }}"), None);
+    assert_eq!(chain("text post./*|*/"), None);
+
+    let loops = |src: &str| {
+        let (text, pos) = caret(src);
+        loops_at(&text, pos)
+            .into_iter()
+            .map(|(name, source)| format!("{name} in {}", source.join(".")))
+            .collect::<Vec<_>>()
+    };
+    let src =
+        "{% for post in posts %}{% for key, comment in post.comments|slice(0, 3) %}{{ /*|*/ }}{% endfor %}{% endfor %}";
+    assert_eq!(loops(src), ["post in posts", "comment in post.comments"]);
+    // A loop that ended, and one over something that isn't a chain of names.
+    assert_eq!(loops("{% for a in b %}{% endfor %}{{ /*|*/ }}"), Vec::<String>::new());
+    assert_eq!(loops("{% for a in range(1, 3) %}{% for c in d %}{{ /*|*/ }}{% endfor %}{% endfor %}"), ["c in d"]);
+}
+
+#[test]
+fn the_kind_of_name_being_written() {
+    let kind = |src: &str| {
+        let (text, pos) = caret(src);
+        name_kind_at(&text, pos).map(|(kind, _)| kind)
+    };
+    assert_eq!(kind("{{ total|pri/*|*/ }}"), Some(TwigCompletionKind::Filter));
+    assert_eq!(kind("{% if a is exp/*|*/ %}"), Some(TwigCompletionKind::Test));
+    assert_eq!(kind("{{ mon/*|*/ }}"), Some(TwigCompletionKind::Function));
+    assert_eq!(kind("{% blo/*|*/ %}"), None);
+    assert_eq!(kind("{{ a./*|*/ }}"), None);
+}
+
+#[test]
+fn routes_and_translation_keys_a_template_writes() {
+    let text = "<a href=\"{{ path('home') }}\">{{ 'menu.home'|trans }}</a>\n{{ url(name='about', x=1) }} {{ path(route) }} {{ 'plain'|upper }}\n";
+    let routes: Vec<(String, u32)> = route_refs(text).into_iter().map(|r| (r.name, r.range.start.line)).collect();
+    assert_eq!(routes, [("home".to_owned(), 0), ("about".to_owned(), 1)]);
+    let keys: Vec<String> = translation_refs(text).into_iter().map(|r| r.name).collect();
+    assert_eq!(keys, ["menu.home"]);
+    // Where a route name is being written, for completion.
+    let (typed, pos) = caret("{{ path('ho/*|*/') }}");
+    assert!(route_string_at(&typed, pos).is_some());
+    let (typed, pos) = caret("{{ include('ho/*|*/') }}");
+    assert!(route_string_at(&typed, pos).is_none());
+
+    // Where a translation key is being written: a string the `trans` filter follows.
+    let key = |src: &str| {
+        let (text, pos) = caret(src);
+        translation_string_at(&text, pos).map(|range| {
+            let (start, end) = LineIndex::new(&text).byte_range(range);
+            text[start as usize..end as usize].to_owned()
+        })
+    };
+    assert_eq!(key("{{ 'menu.ho/*|*/me'|trans }}"), Some("menu.home".to_owned()));
+    assert_eq!(key("{{ \"/*|*/\" | trans({'%n%': 1}) }}"), Some(String::new()));
+    assert_eq!(key("{{ 'a'|upper }} {{ 'b/*|*/'|trans }}"), Some("b".to_owned()));
+    assert_eq!(key("{{ 'menu.ho/*|*/me'|upper }}"), None);
+    assert_eq!(key("{{ 'menu.ho/*|*/me'|translate }}"), None);
+    assert_eq!(key("{{ menu/*|*/|trans }}"), None);
+}

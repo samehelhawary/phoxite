@@ -15,8 +15,8 @@ Last updated: 2026-11-20.
 | --- | --- | --- |
 | 0 | Framework-neutral foundations | Done |
 | 1 | Twig, end to end | Done |
-| 2 | Symfony and Doctrine, deeper | Not started (next) |
-| 2.5 | Callable-string references | Not started |
+| 2 | Symfony and Doctrine, deeper | Done |
+| 2.5 | Callable-string references | Not started (next) |
 | 3 | WordPress | Not started |
 | 4 | Drupal | Not started |
 | 5 | CodeIgniter 4 | Not started |
@@ -166,25 +166,68 @@ Nothing else of phase 1 is open.
 
 ## Phase 2 — Symfony and Doctrine, deeper
 
-- [ ] Symfony detection as the project flag for the type provider (today the provider
-      checks the `FrameworkBundle` class on each call).
-- [ ] Route names in Twig's `path()` and `url()`.
-- [ ] Template names in PHP (`render()`, `renderView()`, `renderBlock()`, `#[Template]`) to
-      the Twig file, with usages from the Twig side.
-- [ ] Then: rename of a template's own name. The file moves, and its name changes in the
-      Twig templates naming it and in the PHP calls (needs the item above, nothing else of
-      this phase).
-- [ ] Service ids and parameters: `$container->get('id')`, `getParameter('x')`, `%x%` and
-      `@id` in YAML, `#[Autowire]`.
-- [ ] Translation keys: `trans('key')` and `|trans` to `translations/*.yaml`.
-- [ ] The project's Twig extensions: filters, functions and tests from `AbstractExtension`
-      and `#[AsTwigFilter]` / `#[AsTwigFunction]` / `#[AsTwigTest]`.
-- [ ] Variables a controller passes to a template, typed in the template; member completion
-      after `.` in Twig.
-- [ ] Doctrine: association properties from the ORM attributes; field names in `findBy([…])`
-      keys.
-- [ ] `services.php` and `routes.php` where they are plain arrays. Waits for the PHP-array
-      reader (phase 6), or builds it here if this is wanted sooner.
+- [x] Route names in Twig's `path()` and `url()`: completion, goto, usages and rename from
+      the template, and the templates count as usages of a route from PHP.
+      (`ReferenceKind::other_usages` is the hook: usages in files the word index doesn't
+      have.)
+- [x] Template names in PHP (`symfonyTemplate`: `render()`, `renderView()`, `renderBlock()`,
+      `renderBlockView()`, `renderForm()`, `stream()` on a controller; `render()`,
+      `display()`, `load()`, `resolveTemplate()` on `Twig\Environment`) to the Twig file,
+      with the templates naming it as usages.
+- [x] Rename of a template's own name, from PHP or from a template: the file moves, and the
+      name changes in the PHP strings and in the templates. A name with a `@Namespace` isn't
+      renamed.
+- [x] An attribute's arguments are string sites (its class's `__construct`):
+      `#[Template('x.html.twig')]`, `#[Autowire(service: …)]`, `#[Autowire(param: …)]`.
+- [x] `PhpUndefinedTemplate`: a name without a `@Namespace` that ends in `.twig` and isn't
+      in the template folders of a project that has templates.
+- [x] Usages and rename read a template an editor has open as the editor has it
+      (`PhpEngine::set_template_text`, which the server calls for Twig documents).
+- [x] Service ids (`symfonyService`: `get()` and `has()` on a container) and parameters
+      (`symfonyParameter`: `getParameter()`, a parameter bag's `get()`), from the services
+      files, whose `parameters:` are read now: completion, goto, usages, hover.
+- [x] Service ids and parameters inside the YAML files below `config/` (`@mailer`,
+      `@?mailer`, `%app.locale%`) are usages, and both are renamed. Not a service whose id
+      is its class name.
+- [x] Translation keys (`symfonyTranslation`: `trans()` on a translator, `new
+      TranslatableMessage()`, `t()`, and `'key'|trans` in a template) from the YAML
+      catalogues of `translations/` (`symfony/translations.rs`): completion, goto to every
+      locale, usages, hover.
+- [x] The project's Twig extensions: `new TwigFilter` / `TwigFunction` / `TwigTest` and
+      `#[AsTwigFilter]` / `#[AsTwigFunction]` / `#[AsTwigTest]` are facts of the summary
+      (`SymfonyFacts::twig`, schema 38); completion and goto in templates.
+- [x] Variables a controller passes to a template (`frameworks/symfony/templates.rs`):
+      completion of the variables with their types, and of the members after a `.` (public
+      properties, methods, getters under the name Twig reads them by), through a chain and
+      for a `{% for %}` loop's variable.
+- [x] Doctrine: association properties typed from the ORM attributes
+      (`SymfonyFacts::associations`); the entity's fields in the keys of `findBy()`,
+      `findOneBy()` and `count()` (`doctrineField`).
+
+Dropped:
+
+- Symfony detection as the project flag for the type provider. The provider asks whether
+  the `FrameworkBundle` class is known, which the resolver caches; a flag would save
+  nothing and would need the resolver to know the project's frameworks.
+
+Left over from phase 2:
+
+- [x] Template members: hover with the type, and goto to the property or the getter Twig
+      calls. (No warning for a member that doesn't exist: a variable's type is often not
+      known, and Twig reads arrays the same way.)
+- [x] XLIFF catalogues are read; translation keys complete before `|trans`.
+- [x] Translation keys are renamed (the last part of a nested key, to a name without a
+      dot; not a key some catalogues nest and others write whole), and JSON catalogues are
+      read.
+- [x] A service after `alias:` or `parent:` in YAML is a usage, and the files of
+      `config/packages` are read for parameters and services like Symfony's kernel does.
+- [x] The Twig names a package of `vendor/` adds are known: they are facts of indexed files
+      like the project's own (checked by a test; nothing had to change).
+
+Nothing else of phase 2 is open.
+
+Moved to phase 6, after the PHP-array reader they need: Symfony's `services.php` and
+`routes.php`, and its PHP translation catalogues.
 
 ## Phase 2.5 — Callable-string references
 
@@ -248,6 +291,11 @@ Needs phases 1 and 2.
 - [ ] First: the PHP-array reader. A reusable reader for PHP files that return an array,
       generalised from `frameworks/laravel/config.rs`, with `Foo::class` keys and
       class-constant values (Laminas needs those).
+- [ ] Then, for Symfony (moved from phase 2, where only the reader was missing):
+  - [ ] `config/services.php` and `config/routes.php` where they return plain arrays: their
+        services, parameters and routes beside the YAML files' (`symfony/mod.rs`).
+  - [ ] PHP translation catalogues (`translations/messages.en.php`): their keys beside the
+        YAML and XLIFF ones (`symfony/translations.rs`).
 - [ ] Types: `Yii::$app->…` components from the config arrays, `Yii::createObject()`,
       `Yii::$container->get()`, `ActiveQuery<Model>`, relation properties.
 - [ ] Names: views, routes (`Url::to(['site/index'])`), path aliases, translation

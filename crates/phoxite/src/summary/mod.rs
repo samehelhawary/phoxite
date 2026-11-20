@@ -43,7 +43,7 @@ pub use laravel::{
     Binding, Cast, Column, CountedRelation, LaravelFacts, Macro, ModelCasts, PestUses, RenamedColumn, RequestRules,
     RouteFileKind, RoutePath, RouteRegistration, RuleEntry, RuleMethod, Table, counted_spec,
 };
-pub use symfony::{RepositoryEntity, RouteAttribute, SymfonyFacts};
+pub use symfony::{Association, RepositoryEntity, RouteAttribute, SymfonyFacts, TwigName, TwigNameKind};
 
 use std::fmt;
 
@@ -69,7 +69,7 @@ use crate::types::LazyType;
 /// shapes of inferred array literals; 21: shapes of constant array values;
 /// 22: only `$withCount` counts relations, with its class), so stored
 /// summaries are rebuilt.
-pub const SCHEMA_VERSION: u32 = 37;
+pub const SCHEMA_VERSION: u32 = 38;
 
 /// A source location: byte offsets (end exclusive) and the IDE range.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]

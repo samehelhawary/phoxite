@@ -70,6 +70,17 @@ fn symfony(out: &mut String, facts: &SymfonyFacts) {
     for known in &facts.repositories {
         let _ = writeln!(out, "symfony repository {} => {}", known.repository, known.entity);
     }
+    for name in &facts.twig {
+        let _ = writeln!(out, "symfony twig {:?} '{}' {}", name.kind, name.name, name_loc(name.loc));
+    }
+    for association in &facts.associations {
+        let many = if association.many { "many" } else { "one" };
+        let _ = writeln!(
+            out,
+            "symfony association {}::${} => {many} {}",
+            association.entity, association.property, association.target
+        );
+    }
 }
 
 /// Laravel bindings, migrated tables and casts, one per line.

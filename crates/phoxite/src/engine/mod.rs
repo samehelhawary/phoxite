@@ -238,6 +238,14 @@ struct Shared {
     framework_settings: Mutex<FrameworkSettings>,
     /// The frameworks of the project, until a file detection reads changes.
     frameworks: Mutex<Option<Frameworks>>,
+    /// The text of the templates an editor has open, by path: what the
+    /// usages of a name and a rename read instead of the file.
+    template_texts: Mutex<HashMap<PathBuf, Arc<str>>>,
+    /// The keys of the project's translation catalogues, until a YAML file changes.
+    symfony_translations: Mutex<Option<Arc<Vec<crate::symfony::translations::TranslationKey>>>>,
+    /// Where the project's Twig templates are, until a template, a YAML
+    /// file or a folder changes.
+    twig_paths: Mutex<Option<Arc<crate::twig::TemplatePaths>>>,
     /// Whether Symfony's `FrameworkBundle` class is known, and the
     /// modification count that was asked at.
     symfony_class: Mutex<Option<(u64, bool)>>,
@@ -471,6 +479,9 @@ impl PhpEngine {
             symfony_config: Mutex::new(None),
             framework_settings: Mutex::new(FrameworkSettings::default()),
             frameworks: Mutex::new(None),
+            template_texts: Mutex::new(HashMap::new()),
+            symfony_translations: Mutex::new(None),
+            twig_paths: Mutex::new(None),
             symfony_class: Mutex::new(None),
             laravel: Mutex::new(LaravelCache::default()),
             laravel_config: Mutex::new(None),
@@ -703,6 +714,8 @@ impl PhpEngine {
     /// Loads the layout again and brings the indexes up to date.
     pub fn rescan(&self) {
         *self.shared.symfony_config.lock() = None;
+        *self.shared.symfony_translations.lock() = None;
+        *self.shared.twig_paths.lock() = None;
         *self.shared.frameworks.lock() = None;
         *self.shared.laravel.lock() = LaravelCache::default();
         self.shared.disk.fetch_add(1, Ordering::SeqCst);
@@ -725,9 +738,15 @@ impl PhpEngine {
             let touched: Vec<PathBuf> = changed.iter().chain(removed).map(|p| normalize(p)).collect();
             self.shared.parts.forget_below(&touched);
         }
+        // Templates created or removed, and what says where they are.
+        let twig = |p: &PathBuf| p.extension().is_some_and(|ext| ext == "twig") || is_yaml_path(p) || p.is_dir();
+        if changed.iter().any(twig) || removed.iter().any(|p| !is_php_path(p)) {
+            *self.shared.twig_paths.lock() = None;
+        }
         if changed.iter().chain(removed).any(|p| is_yaml_path(p) || p.ends_with("config")) {
             // The Symfony configuration is read again on next use.
             *self.shared.symfony_config.lock() = None;
+            *self.shared.symfony_translations.lock() = None;
             self.shared.modification.fetch_add(1, Ordering::SeqCst);
             self.shared.inspect_open_documents();
         }
@@ -887,6 +906,50 @@ impl PhpEngine {
         let config = Arc::new(SymfonyConfig::load(&root));
         *self.shared.symfony_config.lock() = Some(config.clone());
         config
+    }
+
+    /// Tells the engine the text an editor has for the template at `path`
+    /// (a Twig template: the engine doesn't hold those as documents);
+    /// `None` when the editor closed it. The usages of a route, a template
+    /// or a translation key and their renames read this text.
+    pub fn set_template_text(&self, path: &Path, text: Option<&str>) {
+        let path = normalize(path);
+        let mut texts = self.shared.template_texts.lock();
+        match text {
+            Some(text) => texts.insert(path, Arc::from(text)),
+            None => texts.remove(&path),
+        };
+    }
+
+    /// The text of the template at `path`: the editor's when it has it
+    /// open, else the file's (line breaks as `\n`).
+    pub fn template_text(&self, path: &Path) -> Option<String> {
+        if let Some(text) = self.shared.template_texts.lock().get(&normalize(path)) {
+            return Some(text.to_string());
+        }
+        std::fs::read_to_string(path).ok().map(|text| text.replace("\r\n", "\n"))
+    }
+
+    /// The keys of the project's translation catalogues
+    /// ([`crate::symfony::translations`]), read once until a YAML file changes.
+    pub fn symfony_translations(&self) -> Arc<Vec<crate::symfony::translations::TranslationKey>> {
+        if let Some(keys) = self.shared.symfony_translations.lock().clone() {
+            return keys;
+        }
+        let keys = Arc::new(crate::symfony::translations::load(&self.root()));
+        *self.shared.symfony_translations.lock() = Some(keys.clone());
+        keys
+    }
+
+    /// Where the project's Twig templates are ([`crate::twig::TemplatePaths`]),
+    /// with their names listed once until a template is created or removed.
+    pub fn twig_paths(&self) -> Arc<crate::twig::TemplatePaths> {
+        if let Some(paths) = self.shared.twig_paths.lock().clone() {
+            return paths;
+        }
+        let paths = Arc::new(crate::twig::TemplatePaths::discover(&self.root()));
+        *self.shared.twig_paths.lock() = Some(paths.clone());
+        paths
     }
 
     /// The Laravel project model, or `None` when the project isn't a

@@ -170,8 +170,26 @@ fn the_project_merges_the_configuration_and_the_php_facts() {
             repository: "App\\Repository\\PostRepository".to_owned(),
             entity: "App\\Entity\\Post".to_owned(),
         }],
+        twig: vec![crate::summary::TwigName {
+            kind: crate::summary::TwigNameKind::Filter,
+            name: "price".to_owned(),
+            loc: Default::default(),
+        }],
+        associations: vec![crate::summary::Association {
+            entity: "App\\Entity\\Post".to_owned(),
+            property: "comments".to_owned(),
+            target: "App\\Entity\\Comment".to_owned(),
+            many: true,
+        }],
     };
     let project = SymfonyProject::new(config, [(Some(Path::new("src/Blog.php")), &facts)]);
+    assert_eq!(project.twig_names.len(), 1);
+    assert_eq!(project.twig_names[0].file.as_deref(), Some(Path::new("src/Blog.php")));
+    assert_eq!(
+        project.association("\\app\\entity\\post", "comments").map(|a| a.target.as_str()),
+        Some("App\\Entity\\Comment")
+    );
+    assert!(project.association("App\\Entity\\Post", "author").is_none());
     let names: Vec<&str> = project.routes.iter().map(|route| route.name.as_str()).collect();
     assert_eq!(names, ["home", "blog"]);
     assert_eq!(project.route("blog").unwrap().file.as_deref(), Some(Path::new("src/Blog.php")));

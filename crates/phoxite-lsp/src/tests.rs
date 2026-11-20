@@ -365,6 +365,127 @@ fn symfony_route_names_go_to_their_route_and_rename_with_it() {
 }
 
 #[test]
+fn a_twig_template_names_routes_and_templates_of_a_symfony_project() {
+    let (_dir, root) = symfony_project();
+    let layout = root.join("templates/base.html.twig");
+    let page = root.join("templates/page.html.twig");
+    std::fs::create_dir_all(root.join("templates")).unwrap();
+    std::fs::write(&layout, "{% block body %}{% endblock %}\n").unwrap();
+    std::fs::write(
+        &page,
+        "{% extends 'base.html.twig' %}\n<a href=\"{{ path('about') }}\">x</a>\n<a href=\"{{ path('') }}\">y</a>\n",
+    )
+    .unwrap();
+    let mut c = Client::start(&root);
+    let uri = c.open(&page, "twig");
+    // Until the index is there the project isn't known to be a Symfony one.
+    let (line, col) = find(&page, "path('')", 6);
+    let routes = c.request_until::<r::Completion>(at(&uri, line, col), |v| v.to_string().contains("\"home\""));
+    assert!(routes.to_string().contains("\"about\""), "{routes}");
+
+    // Goto from the route name: its key in the YAML file.
+    let (line, col) = find(&page, "'about'", 2);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found.to_string().contains("config/routes.yaml"), "{found}");
+
+    // Its usages: the controller, this template, and the route itself.
+    let mut params = at(&uri, line, col);
+    params["context"] = json!({ "includeDeclaration": true });
+    // The controller's comes from the index, once it has the file.
+    let usages = c.request_until::<r::References>(params, |v| v.to_string().contains("HomeController.php")).to_string();
+    for file in ["HomeController.php", "page.html.twig", "routes.yaml"] {
+        assert!(usages.contains(file), "{file}: {usages}");
+    }
+
+    // Renamed from the template: the YAML key, the controller's string and the template's.
+    let mut params = at(&uri, line, col);
+    params["newName"] = json!("about_us");
+    let edit = c.request::<r::Rename>(params).to_string();
+    for file in ["HomeController.php", "page.html.twig", "routes.yaml"] {
+        assert!(edit.contains(file), "{file}: {edit}");
+    }
+
+    // A template's name is renamed with its file.
+    let (line, col) = find(&page, "base.html.twig", 2);
+    let range = c.request::<r::PrepareRenameRequest>(at(&uri, line, col));
+    assert_eq!(range["start"]["character"], 12, "{range}");
+    let mut params = at(&uri, line, col);
+    params["newName"] = json!("layout.html.twig");
+    let edit = c.request::<r::Rename>(params).to_string();
+    assert!(edit.contains("page.html.twig") && edit.contains("layout.html.twig"), "{edit}");
+    assert!(edit.contains("\"kind\":\"rename\"") || edit.contains("oldUri"), "the file moves: {edit}");
+    c.shutdown();
+}
+
+#[test]
+fn a_twig_template_completes_what_the_controller_passes_it() {
+    let (_dir, root) = symfony_project();
+    std::fs::write(
+        root.join("lib/symfony.php"),
+        "<?php\nnamespace Symfony\\Bundle\\FrameworkBundle;\nclass FrameworkBundle {}\n\nnamespace Symfony\\Bundle\\FrameworkBundle\\Controller;\nabstract class AbstractController {\n    protected function render(string $view, array $parameters = []): string { return ''; }\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("src/Controller/HomeController.php"),
+        "<?php\nnamespace App\\Controller;\n\nuse Symfony\\Bundle\\FrameworkBundle\\Controller\\AbstractController;\n\nclass Post\n{\n    public string $title = '';\n    public function getAuthor(): Author { return new Author(); }\n}\nclass Author { public string $name = ''; }\n\nclass HomeController extends AbstractController\n{\n    public function index(Post $post): string\n    {\n        return $this->render('home.html.twig', ['post' => $post, 'posts' => [$post]]);\n    }\n}\n",
+    )
+    .unwrap();
+    let page = root.join("templates/home.html.twig");
+    std::fs::create_dir_all(root.join("templates")).unwrap();
+    std::fs::write(
+        &page,
+        "{{ p }}\n{{ post. }}\n{{ post.author. }}\n{% for item in posts %}{{ item. }}{% endfor %}\n{{ post.author.name }}\n",
+    )
+    .unwrap();
+    let mut c = Client::start(&root);
+    let uri = c.open(&page, "twig");
+
+    // The variables, once the index has the controller.
+    let variables = c.request_until::<r::Completion>(at(&uri, 0, 4), |v| v.to_string().contains("\"posts\""));
+    assert!(variables.to_string().contains("\"post\""), "{variables}");
+    // After a dot: a property, and a getter under the name Twig reads it by.
+    let members = c.request::<r::Completion>(at(&uri, 1, 8)).to_string();
+    assert!(members.contains("\"title\"") && members.contains("\"author\""), "{members}");
+    assert!(!members.contains("\"getAuthor\"") && !members.contains("\"upper\""), "{members}");
+    let author = c.request::<r::Completion>(at(&uri, 2, 15)).to_string();
+    assert!(author.contains("\"name\""), "{author}");
+    // A loop's variable is one of what the loop goes through.
+    let (line, col) = find(&page, "item. ", 5);
+    let item = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(item.contains("\"title\""), "{item}");
+
+    // A member that is written: its type on hover, and goto to the property or the getter.
+    let (line, col) = find(&page, "post.author.name", 13);
+    let hover = c.request::<r::HoverRequest>(at(&uri, line, col)).to_string();
+    assert!(hover.contains("name: string"), "{hover}");
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found.to_string().contains("HomeController.php"), "{found}");
+    assert_eq!(found[0]["range"]["start"]["line"], 10, "the property of Author: {found}");
+    let (line, col) = find(&page, "post.author.name", 6);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert_eq!(found[0]["range"]["start"]["line"], 8, "the getter Twig calls: {found}");
+
+    // What the editor has, unsaved, is what the project's usages see.
+    c.notify::<n::DidChangeTextDocument>(json!({
+        "textDocument": { "uri": uri, "version": 2 },
+        "contentChanges": [{ "text": "<a href=\"{{ path('about') }}\">x</a>\n" }]
+    }));
+    std::fs::write(
+        root.join("src/Controller/Links.php"),
+        "<?php\nnamespace App\\Controller;\n\nuse Symfony\\Bundle\\FrameworkBundle\\Controller\\AbstractController;\n\nclass Links extends AbstractController\n{\n    public function go(): string\n    {\n        return $this->generateUrl('about');\n    }\n}\n",
+    )
+    .unwrap();
+    let links = root.join("src/Controller/Links.php");
+    let links_uri = c.open(&links, "php");
+    let (line, col) = find(&links, "'about')", 2);
+    let mut params = at(&links_uri, line, col);
+    params["context"] = json!({ "includeDeclaration": false });
+    let usages = c.request_until::<r::References>(params, |v| v.to_string().contains("home.html.twig"));
+    assert!(usages.to_string().contains("home.html.twig"), "the unsaved template names the route: {usages}");
+    c.shutdown();
+}
+
+#[test]
 fn a_framework_turned_off_in_the_settings_has_no_string_references() {
     let (_dir, root) = symfony_project();
     let mut c = Client::start(&root);
@@ -528,6 +649,36 @@ fn twig_syntax_errors_are_off_when_the_inspection_is() {
     let later = c.open(&other, "twig");
     c.diagnostics(&later, |_| true);
     assert!(c.diagnostics(&uri, |_| true).is_empty());
+    c.shutdown();
+}
+
+#[test]
+fn a_twig_template_knows_the_filters_the_projects_php_adds() {
+    let (_dir, root) = twig_project();
+    std::fs::create_dir_all(root.join("src/Twig")).unwrap();
+    std::fs::write(
+        root.join("src/Twig/AppExtension.php"),
+        "<?php\nnamespace App\\Twig;\n\nuse Twig\\TwigFilter;\n\nclass AppExtension\n{\n    public function getFilters(): array\n    {\n        return [new TwigFilter('price', [$this, 'price'])];\n    }\n}\n",
+    )
+    .unwrap();
+    let page = root.join("templates/priced.html.twig");
+    std::fs::write(&page, "{{ total|price }}\n{{ total|upper }}\n").unwrap();
+    let mut c = Client::start(&root);
+    let uri = c.open(&page, "twig");
+
+    // After `|`: the project's filter beside Twig's own, once the index has the extension.
+    let (line, col) = find(&page, "upper", 0);
+    let filters = c.request_until::<r::Completion>(at(&uri, line, col), |v| v.to_string().contains("\"price\""));
+    assert!(filters.to_string().contains("\"price\"") && filters.to_string().contains("\"upper\""), "{filters}");
+    // Not where a function is written.
+    let functions = c.request::<r::Completion>(at(&uri, 0, 3)).to_string();
+    assert!(!functions.contains("\"price\""), "{functions}");
+
+    // Goto: where PHP names it.
+    let (line, col) = find(&page, "price", 2);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found.to_string().contains("AppExtension.php"), "{found}");
+    assert_eq!(found[0]["range"]["start"]["line"], 9, "{found}");
     c.shutdown();
 }
 

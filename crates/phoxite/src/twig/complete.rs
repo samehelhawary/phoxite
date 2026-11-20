@@ -60,6 +60,9 @@ pub(super) enum Context {
     Template,
     /// After a `.`: an attribute, or a macro of an import.
     Attribute,
+    /// In the string of `path(` or `url(`: a route name, which only a
+    /// project's routes can complete ([`super::route_string_at`]).
+    Route,
 }
 
 /// Tags whose first argument is a template name.
@@ -100,8 +103,8 @@ pub fn completions(text: &str, pos: Pos, symfony: bool, templates: &TemplatePath
             }
         }
         Context::Test => builtin(&mut out, builtins::TESTS, TwigCompletionKind::Test, "2", None),
-        // Attributes aren't known.
-        Context::Attribute => {}
+        // Attributes aren't known, and the routes are the project's.
+        Context::Attribute | Context::Route => {}
         Context::Template => {
             for name in templates.names() {
                 out.push(TwigCompletion {
@@ -208,14 +211,19 @@ pub(super) fn context_at(text: &str, offset: usize) -> Option<Found> {
             .strip_suffix('(')
             .map(str::trim_end)
             .is_some_and(|callee| ["include", "source"].iter().any(|f| ends_with_word(callee, f)));
-        if !(in_template_tag || in_function) {
+        let in_route = lead
+            .strip_suffix('(')
+            .map(str::trim_end)
+            .is_some_and(|callee| ["path", "url"].iter().any(|f| ends_with_word(callee, f)));
+        if !(in_template_tag || in_function || in_route) {
             return None;
         }
         let mut end = offset;
         while end < bytes.len() && bytes[end] != quote_char && bytes[end] != b'\n' {
             end += 1;
         }
-        return Some(Found { context: Context::Template, start: content_start, end, tag });
+        let context = if in_route { Context::Route } else { Context::Template };
+        return Some(Found { context, start: content_start, end, tag });
     }
 
     let lead = text[inner_start..word_start].trim_end();

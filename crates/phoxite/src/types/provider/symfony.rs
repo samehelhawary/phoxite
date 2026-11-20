@@ -28,6 +28,13 @@
 //! documentation and their MIT source (`EntityRepository::__call`,
 //! `ObjectManager::getRepository`).
 //!
+//! - **Associations:** a property with `#[ORM\OneToMany(targetEntity: Comment::class)]`
+//!   or `#[ORM\ManyToMany]` declared as a bare `Collection` is a
+//!   `Collection<int, Comment>`; one with `#[ORM\ManyToOne]` or `#[ORM\OneToOne]`
+//!   and no class in its type is `?Comment`
+//!   ([`crate::summary::Association`]). Wherever Doctrine's attributes are
+//!   used, with or without the framework bundle.
+//!
 //! Route names are a string reference, not a type:
 //! [`crate::frameworks::symfony::refs::SymfonyRoute`].
 
@@ -41,6 +48,7 @@ const OBJECT_MANAGER: &str = "Doctrine\\Persistence\\ObjectManager";
 const MANAGER_REGISTRY: &str = "Doctrine\\Persistence\\ManagerRegistry";
 const OBJECT_REPOSITORY: &str = "Doctrine\\Persistence\\ObjectRepository";
 const ENTITY_REPOSITORY: &str = "Doctrine\\ORM\\EntityRepository";
+const DOCTRINE_COLLECTION: &str = "Doctrine\\Common\\Collections\\Collection";
 
 /// What a repository method returns, by name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -301,6 +309,32 @@ impl TypeProvider for SymfonyProvider {
         let rest = payload.strip_prefix("call:")?;
         let [name, class, string] = rest.splitn(3, ':').collect::<Vec<_>>()[..] else { return None };
         Self::resolve_call(name, class, string, args, resolver, context)
+    }
+
+    /// A Doctrine association whose declared type doesn't say the entity:
+    /// a `Collection` is one of the target, an untyped one is the target.
+    fn declared_property(&self, class: &str, name: &str, declared: &Type, resolver: &Resolver<'_>) -> Option<Type> {
+        let project = resolver.symfony();
+        let association = project.association(class, name)?;
+        let target = resolver
+            .class_model(&association.target)
+            .map_or_else(|| Type::named(&association.target), |model| Type::named(model.fqn()));
+        if association.many {
+            // A documented `Collection<int, Comment>` is as good.
+            let generic =
+                declared.members().iter().any(|member| matches!(member, Type::Named { args, .. } if !args.is_empty()));
+            let collection = declared.members().iter().find_map(|member| match member {
+                Type::Named { fqn, .. } => Some(fqn.clone()),
+                _ => None,
+            });
+            if generic {
+                return None;
+            }
+            let collection = collection.unwrap_or_else(|| DOCTRINE_COLLECTION.to_owned());
+            Some(Type::generic(&collection, vec![Type::Int, target]))
+        } else {
+            (!Self::names_class(declared)).then(|| target.nullable())
+        }
     }
 
     fn magic_members(&self, receiver: &Type, resolver: &Resolver<'_>, context: &Context) -> Vec<MagicMember> {

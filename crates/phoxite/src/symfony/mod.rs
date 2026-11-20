@@ -1,13 +1,15 @@
 //! What a Symfony project's configuration says, for the Symfony type
 //! provider ([`crate::types::provider::SymfonyProvider`]):
 //!
-//! - **Services** from `config/services.yaml`, `config/services_*.yaml` and
-//!   the files their `imports` name (relative paths, folders and `*`
+//! - **Services** from `config/services.yaml`, `config/services_*.yaml`, the
+//!   files of `config/packages` and the files their `imports` name (relative paths, folders and `*`
 //!   globs; `when@env` sections too): `id: { class: … }`, `id: '@other'`
 //!   and `id: { alias: other }` aliases, `parent:` definitions, and
 //!   `App\Foo: ~` class ids. Resource-loaded namespaces (`App\: { resource:
 //!   … }`) aren't listed: their classes are their ids, which the provider
 //!   types without the configuration.
+//! - **Parameters** from the `parameters:` of the same files: their names,
+//!   and their values when they are scalars.
 //! - **Routes** from `config/routes.yaml`, `config/routes_*.yaml` and the
 //!   YAML files below `config/routes/`: every top-level key with a `path`
 //!   (or an `alias`), `when@env` sections included. Entries with a
@@ -22,12 +24,14 @@
 /// The YAML reader, which other frameworks' configuration uses too.
 pub use crate::base::yaml;
 
+pub mod translations;
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::base::Range;
 
-use crate::summary::{RepositoryEntity, SymfonyFacts};
+use crate::summary::{Association, RepositoryEntity, SymfonyFacts, TwigNameKind};
 use yaml::Node;
 
 /// How many configuration files one load reads at most.
@@ -60,10 +64,22 @@ pub struct RouteDef {
     pub range: Range,
 }
 
-/// The configuration files' services and routes.
+/// A parameter a services file defines (`parameters:`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParameterDef {
+    pub name: String,
+    /// Its value when it is a scalar (`'%kernel.project_dir%/var'`).
+    pub value: Option<String>,
+    pub file: PathBuf,
+    /// The name's key.
+    pub range: Range,
+}
+
+/// The configuration files' services, parameters and routes.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SymfonyConfig {
     pub services: Vec<ServiceDef>,
+    pub parameters: Vec<ParameterDef>,
     pub routes: Vec<RouteDef>,
 }
 
@@ -78,6 +94,10 @@ impl SymfonyConfig {
         }
         let mut queue = existing(&[config.join("services.yaml"), config.join("services.yml")]);
         queue.extend(prefixed(&config, "services_"));
+        // Symfony's kernel loads every file of `config/packages` too: their parameters and services.
+        let mut packages = yaml_files_below(&config.join("packages"));
+        packages.sort();
+        queue.extend(packages);
         let mut seen: HashSet<PathBuf> = HashSet::new();
         while !queue.is_empty() {
             let file = queue.remove(0);
@@ -110,6 +130,14 @@ impl SymfonyConfig {
                 if let Some(resource) = resource {
                     imports.extend(resolve_import(file, resource));
                 }
+            }
+            for entry in section.get("parameters").map(Node::entries).unwrap_or_default() {
+                self.parameters.push(ParameterDef {
+                    name: entry.key.clone(),
+                    value: entry.value.as_str().map(str::to_owned),
+                    file: file.to_path_buf(),
+                    range: entry.range,
+                });
             }
             for entry in section.get("services").map(Node::entries).unwrap_or_default() {
                 if entry.key.starts_with('_') {
@@ -155,6 +183,11 @@ impl SymfonyConfig {
         self.services.iter().rev().find(|service| service.id == id)
     }
 
+    /// The parameter named `name` (the last definition wins).
+    pub fn parameter(&self, name: &str) -> Option<&ParameterDef> {
+        self.parameters.iter().rev().find(|parameter| parameter.name == name)
+    }
+
     /// The class the service `id` makes, following aliases and parents.
     pub fn service_class(&self, id: &str) -> Option<String> {
         let mut id = id.to_owned();
@@ -179,6 +212,19 @@ pub struct SymfonyProject {
     /// The configuration's routes, then the `#[Route]` attributes'.
     pub routes: Vec<RouteDef>,
     pub repositories: Vec<RepositoryEntity>,
+    /// The filters, functions and tests the project's PHP adds to Twig.
+    pub twig_names: Vec<TwigNameDef>,
+    /// The associations of the project's Doctrine entities.
+    pub associations: Vec<Association>,
+}
+
+/// A filter, function or test PHP adds to Twig, and where its name is written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TwigNameDef {
+    pub kind: TwigNameKind,
+    pub name: String,
+    pub file: Option<PathBuf>,
+    pub range: Range,
 }
 
 impl SymfonyProject {
@@ -190,7 +236,16 @@ impl SymfonyProject {
     ) -> Self {
         let mut routes = config.routes.clone();
         let mut repositories = Vec::new();
+        let mut twig_names = Vec::new();
+        let mut associations = Vec::new();
         for (file, facts) in facts {
+            twig_names.extend(facts.twig.iter().map(|name| TwigNameDef {
+                kind: name.kind,
+                name: name.name.clone(),
+                file: file.map(Path::to_path_buf),
+                range: name.loc.range,
+            }));
+            associations.extend(facts.associations.iter().cloned());
             routes.extend(facts.routes.iter().map(|route| RouteDef {
                 name: route.name.clone(),
                 path: route.path.clone(),
@@ -199,7 +254,14 @@ impl SymfonyProject {
             }));
             repositories.extend(facts.repositories.iter().cloned());
         }
-        Self { config, routes, repositories }
+        Self { config, routes, repositories, twig_names, associations }
+    }
+
+    /// The association the property `property` of the entity `entity` (FQN,
+    /// any case) is.
+    pub fn association(&self, entity: &str, property: &str) -> Option<&Association> {
+        let entity = entity.trim_start_matches('\\');
+        self.associations.iter().find(|known| known.property == property && known.entity.eq_ignore_ascii_case(entity))
     }
 
     /// The route named `name`.

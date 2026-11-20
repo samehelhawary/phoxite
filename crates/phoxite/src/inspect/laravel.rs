@@ -57,7 +57,11 @@ type Inspections = &'static [(&'static str, &'static dyn ReferenceKind)];
 /// …" inspections of its own adds its list here. A kind is only asked in a
 /// project of its framework ([`crate::frameworks::refs::kinds_for`]), so an
 /// inspection reports nothing elsewhere.
-const INSPECTIONS: &[Inspections] = &[LARAVEL];
+const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY];
+
+/// Symfony's: `PhpUndefinedTemplate`, a Twig template PHP names that the
+/// project's template folders don't have.
+const SYMFONY: Inspections = &[("PhpUndefinedTemplate", &crate::frameworks::symfony::refs::SymfonyTemplate)];
 
 /// Laravel's.
 const LARAVEL: Inspections = &[

@@ -8,7 +8,7 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | Framework | Detection | Types | String references |
 | --- | --- | --- | --- |
 | Laravel | yes | `types::provider::LaravelProvider` | 24 kinds (`frameworks::laravel::refs`) |
-| Symfony, Doctrine | yes | `types::provider::SymfonyProvider` | route names (`frameworks::symfony::refs`) |
+| Symfony, Doctrine | yes | `types::provider::SymfonyProvider` | route names, template names, service ids, parameters, translation keys and Doctrine fields (`frameworks::symfony::refs`) |
 | WordPress, Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
 
 Twig templates are not a framework in this sense: `phoxite::twig` reads a template's text

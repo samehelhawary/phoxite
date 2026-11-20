@@ -30,8 +30,11 @@ servers. What it does:
   a block overrides; the usages of a template name; rename of blocks and macros; formatting
   (indentation and the spacing inside tags); syntax errors. With Symfony's Twig bridge installed, its
   tags, filters and functions too.
-- **Symfony:** the types of services (`$container->get()`) and of Doctrine repositories and
-  their finders; route names with completion, goto, usages and rename.
+- **Symfony:** the types of services (`$container->get()`), of Doctrine repositories, their
+  finders and the entities' associations; route names and Twig template names with
+  completion, goto, usages and rename, in PHP and in the templates; service ids,
+  parameters, translation keys and the fields in a repository's criteria. Templates know
+  the variables their controllers pass them and the project's own Twig filters.
 
 ## Performance
 

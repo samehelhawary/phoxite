@@ -103,6 +103,65 @@ fn directive_items(text: &str, at: e::Pos) -> Vec<lsp::CompletionItem> {
         .collect()
 }
 
+/// The ids of the Symfony reference kinds a template writes names of.
+const SYMFONY_ROUTE: &str = "symfonyRoute";
+const SYMFONY_TEMPLATE: &str = "symfonyTemplate";
+const SYMFONY_TRANSLATION: &str = "symfonyTranslation";
+
+/// The route or template name at `at` of a Twig template: the kind's id, and
+/// the name with its range.
+fn twig_name_at(text: &str, at: e::Pos) -> Option<(&'static str, phoxite::twig::TemplateRef)> {
+    if let Some(route) = phoxite::twig::route_at(text, at) {
+        return Some((SYMFONY_ROUTE, route));
+    }
+    if let Some(key) = phoxite::twig::translation_at(text, at) {
+        return Some((SYMFONY_TRANSLATION, key));
+    }
+    phoxite::twig::template_at(text, at).map(|template| (SYMFONY_TEMPLATE, template))
+}
+
+/// The member at `at` of a variable the project's PHP passes to the
+/// template (`post.ti|tle`): where it is declared, its type, its name and
+/// the name's range.
+fn twig_member(
+    doc: &DocSnapshot,
+    project: &phoxite::twig::TwigProject,
+    at: e::Pos,
+) -> Option<(Vec<phoxite::navigate::Target>, String, String, e::Range)> {
+    let engine = doc.engine.as_ref()?;
+    let template = project.paths.name_of(&doc.path)?;
+    let (chain, range) = phoxite::twig::access_chain_at(&doc.text, at)?;
+    let index = phoxite::syntax::LineIndex::new(&doc.text);
+    let (start, end) = index.byte_range(range);
+    let name = doc.text.get(start as usize..end as usize).filter(|name| !name.is_empty())?.to_owned();
+    let loops: Vec<phoxite::frameworks::symfony::LoopVariable> = phoxite::twig::loops_at(&doc.text, at)
+        .into_iter()
+        .map(|(name, source)| phoxite::frameworks::symfony::LoopVariable { name, source })
+        .collect();
+    let (targets, ty) = engine.twig_member(&template, &loops, &chain, &name)?;
+    Some((targets, ty, name, range))
+}
+
+/// The kind of Twig name a name added by PHP is.
+fn twig_kind(kind: phoxite::summary::TwigNameKind) -> phoxite::twig::TwigCompletionKind {
+    use phoxite::summary::TwigNameKind as Added;
+    use phoxite::twig::TwigCompletionKind as Kind;
+    match kind {
+        Added::Filter => Kind::Filter,
+        Added::Function => Kind::Function,
+        Added::Test => Kind::Test,
+    }
+}
+
+/// The names of kind `kind` a Twig template writes.
+fn twig_names(text: &str, kind: &str) -> Vec<phoxite::twig::TemplateRef> {
+    match kind {
+        SYMFONY_ROUTE => phoxite::twig::route_refs(text),
+        SYMFONY_TRANSLATION => phoxite::twig::translation_refs(text),
+        _ => phoxite::twig::template_refs(text),
+    }
+}
+
 fn twig_completion_item(state: &State, item: phoxite::twig::TwigCompletion) -> lsp::CompletionItem {
     use phoxite::twig::TwigCompletionKind as K;
     let kind = match item.kind {
@@ -133,10 +192,96 @@ pub fn completion(
     let trigger = p.context.and_then(|c| c.trigger_character);
     if doc.kind == Kind::Twig {
         let project = state.twig_project(&doc.root);
-        let items = phoxite::twig::completions(&doc.text, at, project.symfony, &project.paths)
-            .into_iter()
-            .map(|item| twig_completion_item(state, item))
-            .collect();
+        let mut items: Vec<lsp::CompletionItem> =
+            phoxite::twig::completions(&doc.text, at, project.symfony, &project.paths)
+                .into_iter()
+                .map(|item| twig_completion_item(state, item))
+                .collect();
+        // What the project's PHP passes to the template, and what follows a `.` after it.
+        if let Some(engine) = &doc.engine
+            && let Some(template) = project.paths.name_of(&doc.path)
+        {
+            if let Some((chain, replace)) = phoxite::twig::access_chain_at(&doc.text, at) {
+                let loops: Vec<phoxite::frameworks::symfony::LoopVariable> = phoxite::twig::loops_at(&doc.text, at)
+                    .into_iter()
+                    .map(|(name, source)| phoxite::frameworks::symfony::LoopVariable { name, source })
+                    .collect();
+                items.extend(engine.twig_members(&template, &loops, &chain).into_iter().map(|member| {
+                    lsp::CompletionItem {
+                        label: member.name.clone(),
+                        kind: Some(if member.is_method {
+                            lsp::CompletionItemKind::METHOD
+                        } else {
+                            lsp::CompletionItemKind::PROPERTY
+                        }),
+                        detail: Some(member.detail),
+                        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit::new(
+                            lsp_range(replace),
+                            member.name,
+                        ))),
+                        ..lsp::CompletionItem::default()
+                    }
+                }));
+            } else if let Some((phoxite::twig::TwigCompletionKind::Function, replace)) =
+                phoxite::twig::name_kind_at(&doc.text, at)
+            {
+                for (name, ty) in engine.twig_variables(&template) {
+                    if items.iter().any(|item| item.label == name) {
+                        continue;
+                    }
+                    items.push(lsp::CompletionItem {
+                        label: name.clone(),
+                        kind: Some(lsp::CompletionItemKind::VARIABLE),
+                        detail: Some(ty),
+                        sort_text: Some(format!("0{name}")),
+                        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit::new(lsp_range(replace), name))),
+                        ..lsp::CompletionItem::default()
+                    });
+                }
+            }
+        }
+        // The filters, functions and tests the project's own extensions add.
+        if let Some((kind, replace)) = phoxite::twig::name_kind_at(&doc.text, at)
+            && let Some(engine) = &doc.engine
+        {
+            for name in engine.twig_extension_names().into_iter().filter(|name| twig_kind(name.kind) == kind) {
+                if items.iter().any(|item| item.label == name.name) {
+                    continue;
+                }
+                items.push(lsp::CompletionItem {
+                    label: name.name.clone(),
+                    kind: Some(lsp::CompletionItemKind::FUNCTION),
+                    detail: Some("the project's".to_owned()),
+                    sort_text: Some(format!("2{}", name.name)),
+                    text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit::new(lsp_range(replace), name.name))),
+                    ..lsp::CompletionItem::default()
+                });
+            }
+        }
+        // Before `|trans`: the project's translation keys.
+        if let Some(replace) = phoxite::twig::translation_string_at(&doc.text, at)
+            && let Some(engine) = &doc.engine
+        {
+            items.extend(engine.symfony_name_items(SYMFONY_TRANSLATION).into_iter().map(|key| lsp::CompletionItem {
+                label: key.label,
+                kind: Some(lsp::CompletionItemKind::VALUE),
+                detail: key.detail,
+                text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit::new(lsp_range(replace), key.insert))),
+                ..lsp::CompletionItem::default()
+            }));
+        }
+        // In `path('…')` and `url('…')`: the project's route names.
+        if let Some(replace) = phoxite::twig::route_string_at(&doc.text, at)
+            && let Some(engine) = &doc.engine
+        {
+            items.extend(engine.symfony_name_items(SYMFONY_ROUTE).into_iter().map(|route| lsp::CompletionItem {
+                label: route.label,
+                kind: Some(lsp::CompletionItemKind::VALUE),
+                detail: route.detail,
+                text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit::new(lsp_range(replace), route.insert))),
+                ..lsp::CompletionItem::default()
+            }));
+        }
         return Ok(Some(lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })));
     }
     // `|` opens completion in Twig only (its filters).
@@ -182,8 +327,15 @@ pub fn hover(state: &State, p: lsp::HoverParams) -> Result<Option<lsp::Hover>> {
     let doc = snapshot(state, &p.text_document_position_params.text_document.uri)?;
     let at = pos(p.text_document_position_params.position);
     if doc.kind == Kind::Twig {
-        let symfony = state.twig_project(&doc.root).symfony;
-        return Ok(phoxite::twig::hover(&doc.text, at, symfony).map(|(markdown, range)| lsp::Hover {
+        let project = state.twig_project(&doc.root);
+        // A member of what the controller passes: its type.
+        let member = || {
+            let (targets, ty, name, range) = twig_member(&doc, &project, at)?;
+            let _ = targets;
+            Some((format!("```php\n{name}: {ty}\n```"), range))
+        };
+        let found = phoxite::twig::hover(&doc.text, at, project.symfony).or_else(member);
+        return Ok(found.map(|(markdown, range)| lsp::Hover {
             contents: lsp::HoverContents::Markup(markup(state, markdown)),
             range: Some(lsp_range(range)),
         }));
@@ -264,10 +416,40 @@ pub fn goto(
         }
         (Kind::Blade, Goto::Definition) => blade_definition(&doc, at),
         (Kind::Twig, Goto::Definition) => {
+            // A route name or a translation key: where the project declares it.
+            if let Some((kind, named)) = twig_name_at(&doc.text, at).filter(|(kind, _)| *kind != SYMFONY_TEMPLATE) {
+                let found = doc.engine.as_ref().and_then(|engine| engine.symfony_name_targets(kind, &named.name));
+                return Ok(found.map(|found| lsp::GotoDefinitionResponse::Array(targets(found))));
+            }
             let project = state.twig_project(&doc.root);
             let found = phoxite::twig::definition(&doc.text, at, &project.paths);
             // A macro of the template itself is in the document's own file.
-            let found = found.into_iter().map(|target| (target.path.unwrap_or_else(|| doc.path.clone()), target.range));
+            let mut found: Vec<(PathBuf, e::Range)> = found
+                .into_iter()
+                .map(|target| (target.path.unwrap_or_else(|| doc.path.clone()), target.range))
+                .collect();
+            // A member of what the controller passes: the property, or the method Twig calls.
+            if found.is_empty()
+                && let Some((declared, ..)) = twig_member(&doc, &project, at)
+            {
+                found.extend(declared.into_iter().map(|target| (target.path, target.range)));
+            }
+            // A filter, function or test of the project's own: where PHP names it.
+            if found.is_empty()
+                && let Some((kind, range)) = phoxite::twig::name_kind_at(&doc.text, at)
+                && let Some(engine) = &doc.engine
+            {
+                let index = phoxite::syntax::LineIndex::new(&doc.text);
+                let (start, end) = index.byte_range(range);
+                let word = &doc.text[start as usize..end as usize];
+                found.extend(
+                    engine
+                        .twig_extension_names()
+                        .into_iter()
+                        .filter(|name| name.name == word && twig_kind(name.kind) == kind)
+                        .filter_map(|name| Some((name.file?, name.range))),
+                );
+            }
             Some(locations(found))
         }
         _ => None,
@@ -303,22 +485,36 @@ pub fn references(
     let at = pos(p.text_document_position.position);
     let include = p.context.include_declaration;
     if doc.kind == Kind::Twig {
-        // The templates naming the one named at the caret.
-        let Some(named) = phoxite::twig::template_at(&doc.text, at) else { return Ok(None) };
+        // The usages of the route or the template named at the caret.
+        let Some((kind, named)) = twig_name_at(&doc.text, at) else { return Ok(None) };
         let project = state.twig_project(&doc.root);
-        let mut found = phoxite::twig::template_usages(&named.name, &project.paths);
+        // In a Symfony project: PHP's usages and the templates' (with the declaration when asked).
+        let known =
+            doc.engine.as_ref().and_then(|engine| engine.symfony_name_usages(kind, &named.name, include, cancel));
+        let mut found: Vec<(PathBuf, e::Range)> = match known {
+            Some(Ok(usages)) => usages.into_iter().map(|usage| (usage.path, usage.range)).collect(),
+            Some(Err(error)) => return Err(engine_error(error)),
+            // Elsewhere: the templates naming a template.
+            None if kind == SYMFONY_TEMPLATE => {
+                let mut found = phoxite::twig::template_usages(&named.name, &project.paths);
+                if include && let Some(file) = project.paths.resolve(&named.name) {
+                    found.push((file, e::Range::default()));
+                }
+                found
+            }
+            None => Vec::new(),
+        };
         // The document as it is now, not as it was saved.
-        found.retain(|(path, _)| *path != doc.path);
+        let here = dunce::simplified(&doc.path).to_path_buf();
+        found.retain(|(path, range)| dunce::simplified(path) != here || *range == e::Range::default());
         found.extend(
-            phoxite::twig::template_refs(&doc.text)
+            twig_names(&doc.text, kind)
                 .into_iter()
                 .filter(|other| other.name == named.name)
                 .map(|other| (doc.path.clone(), other.range)),
         );
-        if include && let Some(file) = project.paths.resolve(&named.name) {
-            found.push((file, e::Range::default()));
-        }
         found.sort_by(|a, b| (&a.0, a.1.start).cmp(&(&b.0, b.1.start)));
+        found.dedup();
         return Ok(Some(locations(found)));
     }
     let Some(engine) = doc.engine.clone() else { return Ok(None) };
@@ -442,6 +638,14 @@ pub fn prepare_rename(state: &State, p: lsp::TextDocumentPositionParams) -> Resu
     let doc = snapshot(state, &p.text_document.uri)?;
     let at = pos(p.position);
     if doc.kind == Kind::Twig {
+        // A route or a template the project can rename, in PHP too.
+        if let Some((kind, named)) = twig_name_at(&doc.text, at) {
+            let renames = doc.engine.as_ref().is_some_and(|engine| engine.symfony_name_renames(kind, &named.name));
+            return match renames {
+                true => Ok(Some(lsp::PrepareRenameResponse::Range(lsp_range(named.range)))),
+                false => Err("Nothing to rename here".into()),
+            };
+        }
         let project = state.twig_project(&doc.root);
         return match phoxite::twig::prepare_rename(&doc.text, at, &doc.path, &project.paths) {
             Some(range) => Ok(Some(lsp::PrepareRenameResponse::Range(lsp_range(range)))),
@@ -466,6 +670,15 @@ pub fn rename(state: &State, p: lsp::RenameParams, cancel: &CancellationToken) -
     let doc = snapshot(state, &p.text_document_position.text_document.uri)?;
     let at = pos(p.text_document_position.position);
     if doc.kind == Kind::Twig {
+        // A route or a template: the project renames it everywhere, from what is saved.
+        if let Some((kind, named)) = twig_name_at(&doc.text, at) {
+            let engine = doc.engine.as_ref();
+            return match engine.and_then(|engine| engine.symfony_name_rename(kind, &named.name, &p.new_name, cancel)) {
+                Some(Ok(edit)) => Ok(Some(convert::workspace_edit(edit, state.support.edits))),
+                Some(Err(error)) => Err(engine_error(error)),
+                None => Err("Nothing to rename here".into()),
+            };
+        }
         let project = state.twig_project(&doc.root);
         let found = phoxite::twig::rename(&doc.text, at, &doc.path, &p.new_name, &project.paths);
         let files = match found {

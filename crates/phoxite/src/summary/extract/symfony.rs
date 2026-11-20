@@ -7,17 +7,43 @@
 //! - **Repositories:** an entity's `repositoryClass`, and in a class
 //!   extending a `…Repository` class, `parent::__construct($registry,
 //!   Product::class)` (Doctrine's `ServiceEntityRepository`).
+//! - **Twig names:** `new TwigFilter('name', …)`, `new TwigFunction(…)` and
+//!   `new TwigTest(…)` (what an extension's `getFilters()` returns), and
+//!   methods with `#[AsTwigFilter('name')]`, `#[AsTwigFunction]` or
+//!   `#[AsTwigTest]`, as Twig's documentation on extending it has them.
+//! - **Associations:** properties with one of Doctrine's association
+//!   attributes and a `targetEntity` (named, or the first argument).
 
 use mago_span::Span;
 use mago_syntax::cst::{
-    ArgumentList, AttributeList, ClassLikeMember, ClassLikeMemberSelector, Expression, Literal, PartialArgument,
-    Sequence,
+    ArgumentList, AttributeList, ClassLikeMember, ClassLikeMemberSelector, Expression, Instantiation, Literal,
+    PartialArgument, Property, PropertyItem, Sequence,
 };
 
 use super::Extractor;
-use crate::summary::{Loc, RepositoryEntity, RouteAttribute};
+use crate::summary::{Association, Loc, RepositoryEntity, RouteAttribute, TwigName, TwigNameKind};
 use crate::types::Type;
 use crate::types::ops::literal_type;
+
+/// The classes whose instances add a name to Twig, and the attributes that do.
+const TWIG_CLASSES: [(&str, TwigNameKind); 3] = [
+    ("Twig\\TwigFilter", TwigNameKind::Filter),
+    ("Twig\\TwigFunction", TwigNameKind::Function),
+    ("Twig\\TwigTest", TwigNameKind::Test),
+];
+const TWIG_ATTRIBUTES: [(&str, TwigNameKind); 3] = [
+    ("Twig\\Attribute\\AsTwigFilter", TwigNameKind::Filter),
+    ("Twig\\Attribute\\AsTwigFunction", TwigNameKind::Function),
+    ("Twig\\Attribute\\AsTwigTest", TwigNameKind::Test),
+];
+
+/// Doctrine's association attributes, and whether they are to many.
+const ASSOCIATIONS: [(&str, bool); 4] = [
+    ("Doctrine\\ORM\\Mapping\\OneToMany", true),
+    ("Doctrine\\ORM\\Mapping\\ManyToMany", true),
+    ("Doctrine\\ORM\\Mapping\\ManyToOne", false),
+    ("Doctrine\\ORM\\Mapping\\OneToOne", false),
+];
 
 const ROUTE_ATTRIBUTES: [&str; 2] =
     ["Symfony\\Component\\Routing\\Attribute\\Route", "Symfony\\Component\\Routing\\Annotation\\Route"];
@@ -86,6 +112,82 @@ impl Extractor<'_> {
                 (Some(base), None) => Some(base.clone()),
             };
             self.summary.symfony.routes.push(RouteAttribute { name: format!("{name_prefix}{name}"), path, loc });
+        }
+    }
+
+    /// `new TwigFilter('name', …)` and the like.
+    pub(super) fn twig_instantiation(&mut self, node: &Instantiation<'_>) {
+        let Expression::Identifier(class) = node.class else { return };
+        let class = self.class_name(class);
+        let Some((_, kind)) = TWIG_CLASSES.iter().find(|(known, _)| known.eq_ignore_ascii_case(&class)) else {
+            return;
+        };
+        let first = node.argument_list.as_ref().and_then(|list| list.arguments.first());
+        if let Some((name, loc)) = first.and_then(|argument| self.string_at(argument.value())) {
+            self.summary.symfony.twig.push(TwigName { kind: *kind, name, loc });
+        }
+    }
+
+    /// The methods of a class with `#[AsTwigFilter('name')]` and the like.
+    pub(super) fn twig_attributes(&mut self, members: &Sequence<'_, ClassLikeMember<'_>>) {
+        for member in members {
+            let ClassLikeMember::Method(method) = member else { continue };
+            for attribute in method.attribute_lists.iter().flat_map(|list| list.attributes.iter()) {
+                let class = self.class_name(&attribute.name);
+                let Some((_, kind)) = TWIG_ATTRIBUTES.iter().find(|(known, _)| known.eq_ignore_ascii_case(&class))
+                else {
+                    continue;
+                };
+                let Some(list) = &attribute.argument_list else { continue };
+                let name = list.arguments.iter().enumerate().find_map(|(index, argument)| match argument {
+                    PartialArgument::Named(argument) if argument.name.value == b"name" => Some(argument.value),
+                    PartialArgument::Positional(argument) if index == 0 => Some(argument.value),
+                    _ => None,
+                });
+                if let Some((name, loc)) = name.and_then(|value| self.string_at(value)) {
+                    self.summary.symfony.twig.push(TwigName { kind: *kind, name, loc });
+                }
+            }
+        }
+    }
+
+    /// The associations of the entity `entity`: its properties with one of
+    /// Doctrine's association attributes naming a target.
+    pub(super) fn associations(&mut self, entity: &str, members: &Sequence<'_, ClassLikeMember<'_>>) {
+        for member in members {
+            let ClassLikeMember::Property(Property::Plain(property)) = member else { continue };
+            let found = property.attribute_lists.iter().flat_map(|list| list.attributes.iter()).find_map(|attribute| {
+                let class = self.class_name(&attribute.name);
+                let (_, many) = ASSOCIATIONS.iter().find(|(known, _)| known.eq_ignore_ascii_case(&class))?;
+                let arguments = &attribute.argument_list.as_ref()?.arguments;
+                let target = arguments
+                    .iter()
+                    .find_map(|argument| match argument {
+                        PartialArgument::Named(argument) if argument.name.value == b"targetEntity" => {
+                            Some(argument.value)
+                        }
+                        _ => None,
+                    })
+                    .or_else(|| match arguments.first() {
+                        Some(PartialArgument::Positional(argument)) => Some(argument.value),
+                        _ => None,
+                    })?;
+                Some((self.class_constant_name(target)?, *many))
+            });
+            let Some((target, many)) = found else { continue };
+            for item in &property.items {
+                let variable = match item {
+                    PropertyItem::Concrete(item) => &item.variable,
+                    PropertyItem::Abstract(item) => &item.variable,
+                };
+                let name = String::from_utf8_lossy(variable.name).trim_start_matches('$').to_owned();
+                self.summary.symfony.associations.push(Association {
+                    entity: entity.to_owned(),
+                    property: name,
+                    target: target.clone(),
+                    many,
+                });
+            }
         }
     }
 

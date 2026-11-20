@@ -43,7 +43,9 @@ use crate::syntax::LineIndex;
 pub use complete::{TwigCompletion, TwigCompletionKind, completions};
 pub use format::{TwigFormatOptions, format, format_text};
 pub use navigate::{
-    DIAGNOSTIC_SOURCE, MAX_PARENTS, SYNTAX_CODE, TwigTarget, definition, hover, problems, template_usages,
+    DIAGNOSTIC_SOURCE, MAX_PARENTS, SYNTAX_CODE, TwigTarget, access_chain_at, definition, hover, loops_at,
+    name_kind_at, problems, route_at, route_refs, route_string_at, template_usages, template_usages_with,
+    translation_at, translation_refs, translation_string_at,
 };
 pub use rename::{prepare_rename, rename};
 pub use templates::TemplatePaths;

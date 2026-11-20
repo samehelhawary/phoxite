@@ -439,6 +439,12 @@ impl State {
         {
             engine.document_opened(id, &path, version.max(0) as u32, doc.text.as_str());
         }
+        // The usages of a route or a template read a Twig template as the editor has it.
+        if kind == Kind::Twig
+            && let Some((_, engine)) = self.workspace_of(&path)
+        {
+            engine.set_template_text(&path, Some(doc.text.as_str()));
+        }
         self.docs.write().insert(uri.clone(), doc);
         self.template_problems(&uri);
     }
@@ -461,6 +467,11 @@ impl State {
         {
             engine.document_changed(id, version.max(0) as u32, &text);
         }
+        if kind == Kind::Twig
+            && let Some((_, engine)) = self.workspace_of(&path)
+        {
+            engine.set_template_text(&path, Some(&text));
+        }
         self.template_problems(uri);
     }
 
@@ -469,6 +480,9 @@ impl State {
         if let Some((_, engine)) = self.workspace_of(&doc.path) {
             // Also drops a template's embedded PHP.
             engine.document_closed(doc.id);
+            if doc.kind == Kind::Twig {
+                engine.set_template_text(&doc.path, None);
+            }
         }
         self.analyzers.lock().closed(&doc.path);
         self.problems.lock().remove(&doc.path);

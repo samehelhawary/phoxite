@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+- In a Symfony project, the template names PHP writes (`render()`, `renderView()`,
+  `renderBlock()`, `renderForm()`, `stream()` on a controller; `render()`, `display()`,
+  `load()` on Twig's environment) complete, go to the template, and have Find References
+  (the PHP strings and the templates naming it) and hover.
+- `PhpUndefinedTemplate`: a Twig template PHP names that the project's template folders
+  don't have. Not for a `@Namespace/…` name, which can be a bundle's, nor in a project
+  without any template.
+- `#[Template('page.html.twig')]` names a template, and `#[Autowire(service: 'mailer')]`
+  and `#[Autowire(param: 'app.locale')]` a service and a parameter: an attribute's
+  arguments are read like a call's.
+- Service ids and parameters are renamed: the key in the YAML file, the PHP strings, the
+  attributes, and `@mailer` / `%app.locale%` in the YAML files below `config/`, which are
+  Find References' too. A service whose id is its class name isn't renamed this way.
+- XLIFF (`.xlf`, `.xliff`; 1.2 and 2.0) and JSON translation catalogues are read beside the
+  YAML ones, and translation keys complete before `|trans` in a template.
+- Translation keys are renamed: in every catalogue, in PHP and in the templates. Of a
+  nested key (`form: { title: … }`) the last part is renamed, to a name without a dot.
+- A service after `alias:` or `parent:` in a YAML file is a usage of it, and the
+  parameters and services of the files in `config/packages` are known without a services
+  file importing them.
+- In a template, a member of what the controller passes (`post.title`, `post.author.name`)
+  has a hover with its type and goes to the property, or to the getter Twig calls.
+- The usages of a route, a template or a translation key, and their renames, read a Twig
+  template with unsaved changes as the editor has it.
+- A Twig template knows what the controller rendering it passes: the keys of
+  `render('page.html.twig', ['post' => $post])` complete as variables with their types, and
+  after a `.` the public properties and methods of the variable's class do, a getter under
+  the name Twig reads it by (`getTitle()` as `title`). A `{% for %}` loop's variable is an
+  element of what the loop goes through.
+- The filters, functions and tests a project's own Twig extensions add (`new
+  TwigFilter('price', …)`, `#[AsTwigFilter('price')]`) complete in templates, and go to
+  where PHP names them.
+- Translation keys (`$translator->trans('form.title')`, `new TranslatableMessage(…)`,
+  `t()`, and `'form.title'|trans` in a template) complete from the YAML catalogues of
+  `translations/`, go to the key in every locale, and have Find References and a hover
+  with the translations.
+- Doctrine: a property with `#[ORM\OneToMany(targetEntity: Comment::class)]` or
+  `#[ORM\ManyToMany]` declared as a bare `Collection` is a `Collection<int, Comment>`, and
+  one with `#[ORM\ManyToOne]` or `#[ORM\OneToOne]` and no class in its type is the target.
+  The keys of a repository's `findBy([...])`, `findOneBy([...])` and `count([...])` complete
+  with the entity's fields and go to the property.
+- Service ids (`$container->get('mailer')`, `has()`) and parameters (`getParameter('app.locale')`,
+  a parameter bag's `get()`) complete from the project's services files, go to their key in
+  the YAML file, and have Find References and hover. They aren't renamed yet.
+- Rename of a Twig template, from PHP or from a template naming it: the file moves, and its
+  name changes in every PHP string and every `{% extends %}`, `{% include %}` and the like.
+- Route names inside a template's `path('…')` and `url('…')` complete, go to the route,
+  and are usages of it: Find References on a route lists the templates too, and renaming a
+  route renames it there.
 - Twig templates (`*.twig`) are served: the outline; completion of tags, filters,
   functions, tests, the variables and macros in scope and template names; hover on the
   built-ins and on macros; Go to Definition for template names, macro calls and the block a
