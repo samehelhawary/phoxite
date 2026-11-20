@@ -44,6 +44,10 @@ cd editors/vscode
 PHOXITE_SERVER=../../target/debug/phoxite-lsp npm run test:e2e
 ```
 
+It opens VS Code once per part: the Laravel fixture (`one-project`, `two-projects`) and
+the `wordpress`, `drupal`, `codeigniter` and `symfony` fixtures.
+`PHOXITE_E2E_ONLY=symfony` runs one part alone.
+
 CI runs the first two blocks on every pull request; run them before you push.
 
 Some engine tests and benches are ignored unless real code is there to run them on. Two

@@ -254,10 +254,10 @@
   (`#[Route('/x', name: 'home')]`): the `#` of `#[` was read as the start of a comment.
 - A new setting, `frameworks` (`phoxite.frameworks` in VS Code), turns each framework's
   support `enabled` or `disabled`; `auto`, the default, detects it. `frameworks.laravel`
-  wins over `laravel.detection` unless it is `auto`. Laravel and Symfony are the
-  frameworks with support today; the other names (`wordpress`, `drupal`, `codeigniter`,
-  `yii`, `cakephp`, `laminas`, `magento`) are read now and take effect as each one's
-  support is released.
+  wins over `laravel.detection` unless it is `auto`. Laravel, Symfony,
+  WordPress, Drupal and CodeIgniter have support today; the other names (`yii`,
+  `cakephp`, `laminas`, `magento`) are read now and take effect as each one's support is
+  released.
 
 ## 0.6.1 — 2026-11-17
 

@@ -1,7 +1,8 @@
 # Phoxite for VS Code
 
-PHP and Laravel code intelligence from a native engine written in Rust: no PHP, Node.js or
-licence needed for any feature.
+PHP code intelligence from a native engine written in Rust, with support for Laravel,
+Symfony, WordPress, Drupal, CodeIgniter and Twig: no PHP, Node.js or licence needed for
+any feature.
 
 ![Completion that follows an Eloquent model to its columns and relations](images/completion.gif)
 
@@ -26,6 +27,8 @@ commands, and PHPStan or Psalm on save.
 - Go to Definition, Type Definition and Implementation; Find All References; call and type
   hierarchies; workspace symbols
 - Rename (a class's file is renamed with it); moving files updates namespaces and references
+- A function's name in a string and a method's in a callable array (`array_map('trim',
+  …)`, `[Shortener::class, 'cut']`): Go to Definition, Find All References and Rename
 - Quick-fixes and refactorings, Organize Imports, Format Document (PSR-12)
 - Inspections: undefined classes, functions, methods and properties, type mismatches, unused
   imports and more, each one configurable (`phoxite.inspections`)
@@ -308,8 +311,8 @@ index, so it works in any folder.
 | `phoxite.includePaths` | Folders and single files outside the project to index (`../shared`, `../../config.php`). |
 | `phoxite.stubs` | Extra extension stubs (`redis`, `swoole`…). |
 | `phoxite.exclude` | Globs left out of the index. |
-| `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`. |
-| `phoxite.frameworks` | Each framework's support: `auto` (detected), `enabled` or `disabled`. |
+| `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`. A few are off until enabled here, as what they look for may be defined outside the project: `PhpUndefinedHook`, `PhpUndefinedCodeIgniterEvent`, `PhpUnknownCodeIgniterTable`, `PhpUnknownCodeIgniterColumn`. |
+| `phoxite.frameworks` | Each framework's support: `auto` (detected), `enabled` or `disabled`. Laravel, Symfony, WordPress, Drupal and CodeIgniter have support today. |
 | `phoxite.laravel.*` | Detection, route hints, modules, Inertia page folders. |
 | `phoxite.laravel.database` | A SQLite database to read columns from: `auto` (the one in `.env`) or a path. Empty: the migrations alone. |
 | `phoxite.laravel.artisanCommand` | How Artisan runs: `php artisan`, `./vendor/bin/sail artisan`… |
