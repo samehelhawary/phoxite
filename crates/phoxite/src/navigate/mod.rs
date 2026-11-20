@@ -34,6 +34,7 @@
 //!   autoload roots changes their namespace (and a class named after its
 //!   renamed file), its references and its imports ([`moves`]).
 
+pub(crate) mod callable;
 pub mod hierarchy;
 pub mod hover;
 pub mod moves;

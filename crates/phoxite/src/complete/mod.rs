@@ -54,6 +54,7 @@ use crate::engine::PhpEngine;
 use crate::index::DeclKind;
 use crate::meta::{CallTarget, MetaValue};
 use crate::names::{FileNames, NameKind, fqn_eq};
+use crate::navigate::callable::{Takes, receiver, takes};
 use crate::navigate::symbol::{Decl, Magic, Member, MemberKind};
 use crate::navigate::{enclosing_class, rank, short_name};
 use crate::signature::Callee;
@@ -403,6 +404,8 @@ enum Insert {
     Code,
     /// In a `use` statement: the fully qualified name, no import.
     Import,
+    /// In a string where a callable is expected: a function's full name.
+    Callable,
 }
 
 /// A class-like, function or constant offered by name.
@@ -452,12 +455,33 @@ struct Sites<'a> {
     arm: Option<(&'a Expression<'a>, Vec<String>)>,
     /// An array access whose index the probe is.
     key: Option<&'a Expression<'a>>,
+    /// The probe is the second element of a two-element array argument
+    /// (`[$o, 'm']`): the argument, and the first element.
+    method: Option<(ArgumentSite<'a>, &'a Expression<'a>)>,
 }
 
 struct SiteWalker;
 
 impl<'a> Sites<'a> {
     fn arguments(&mut self, call: &'a Expression<'a>, list: &'a ArgumentList<'a>) {
+        for (at, argument) in list.arguments.iter().enumerate() {
+            let elements = match argument.value() {
+                Expression::Array(array) => &array.elements,
+                Expression::LegacyArray(array) => &array.elements,
+                _ => continue,
+            };
+            let mut values = elements.iter().map(|element| match element {
+                mago_syntax::cst::ArrayElement::Value(element) => Some(element.value),
+                _ => None,
+            });
+            if let (Some(Some(object)), Some(Some(method)), None) = (values.next(), values.next(), values.next())
+                && method.span().start.offset == self.probe
+                && argument.is_positional()
+            {
+                let index = list.arguments.iter().take(at).filter(|argument| argument.is_positional()).count();
+                self.method = Some((ArgumentSite { call, index, named: Vec::new() }, object));
+            }
+        }
         let at = list.arguments.iter().position(|argument| argument.value().span().start.offset == self.probe);
         if let Some(at) = at
             && list.arguments.get(at).is_some_and(|argument| argument.is_positional())
@@ -578,6 +602,15 @@ impl<'e, 'r> Collector<'e, 'r> {
             return;
         }
         let before = skip_ws_back(bytes, start);
+        // In a single-quoted string `::` is text (`'Foo::method'`); a
+        // double-quoted one may be interpolating a member access.
+        let single_quoted = string_start(bytes, offset).filter(|quote| bytes[*quote] == b'\'');
+        if let Some(quote) = single_quoted
+            && bytes[..before].ends_with(b"::")
+        {
+            self.string(quote);
+            return;
+        }
         if bytes[..before].ends_with(b"->") || bytes[..before].ends_with(b"::") {
             self.word(start, end);
             self.members(start, end, false);
@@ -1115,6 +1148,20 @@ impl<'e, 'r> Collector<'e, 'r> {
                 self.argument_items(&callee, site, &context, in_string);
             }
         }
+        // The method of a callable array: `[$o, '…']`, `[Foo::class, '…']`.
+        if in_string && let Some((site, object)) = &sites.method {
+            let frames = frames_at(site.call);
+            let context = types.context(&frames);
+            let callee = crate::signature::callee(&types, &names, self.resolver, site.call, &frames);
+            let params = callee
+                .map(|callee| crate::signature::callee_params(self.resolver, self.here, &callee, &context))
+                .unwrap_or_default();
+            let param = params.get(site.index).or_else(|| params.last().filter(|p| p.variadic));
+            if param.is_some_and(|param| takes(&param.ty, true) == Takes::Callable) {
+                let (class, named) = receiver(&types.type_of(object, &frames));
+                self.callable_methods(&class, &context, named);
+            }
+        }
         if !in_string && let Some((Expression::Match(r#match), covered)) = &sites.arm {
             let frames = frames_at(r#match.expression);
             let subject = types.type_of(r#match.expression, &frames);
@@ -1122,6 +1169,28 @@ impl<'e, 'r> Collector<'e, 'r> {
             self.value_items(&subject, &context, covered);
         }
         sites.argument.is_some() || sites.arm.is_some()
+    }
+
+    /// The methods of `receiver` a string callable can name (the static
+    /// ones when `static_only`): their names, not calls.
+    fn callable_methods(&mut self, receiver: &Type, context: &Context, static_only: bool) {
+        let scope = context.self_class.as_deref().and_then(|class| self.resolver.class_model(class));
+        for model in self.resolver.class_models(receiver, context) {
+            let own = model.fqn().to_owned();
+            for method in model.methods.iter() {
+                let magic = method.name.starts_with("__") && !self.prefix.starts_with('_');
+                if magic || (static_only && !method.is_static) || !model.is_accessible(method, scope.as_deref()) {
+                    continue;
+                }
+                let params = self.resolver.method_params_on(receiver, &method.name, context).unwrap_or_default();
+                let mut item = Self::item(&method.name, CompletionKind::Method);
+                item.label_detail = Some(params_text(&params));
+                item.detail = Some(self.resolver.method_return(receiver, &method.name, context).widen().to_string());
+                item.data = Some(CompletionData::Method { class: own.clone(), name: method.name.clone() });
+                let group = if fqn_eq(NameKind::ClassLike, &method.declaring.fqn, &own) { 1 } else { 2 };
+                self.push(item, group);
+            }
+        }
     }
 
     fn argument_items(&mut self, callee: &Callee, site: &ArgumentSite<'_>, context: &Context, in_string: bool) {
@@ -1167,6 +1236,29 @@ impl<'e, 'r> Collector<'e, 'r> {
                 (_, false) => {
                     let text = value.to_string();
                     self.push(Self::item(text, CompletionKind::Value), 0);
+                }
+            }
+        }
+        // The functions a string can name where only a callable is expected.
+        let param = params.get(site.index).or_else(|| params.last().filter(|p| p.variadic));
+        if in_string && param.is_some_and(|param| takes(&param.ty, false) == Takes::Callable) {
+            let bytes = self.text().as_bytes();
+            let double = string_start(bytes, self.offset).is_some_and(|quote| bytes[quote] == b'"');
+            let typed = self.prefix.replace("\\\\", "\\");
+            let before = self.items.len();
+            if let Some((class, method)) = typed.rsplit_once("::") {
+                // `'Foo::…'`: the static methods of the class, after the colons.
+                let start = self.offset - method.len();
+                self.prefix = method.to_owned();
+                self.replace = Range::new(self.pos(start), self.pos(self.offset));
+                self.replace_tab = self.replace_tab.map(|tab| Range::new(self.pos(start), tab.end));
+                self.callable_methods(&Type::named(class.trim_start_matches('\\')), context, true);
+            } else {
+                self.globals(typed.trim_start_matches('\\'), ClassFilter::Any, Insert::Callable, false, true);
+            }
+            if double {
+                for item in &mut self.items[before..] {
+                    item.insert_text = item.insert_text.replace('\\', "\\\\");
                 }
             }
         }
@@ -1270,7 +1362,8 @@ impl<'e, 'r> Collector<'e, 'r> {
             DeclKind::ClassLike(class_kind) => {
                 classes && (filter == ClassFilter::Any || class_kind == ClassKind::Class)
             }
-            DeclKind::Function | DeclKind::Constant => functions && filter == ClassFilter::Any,
+            DeclKind::Function => functions && filter == ClassFilter::Any,
+            DeclKind::Constant => functions && filter == ClassFilter::Any && insert != Insert::Callable,
             DeclKind::Namespace => false,
         };
         let mut found: Vec<Global> = Vec::new();
@@ -1378,7 +1471,7 @@ impl<'e, 'r> Collector<'e, 'r> {
                         .unwrap_or_default();
                     item.label_detail = Some(params_text(&params));
                     item.detail = self.resolver.function_return(&global.fqn).map(|ty| ty.widen().to_string());
-                    if call_follows || insert == Insert::Import {
+                    if call_follows || insert != Insert::Code {
                         item.insert_text = text;
                     } else {
                         let body = if params.is_empty() { "()" } else { "($0)" };
@@ -1420,7 +1513,7 @@ impl<'e, 'r> Collector<'e, 'r> {
     ) -> Option<(String, Option<TextEdit>)> {
         let short = short_name(fqn);
         let scope = self.names.scope_at(self.offset as u32);
-        if insert == Insert::Import {
+        if insert != Insert::Code {
             return Some((fqn.to_owned(), None));
         }
         if let Some(namespace) = namespace {

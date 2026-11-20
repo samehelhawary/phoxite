@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- A string that names a function or a method where a callable is expected is a name like
+  any other: `array_map('App\\trim_all', …)`, `call_user_func('Foo::make')`,
+  `usort($rows, [$this, 'compare'])`, `[Foo::class, 'make']`. Go to Definition and hover
+  work on it, Find References counts it, and renaming the function, the method or the
+  class changes it (before, a rename left these strings as they were). Function names
+  complete inside such a string, and method names in `[$o, '…']` and after `'Foo::`. The
+  same for a string a function declared to return a callable returns, and one assigned to
+  a property typed as a callable. Only where a callable is expected and nothing else a
+  string could be: for `callable|string` the string is left alone.
 - In a Symfony project, the template names PHP writes (`render()`, `renderView()`,
   `renderBlock()`, `renderForm()`, `stream()` on a controller; `render()`, `display()`,
   `load()` on Twig's environment) complete, go to the template, and have Find References

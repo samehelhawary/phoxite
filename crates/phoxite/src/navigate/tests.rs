@@ -9,6 +9,7 @@ use crate::project::LayoutConfig;
 use crate::stubs::StubFilter;
 use crate::syntax::{LineIndex, ParsedFile};
 
+mod callables;
 mod hierarchy;
 mod laravel;
 mod moves;

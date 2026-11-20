@@ -528,6 +528,8 @@ namespace Web;
 use App\Repo;
 use function App\format_price;
 
+function pick(callable|string $by): void {}
+
 function run(Repo $repo, string $f, string $m, string $p, array $prices): void
 {
     format_price(1);
@@ -535,6 +537,7 @@ function run(Repo $repo, string $f, string $m, string $p, array $prices): void
     call_user_func('App\format_price', 3);
     array_map('\App\format_price', $prices);
     echo strlen('App\format_price');
+    pick('App\format_price');
     $repo->find();
     $repo->$m();
     $repo?->{$m . 'x'}();
@@ -547,25 +550,32 @@ function run(Repo $repo, string $f, string $m, string $p, array $prices): void
     let mut project = Project::new(&[("src/functions.php", functions), ("src/user.php", user)]);
     let user_line = |line: u32, text: &str| ("src/user.php".to_owned(), line, text.to_owned());
 
-    // A function: dynamic calls and string callables, not other strings.
+    // A function: dynamic calls, and a string where a callable is one of the things expected.
+    // The strings passed where only a callable is are renamed; other strings are neither.
     let source = user.replace("    format_price(1);", "    format_pr/*|*/ice(1);");
     assert_eq!(
         project.possible("src/user.php", &source, "money"),
-        [user_line(9, "$f"), user_line(10, r"App\format_price"), user_line(11, r"\App\format_price")]
+        [user_line(11, "$f"), user_line(15, r"App\format_price")]
     );
     let files = project.renamed("src/user.php", &source, "money");
-    assert!(files["src/user.php"].contains(r"call_user_func('App\format_price', 3);"), "not edited");
+    let edited = &files["src/user.php"];
+    assert!(edited.contains(r"call_user_func('App\money', 3);"), "{edited}");
+    assert!(edited.contains(r"array_map('\App\money', $prices);"), "{edited}");
+    assert!(edited.contains(r"strlen('App\format_price')"), "{edited}");
+    assert!(edited.contains(r"pick('App\format_price');"), "{edited}");
 
-    // A method: dynamic calls, `[$o, 'm']` and `'Class::m'` callables.
+    // A method: dynamic calls; `[$o, 'm']` and `'Class::m'` callables are renamed.
     let source = user.replace("$repo->find();", "$repo->fi/*|*/nd();");
-    assert_eq!(
-        project.possible("src/user.php", &source, "lookup"),
-        [user_line(14, "$m"), user_line(15, "{$m . 'x'}"), user_line(16, "find"), user_line(17, r"App\Repo::find"),]
-    );
+    assert_eq!(project.possible("src/user.php", &source, "lookup"), [user_line(17, "$m"), user_line(18, "{$m . 'x'}")]);
+    let files = project.renamed("src/user.php", &source, "lookup");
+    let edited = &files["src/user.php"];
+    assert!(edited.contains("call_user_func([$repo, 'lookup']);"), "{edited}");
+    assert!(edited.contains(r"call_user_func('App\Repo::lookup');"), "{edited}");
+    assert!(edited.contains("implode(',', [$repo, 'find'])"), "{edited}");
 
     // A property: dynamic accesses.
     let source = user.replace("$repo->title", "$repo->ti/*|*/tle");
-    assert_eq!(project.possible("src/user.php", &source, "name"), [user_line(19, "$p")]);
+    assert_eq!(project.possible("src/user.php", &source, "name"), [user_line(22, "$p")]);
 
     // A class has none.
     let source = user.replace("function run(Repo", "function run(Re/*|*/po");

@@ -435,3 +435,43 @@ fn members_and_variables_inside_a_property_hook() {
     let names = names_of(&found);
     assert!(names.iter().any(|n| n == "title"), "{names:?}");
 }
+
+#[test]
+fn function_names_in_a_string_where_a_callable_is_expected() {
+    let lib = "<?php\nnamespace App;\n\nconst BY_DEFAULT = 1;\nfunction by_name(array $a, array $b): int { return 0; }\nfunction column(callable|string $of): void {}\n";
+    let mut project = Project::new(&[("src/lib.php", lib)]);
+    let run = |body: &str| format!("<?php\nnamespace Web;\n\nfunction run(array $rows): void\n{{\n    {body}\n}}\n");
+
+    let found = project.complete("src/run.php", &run("usort($rows, 'by_/*|*/');"));
+    let by_name = item(&found, "by_name");
+    assert_eq!(by_name.insert_text, r"App\by_name", "the full name, not a call");
+    assert!(!by_name.is_snippet && by_name.additional_edits.is_empty());
+    assert!(!has(&found, "BY_DEFAULT"), "no constants");
+
+    // After a namespace, and escaped in a double-quoted string.
+    let found = project.complete("src/run.php", &run(r#"usort($rows, "App\\by_/*|*/");"#));
+    assert_eq!(item(&found, "by_name").insert_text, r"App\\by_name");
+    // A built-in function.
+    let found = project.complete("src/run.php", &run("array_map('strto/*|*/', $rows);"));
+    assert_eq!(item(&found, "strtolower").insert_text, "strtolower");
+
+    // The method of a callable array, and after `Class::`: names, the static ones for a class.
+    let sorter = "<?php\nnamespace App;\n\nclass Sorter\n{\n    public function compare(array $a, array $b): int { return 0; }\n    public static function create(array $a, array $b): int { return 0; }\n    private function hidden(): void {}\n}\n";
+    let mut project = Project::new(&[("src/lib.php", lib), ("src/Sorter.php", sorter)]);
+    let found = project.complete("src/run.php", &run("usort($rows, [new \\App\\Sorter(), 'c/*|*/']);"));
+    assert_eq!(item(&found, "compare").insert_text, "compare");
+    assert!(has(&found, "create") && !has(&found, "hidden"), "{:?}", labels(&found));
+    let found = project.complete("src/run.php", &run("usort($rows, [\\App\\Sorter::class, '/*|*/']);"));
+    assert!(has(&found, "create") && !has(&found, "compare"), "{:?}", labels(&found));
+    let found = project.complete("src/run.php", &run(r"usort($rows, 'App\Sorter::cr/*|*/');"));
+    assert_eq!(item(&found, "create").insert_text, "create");
+    assert!(!has(&found, "compare"), "{:?}", labels(&found));
+    let found = project.complete("src/run.php", &run("implode(',', [new \\App\\Sorter(), 'c/*|*/']);"));
+    assert!(!has(&found, "compare"), "{:?}", labels(&found));
+
+    // Not where a plain string is as good, nor in a string that is no callable.
+    let found = project.complete("src/run.php", &run(r"\App\column('by_/*|*/');"));
+    assert!(!has(&found, "by_name"), "{:?}", labels(&found));
+    let found = project.complete("src/run.php", &run("strlen('by_/*|*/');"));
+    assert!(!has(&found, "by_name"), "{:?}", labels(&found));
+}

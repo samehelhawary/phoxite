@@ -2,7 +2,9 @@
 //! constant name; a method, property, class constant or enum case (where it
 //! is used: `$o->m()`, `$o?->p`, `Foo::m()`, `parent::m()`, `self::C`,
 //! `Foo::$p`, `$o->m(...)`; or where it is declared); a parameter, through a
-//! named argument (`f(name: 1)`, `new Foo(name: 1)`); or a variable.
+//! named argument (`f(name: 1)`, `new Foo(name: 1)`); a function or method
+//! a string names where a callable is expected (`callable.rs`); or a
+//! variable.
 //!
 //! Members are looked up on the class models of the receiver's type (every
 //! class of a union), so inherited, trait, magic and enum members are found
@@ -211,6 +213,9 @@ impl PhpEngine {
             return lookup.name(name);
         }
         if let Some(found) = constant_string_at(parsed, here, offset) {
+            return Some(found);
+        }
+        if let Some(found) = lookup.callable_at(offset) {
             return Some(found);
         }
         if let Some(found) = lookup.syntax(offset) {
@@ -500,7 +505,7 @@ impl<'a> Lookup<'a, '_> {
         Some(AtCaret { range: name.range, subject: Subject::Decls(vec![decl]), context })
     }
 
-    fn exists(&self, kind: NameKind, fqn: &str) -> bool {
+    pub(super) fn exists(&self, kind: NameKind, fqn: &str) -> bool {
         if find_declaration(self.here, kind, fqn).is_some() {
             return true;
         }
@@ -558,7 +563,7 @@ impl<'a> Lookup<'a, '_> {
     }
 
     /// Members of the classes of `receiver` called `name`.
-    fn members(
+    pub(super) fn members(
         &self,
         kind: MemberKind,
         receiver: &Type,

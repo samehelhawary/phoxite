@@ -23,23 +23,28 @@
 //!   `@throws`, `@mixin`, …) and string literals naming the class
 //!   (`'App\\Foo'`), marked [`UsageKind::Doc`] and [`UsageKind::String`];
 //! - constant names in the strings of `define('X', …)`, `defined('X')` and
-//!   `constant('X')` ([`UsageKind::String`]).
+//!   `constant('X')` ([`UsageKind::String`]);
+//! - functions, methods and classes in string callables (`'f'`, `'Foo::m'`,
+//!   `[$o, 'm']`, `[Foo::class, 'm']`) passed where only a callable is
+//!   expected and naming something that exists ([`UsageKind::String`]; the
+//!   rules are in `callable.rs`).
 //!
 //! [`PhpEngine::possible_usages`] lists, in the same candidate files, the
-//! dynamic uses that may reach a function, method or property but that a
-//! rename can't follow: `$f()`, `$o->$m()`, `$o->$p`, `Foo::$$p`, and string
-//! callables (`'f'`, `'Foo::m'`, `[$o, 'm']`) passed where the callee's
-//! parameter is `callable` or `callable-string`.
+//! dynamic uses that may reach a function, method or property: `$f()`,
+//! `$o->$m()`, `$o->$p`, `Foo::$$p`, and every string callable passed where
+//! the callee's parameter takes a `callable` or `callable-string`, the
+//! certain ones included. A rename's outcome lists those it didn't follow.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use super::callable::{Candidate, Place, Takes, candidate, candidates};
 use crate::base::{CancellationToken, DocId, IdeError, IdeResult, Pos, Range};
 use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
-    Access, AnonymousClass, Argument, ArgumentList, ArrayElement, ArrowFunction, Call, Class,
-    ClassLikeConstantSelector, ClassLikeMemberSelector, Closure, DirectVariable, Enum, Expression, Function, Interface,
-    Literal, LiteralString, Method, PartialApplication, PropertyHook, Trait, TriviaKind, Variable,
+    Access, AnonymousClass, Argument, ArgumentList, ArrowFunction, Call, Class, ClassLikeConstantSelector,
+    ClassLikeMemberSelector, Closure, DirectVariable, Enum, Expression, Function, Interface, Literal, LiteralString,
+    Method, PartialApplication, PropertyHook, Trait, TriviaKind, Variable,
 };
 use mago_syntax::walker::Walker;
 use rayon::prelude::*;
@@ -52,7 +57,7 @@ use crate::index::words::contains_word;
 use crate::names::{FileNames, NameKind, NameRole, fqn_eq};
 use crate::summary::{FileSummary, Visibility};
 use crate::syntax::ParsedFile;
-use crate::types::{ExprTypes, Frame, StringKind, Type};
+use crate::types::{ExprTypes, Frame};
 
 /// How a usage refers to the declaration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -63,8 +68,8 @@ pub enum UsageKind {
     Code,
     /// A type in a PHPDoc comment.
     Doc,
-    /// A string literal naming the class, or the constant in
-    /// `define('X')`, `defined('X')` and `constant('X')`.
+    /// A string literal naming the class, the constant in `define('X')`,
+    /// `defined('X')` and `constant('X')`, or what a string callable names.
     String,
     /// A dynamic use that may reach the declaration but can't be renamed
     /// safely (`$f()`, `$o->$m()`, a string callable); only
@@ -646,17 +651,6 @@ pub(crate) fn constant_name_argument<'a>(
     (valid && string.raw.len() >= 2).then(|| (string, name.to_owned()))
 }
 
-/// The string literal `expr` is, maybe parenthesized: its value.
-fn literal_string<'a>(expr: &'a Expression<'a>) -> Option<(&'a LiteralString<'a>, String)> {
-    match expr {
-        Expression::Parenthesized(inner) => literal_string(inner.expression),
-        Expression::Literal(Literal::String(string)) if string.raw.len() >= 2 => {
-            Some((string, String::from_utf8_lossy(string.value?).into_owned()))
-        }
-        _ => None,
-    }
-}
-
 /// The span inside a string literal's quotes.
 fn inside_quotes(string: &LiteralString<'_>) -> (u32, u32) {
     (string.span.start.offset + 1, string.span.end.offset - 1)
@@ -933,83 +927,76 @@ impl<'a> Scan<'a, '_, '_> {
         }
     }
 
-    /// String callables naming a sought function or method (`'f'`,
-    /// `'Foo::m'`, `[$o, 'm']`) passed to a `callable` parameter of `call`.
+    /// String callables among the arguments of `call`.
     fn callable_arguments(&mut self, call: &'a Expression<'a>, list: &'a ArgumentList<'a>) {
-        let functions: Vec<String> = self
+        self.callable_strings(Place::Argument(call), candidates(list));
+    }
+
+    /// A string callable a function returns or a property is assigned.
+    fn callable_value(&mut self, place: Place<'a>, value: &'a Expression<'a>) {
+        if !self.possible {
+            self.callable_strings(place, candidate(value, 0).into_iter().collect());
+        }
+    }
+
+    /// String callables naming a sought function, method or class (`'f'`,
+    /// `'Foo::m'`, `[$o, 'm']`) given at `place` to what takes a callable.
+    /// Those that are certain (`callable.rs`) are usages; all of them are
+    /// possible usages.
+    fn callable_strings(&mut self, place: Place<'a>, found: Vec<Candidate<'a>>) {
+        if found.is_empty() {
+            return;
+        }
+        let functions: Vec<&str> = self
             .names_sought()
             .filter(|(kind, _)| *kind == NameKind::Function)
-            .map(|(_, fqn)| fqn.trim_start_matches('\\').to_owned())
+            .map(|(_, fqn)| fqn.trim_start_matches('\\'))
             .collect();
-        let methods: Vec<String> = self
+        let classes: Vec<&str> = self
+            .names_sought()
+            .filter(|(kind, _)| *kind == NameKind::ClassLike && !self.possible)
+            .map(|(_, fqn)| fqn.trim_start_matches('\\'))
+            .collect();
+        let methods: Vec<&str> = self
             .sought
             .iter()
             .filter_map(|sought| match sought {
-                Sought::Member { kind: MemberKind::Method, name, .. } => Some(name.clone()),
+                Sought::Member { kind: MemberKind::Method, name, .. } => Some(name.as_str()),
                 _ => None,
             })
             .collect();
-        if functions.is_empty() && methods.is_empty() {
+        if functions.is_empty() && methods.is_empty() && classes.is_empty() {
             return;
         }
         let method_named = |name: &str| methods.iter().any(|method| method.eq_ignore_ascii_case(name));
-        let mut candidates: Vec<(usize, &LiteralString<'_>)> = Vec::new();
-        for (index, argument) in list.arguments.iter().enumerate() {
-            let value = match argument {
-                Argument::Positional(argument) => argument.value,
-                Argument::Named(argument) => argument.value,
-            };
-            if let Some((string, text)) = literal_string(value) {
-                let text = text.strip_prefix('\\').unwrap_or(&text);
-                let named = match text.split_once("::") {
-                    Some((_, method)) => method_named(method),
-                    None => functions.iter().any(|fqn| fqn_eq(NameKind::Function, fqn, text)),
-                };
-                if named {
-                    candidates.push((index, string));
+        let named = |candidate: &Candidate<'_>| match candidate.parts() {
+            _ if candidate.receiver.is_some() => method_named(&candidate.text),
+            (Some(class), method) => {
+                method_named(method) || classes.iter().any(|fqn| fqn_eq(NameKind::ClassLike, fqn, class))
+            }
+            (None, function) => functions.iter().any(|fqn| fqn_eq(NameKind::Function, fqn, function)),
+        };
+        let candidates: Vec<Candidate<'a>> = found.into_iter().filter(named).collect();
+        for candidate in candidates {
+            let takes = self.lookup.takes_callable(place, &candidate, &self.frames);
+            if self.possible {
+                if takes != Takes::No {
+                    let (start, end) = inside_quotes(candidate.string);
+                    self.add_bytes(start, end, UsageKind::Possible);
                 }
                 continue;
             }
-            let elements = match value {
-                Expression::Array(array) => &array.elements,
-                Expression::LegacyArray(array) => &array.elements,
-                _ => continue,
-            };
-            let values: Vec<&Expression<'_>> = elements
-                .iter()
-                .filter_map(|element| match element {
-                    ArrayElement::Value(element) => Some(element.value),
-                    _ => None,
-                })
-                .collect();
-            if let [_, method] = values.as_slice()
-                && elements.len() == 2
-                && let Some((string, text)) = literal_string(method)
-                && method_named(&text)
-            {
-                candidates.push((index, string));
+            if takes != Takes::Callable {
+                continue;
             }
-        }
-        if candidates.is_empty() {
-            return;
-        }
-        let lookup = &self.lookup;
-        let Some(callee) = crate::signature::callee(lookup.types, lookup.names, lookup.resolver, call, &self.frames)
-        else {
-            return;
-        };
-        let context = lookup.types.context(&self.frames);
-        let params = crate::signature::callee_params(lookup.resolver, lookup.here, &callee, &context);
-        for (index, string) in candidates {
-            let Some(param) = crate::signature::parameter_index(&params, list, index) else { continue };
-            let callable = params[param]
-                .ty
-                .members()
-                .iter()
-                .any(|member| matches!(member, Type::Callable(_) | Type::String(StringKind::Callable)));
-            if callable {
-                let (start, end) = inside_quotes(string);
-                self.add_bytes(start, end, UsageKind::Possible);
+            let Some(found) = self.lookup.callable_named(&candidate, &self.frames) else { continue };
+            if found.decls.iter().any(|decl| self.matches(decl)) {
+                self.add_bytes(found.name.0, found.name.1, UsageKind::String);
+            }
+            if let Some(((start, end), class)) = found.class
+                && self.matches(&Decl::ClassLike(class))
+            {
+                self.add_bytes(start, end, UsageKind::String);
             }
         }
     }
@@ -1018,6 +1005,14 @@ impl<'a> Scan<'a, '_, '_> {
         if self.possible {
             self.dynamic(expr);
             return;
+        }
+        if let Expression::Call(_) = expr
+            && let Some(list) = crate::signature::argument_list(expr)
+        {
+            self.callable_arguments(expr, list);
+        }
+        if let Expression::Assignment(assignment) = expr {
+            self.callable_value(Place::Assigned(assignment.lhs), assignment.rhs);
         }
         let members = self.members_sought();
         match expr {
@@ -1046,6 +1041,7 @@ impl<'a> Scan<'a, '_, '_> {
             Expression::Instantiation(instantiation) => {
                 if let Some(list) = &instantiation.argument_list {
                     self.arguments(expr, list);
+                    self.callable_arguments(expr, list);
                 }
             }
             Expression::PartialApplication(PartialApplication::Method(partial)) if members => {
@@ -1203,6 +1199,12 @@ impl<'a, 'r, 's> Walker<'a, 'a, Scan<'a, 'r, 's>> for ScanWalker {
 
     fn walk_in_literal_string(&self, string: &'a LiteralString<'a>, cx: &mut Scan<'a, 'r, 's>) {
         cx.string(string);
+    }
+
+    fn walk_in_return(&self, node: &'a mago_syntax::cst::Return<'a>, cx: &mut Scan<'a, 'r, 's>) {
+        if let Some(value) = node.value {
+            cx.callable_value(Place::Returned, value);
+        }
     }
 
     fn walk_in_class(&self, node: &'a Class<'a>, cx: &mut Scan<'a, 'r, 's>) {

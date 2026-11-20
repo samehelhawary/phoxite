@@ -583,7 +583,16 @@ impl PhpEngine {
         let sought = self.rename_sought(renaming.subject, path, here, cancel)?;
         self.rename_conflicts(&sought, &new, cancel)?;
         let usages = self.find_usages(&sought, path, here, true, cancel)?;
-        let possible_usages = self.possible_usages(&sought, path, cancel)?;
+        // What may reach it and isn't renamed: not the string callables that are usages.
+        let mut possible_usages = self.possible_usages(&sought, path, cancel)?;
+        possible_usages.retain(|possible| {
+            !usages.iter().any(|usage| {
+                usage.kind == UsageKind::String
+                    && path_key(&usage.path) == path_key(&possible.path)
+                    && possible.range.start <= usage.range.start
+                    && usage.range.end <= possible.range.end
+            })
+        });
 
         // The places to change by file, in a stable order.
         let mut places: BTreeMap<String, (PathBuf, Vec<Place>)> = BTreeMap::new();

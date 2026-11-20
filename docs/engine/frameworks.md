@@ -95,6 +95,5 @@ arguments), and the handling of a few Laravel kinds in `undefined_references`.
 - One summary struct for the names a framework declares and uses (hooks, events), so that
   step 4 isn't repeated for each framework. It will be built with its first user, WordPress
   hooks.
-- String references for callable strings (`'my_function'`, `[Foo::class, 'method']`).
 - A reader for PHP files that return an array (Yii, CakePHP and Laminas configuration),
   generalised from `frameworks/laravel/config.rs`.

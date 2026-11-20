@@ -16,7 +16,7 @@ Last updated: 2026-11-20.
 | 0 | Framework-neutral foundations | Done |
 | 1 | Twig, end to end | Done |
 | 2 | Symfony and Doctrine, deeper | Done |
-| 2.5 | Callable-string references | Not started (next) |
+| 2.5 | Callable-string references | Done |
 | 3 | WordPress | Not started |
 | 4 | Drupal | Not started |
 | 5 | CodeIgniter 4 | Not started |
@@ -234,13 +234,32 @@ Moved to phase 6, after the PHP-array reader they need: Symfony's `services.php`
 A change of its own: it is on in every PHP project, not only framework ones, and looks at
 every call with a string argument, so a slowdown has to be traceable to it.
 
-- [ ] A reference kind for `'my_function'` and `[Foo::class, 'method']` passed to a
-      `callable` parameter: completion, goto, usages, rename. Builds on
-      `navigate/references.rs` (`callable_arguments`) and `refactor/signature.rs`
-      (`callable_strings`).
-- [ ] A group of kinds that is on whatever the project's frameworks
-      (`frameworks::refs::kinds_for`).
-- [ ] Budget and bench runs before and after, on the fixture and on laravel/framework.
+- [x] `'my_function'`, `'Foo::method'`, `[$o, 'method']` and `[Foo::class, 'method']`
+      passed where only a callable is expected: goto, hover, usages and rename
+      (`navigate/callable.rs`). Not a reference kind of `frameworks::refs`: what the string
+      names is a declaration navigation already knows, so it is resolved there and needs no
+      group of always-on kinds. A parameter that also takes a plain string or array
+      (`callable|string`) stays a possible usage.
+- [x] Function names complete inside such a string (the full name, escaped in a
+      double-quoted one).
+- [x] Budget runs before and after, on the fixture and on laravel/framework: see below.
+
+Budgets on laravel/framework, before (the phase 2 commit) and after: hover 2.3 and 2.5 ms,
+completion 6.7 and 7.0 ms, diagnostics after an edit 209 and 215 ms (budget 300), index
+from an empty cache 1353 and 1496 ms (budget 30000). Within what two runs differ by: the
+strings are only looked at for a request at a caret, and in the files a usage search
+already reads.
+
+Left over from phase 2.5:
+
+- [x] The method completes in `[$o, '…']` (the static ones after `Foo::class`) and after
+      `'Foo::` in a single-quoted string.
+- [x] A string a function or method declared to return a callable returns, and one
+      assigned to a property typed as a callable (`$this->then = [$this, 'run']`), are
+      seen like arguments.
+
+Moved to phase 3, where arrays of callbacks are common: a callable an array's value type
+expects, a closure's own return type, a default value.
 
 ## Phase 3 — WordPress
 
@@ -254,6 +273,11 @@ Needs phase 2.5.
       interpolated names matched by pattern; the undefined-hook inspection off by default.
 - [ ] Callbacks of `add_action`, `add_filter`, `add_shortcode`, activation hooks, REST and
       AJAX callbacks (the phase 2.5 kind).
+- [ ] String callables where phase 2.5 doesn't see them yet (moved from there;
+      `navigate/callable.rs`): a callable an array's value type expects
+      (`['callback' => [$this, 'run']]` for an `array{callback: callable}`, WordPress's way
+      of passing REST and settings callbacks), a closure's own return type, a default
+      value. Decide first whether the shapes of the indexed core say enough to read them.
 - [ ] Shortcode tags, post types and taxonomies, script and style handles, option names,
       image sizes, nav-menu locations, template parts.
 - [ ] Parameter types of a hook callback from the hook's firing site.
