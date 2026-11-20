@@ -116,7 +116,7 @@ impl ReferenceKind for ViewName {
             Some(dot) => (Some(local[..dot].replace('/', ".")), local_start + dot + 1),
             None => (None, local_start),
         };
-        let root = cx.project.root.clone();
+        let root = cx.project().root.clone();
         let relative =
             |path: &std::path::Path| path.strip_prefix(&root).unwrap_or(path).to_string_lossy().replace('\\', "/");
         let mut items: Vec<RefItem> = views

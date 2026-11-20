@@ -18,12 +18,6 @@
 //!   A repository without generics gets its entity from the entity whose
 //!   mapping names it, or from its `parent::__construct($registry,
 //!   Product::class)` ([`crate::summary::SymfonyFacts`]).
-//! - **Routes** ([`TypeProvider::known_strings`]): the first argument of
-//!   `path()` and `url()`, of `generateUrl()` and `redirectToRoute()` on a
-//!   controller and of `generate()` on a URL generator is one of the route
-//!   names of `config/routes*.yaml` and the `#[Route]` attributes, for
-//!   completion and the `PhpUndefinedRoute` inspection. Nothing is known
-//!   (and so nothing reported) while the project has no named route.
 //! - **Members** ([`TypeProvider::magic_members`]): on such a repository,
 //!   `findBy{Field}`, `findOneBy{Field}` and `countBy{Field}` for each of
 //!   the entity's properties.
@@ -33,29 +27,20 @@
 //! providers say. The behaviour follows Symfony's and Doctrine's public
 //! documentation and their MIT source (`EntityRepository::__call`,
 //! `ObjectManager::getRepository`).
+//!
+//! Route names are a string reference, not a type:
+//! [`crate::frameworks::symfony::refs::SymfonyRoute`].
 
-use super::{
-    ArgumentOf, CallKind, CallSite, KnownKind, KnownString, KnownStrings, MagicMember, MagicTarget, TypeProvider,
-    provided,
-};
+use super::{CallKind, CallSite, MagicMember, MagicTarget, TypeProvider, provided};
+use crate::frameworks::symfony::FRAMEWORK_BUNDLE;
 use crate::types::{Context, LazyType, Resolver, Type};
 
-const FRAMEWORK_BUNDLE: &str = "Symfony\\Bundle\\FrameworkBundle\\FrameworkBundle";
 const PSR_CONTAINER: &str = "Psr\\Container\\ContainerInterface";
 const SYMFONY_CONTAINER: &str = "Symfony\\Component\\DependencyInjection\\ContainerInterface";
 const OBJECT_MANAGER: &str = "Doctrine\\Persistence\\ObjectManager";
 const MANAGER_REGISTRY: &str = "Doctrine\\Persistence\\ManagerRegistry";
 const OBJECT_REPOSITORY: &str = "Doctrine\\Persistence\\ObjectRepository";
 const ENTITY_REPOSITORY: &str = "Doctrine\\ORM\\EntityRepository";
-const ABSTRACT_CONTROLLER: &str = "Symfony\\Bundle\\FrameworkBundle\\Controller\\AbstractController";
-const URL_GENERATOR: &str = "Symfony\\Component\\Routing\\Generator\\UrlGeneratorInterface";
-
-/// Functions taking a route name first (Twig's, sometimes defined in PHP).
-const ROUTE_FUNCTIONS: [&str; 2] = ["path", "url"];
-/// Controller methods taking a route name first.
-const ROUTE_METHODS: [&str; 2] = ["generateUrl", "redirectToRoute"];
-/// Every call name whose route argument is known.
-const ROUTE_CALLS: &[&str] = &["path", "url", "generateUrl", "redirectToRoute", "generate"];
 
 /// What a repository method returns, by name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -196,39 +181,6 @@ impl SymfonyProvider {
         None
     }
 
-    /// See [`TypeProvider::known_strings`].
-    fn routes(call: ArgumentOf<'_>, index: usize, resolver: &Resolver<'_>, context: &Context) -> Option<KnownStrings> {
-        if index != 0 {
-            return None;
-        }
-        let takes_route = match call {
-            ArgumentOf::Function(fqn) => {
-                ROUTE_FUNCTIONS.iter().any(|name| name.eq_ignore_ascii_case(call.name()))
-                    && resolver.declarations().function(fqn).is_none()
-            }
-            ArgumentOf::Method { receiver, name } => {
-                (ROUTE_METHODS.iter().any(|known| known.eq_ignore_ascii_case(name))
-                    && Self::is_a(resolver, receiver, context, &[ABSTRACT_CONTROLLER]))
-                    || (name.eq_ignore_ascii_case("generate")
-                        && Self::is_a(resolver, receiver, context, &[URL_GENERATOR]))
-            }
-        };
-        if !takes_route {
-            return None;
-        }
-        let project = resolver.symfony();
-        if project.routes.is_empty() {
-            return None;
-        }
-        let mut values: Vec<KnownString> = Vec::new();
-        for route in &project.routes {
-            if !values.iter().any(|known| known.value == route.name) {
-                values.push(KnownString { value: route.name.clone(), detail: route.path.clone() });
-            }
-        }
-        Some(KnownStrings { kind: KnownKind::Route, values })
-    }
-
     /// The resolve step of a call: `args` are the receiver and what the
     /// providers after this one say.
     fn resolve_call(
@@ -356,23 +308,6 @@ impl TypeProvider for SymfonyProvider {
             return Vec::new();
         }
         Self::members_of(resolver, receiver, context)
-    }
-
-    fn known_string_calls(&self) -> &'static [&'static str] {
-        ROUTE_CALLS
-    }
-
-    fn known_strings(
-        &self,
-        call: ArgumentOf<'_>,
-        index: usize,
-        resolver: &Resolver<'_>,
-        context: &Context,
-    ) -> Option<KnownStrings> {
-        if !Self::installed(resolver) {
-            return None;
-        }
-        Self::routes(call, index, resolver, context)
     }
 }
 

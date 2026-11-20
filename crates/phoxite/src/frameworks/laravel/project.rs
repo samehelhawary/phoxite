@@ -47,6 +47,7 @@ use serde_json::Value;
 
 use super::config::ConfigKeys;
 use super::ide_json::IdeJson;
+use crate::frameworks::detect::ComposerPackages;
 use crate::project::composer::RootManifest;
 use crate::project::normalize;
 use crate::summary::{LaravelFacts, RouteFileKind, RoutePath, RouteRegistration};
@@ -221,28 +222,11 @@ impl LaravelProject {
         let root = normalize(root);
         let manifest = RootManifest::read(&root);
         let vendor = root.join(manifest.as_ref().map_or("vendor", |m| m.vendor_dir.as_str()));
-        // `composer.lock` and `installed.json` are large (700 KB each in
-        // Monica): parsed at the same time, and `installed.json` only once
-        // for every reader below.
-        let (composer, (lock, installed)) = rayon::join(
-            || read_json(&root.join("composer.json")),
-            || {
-                rayon::join(
-                    || read_json(&root.join("composer.lock")),
-                    || read_json(&vendor.join("composer").join("installed.json")),
-                )
-            },
-        );
-        let required = |name: &str| {
-            composer.as_ref().is_some_and(|json| {
-                ["require", "require-dev"].iter().any(|section| json.get(section).and_then(|s| s.get(name)).is_some())
-            })
-        };
-        let locked = |name: &str| {
-            lock.as_ref()
-                .and_then(|lock| locked_version(lock, name))
-                .or_else(|| installed.as_ref().and_then(|installed| locked_version(installed, name)))
-        };
+        // `installed.json` is read only once for every reader below.
+        let packages = ComposerPackages::read_with(&root, &vendor);
+        let installed = &packages.installed;
+        let required = |name: &str| packages.required(name);
+        let locked = |name: &str| packages.locked(name);
         let version = locked("laravel/framework");
         if !force && !required("laravel/framework") && version.is_none() && !root.join("artisan").is_file() {
             return None;
@@ -261,13 +245,7 @@ impl LaravelProject {
             || locked("nwidart/laravel-modules").is_some()
             || root.join("modules_statuses.json").is_file();
         let livewire_major = locked(LaravelPackages::LIVEWIRE)
-            .or_else(|| {
-                composer.as_ref().and_then(|json| {
-                    ["require", "require-dev"].iter().find_map(|section| {
-                        json.get(section)?.get(LaravelPackages::LIVEWIRE)?.as_str().map(str::to_owned)
-                    })
-                })
-            })
+            .or_else(|| packages.constraint(LaravelPackages::LIVEWIRE).map(str::to_owned))
             .and_then(|version| major_version(&version));
         let mut project = Self {
             root: root.clone(),
@@ -613,22 +591,4 @@ fn major_version(version: &str) -> Option<u32> {
     let start = version.find(|c: char| c.is_ascii_digit())?;
     let digits: String = version[start..].chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
-}
-
-/// The version of package `name` in a `composer.lock` (`packages`,
-/// `packages-dev`) or an `installed.json` (either format), without `v`.
-fn locked_version(json: &Value, name: &str) -> Option<String> {
-    let lists: Vec<&Vec<Value>> = match json {
-        Value::Array(packages) => vec![packages],
-        Value::Object(map) => {
-            ["packages", "packages-dev"].iter().filter_map(|key| map.get(*key).and_then(Value::as_array)).collect()
-        }
-        _ => Vec::new(),
-    };
-    lists.into_iter().flatten().find(|package| package.get("name").and_then(Value::as_str) == Some(name)).map(
-        |package| {
-            let version = package.get("version").and_then(Value::as_str).unwrap_or_default();
-            version.strip_prefix('v').unwrap_or(version).to_owned()
-        },
-    )
 }

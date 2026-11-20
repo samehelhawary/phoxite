@@ -114,7 +114,7 @@ impl ReferenceKind for TranslationKey {
             Some(dot) => (Some(&typed[..dot]), dot + 1),
             None => (None, 0),
         };
-        let root = &cx.project.root;
+        let root = &cx.project().root;
         for entry in translations.children(parent) {
             let label = match parent {
                 Some(parent) => entry.key[parent.len() + 1..].to_owned(),

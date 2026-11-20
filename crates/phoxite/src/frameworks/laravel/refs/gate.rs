@@ -116,7 +116,7 @@ fn studly(name: &str) -> String {
 /// or route parameter names like `post`) stand for.
 pub(crate) fn models_of(cx: &RefContext<'_>, subjects: &[String]) -> Vec<String> {
     let resolver = cx.engine.resolver();
-    let namespace = cx.project.app_namespace.clone();
+    let namespace = cx.project().app_namespace.clone();
     let mut out: Vec<String> = Vec::new();
     for subject in subjects {
         let subject = subject.trim_start_matches('\\');

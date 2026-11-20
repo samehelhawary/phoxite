@@ -116,6 +116,7 @@ the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
 | `phoxite.stubs` | Extra extension stubs (`redis`, `swoole`…). |
 | `phoxite.exclude` | Globs left out of the index. |
 | `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`. |
+| `phoxite.frameworks` | Each framework's support: `auto` (detected), `enabled` or `disabled`. |
 | `phoxite.laravel.*` | Detection, route hints, modules, Inertia page folders. |
 | `phoxite.laravel.database` | A SQLite database to read columns from: `auto` (the one in `.env`) or a path. Empty: the migrations alone. |
 | `phoxite.laravel.artisanCommand` | How Artisan runs: `php artisan`, `./vendor/bin/sail artisan`… |

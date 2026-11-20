@@ -11,6 +11,7 @@ pub mod error;
 pub mod event;
 pub mod inspection_settings;
 pub mod settings;
+pub mod yaml;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};

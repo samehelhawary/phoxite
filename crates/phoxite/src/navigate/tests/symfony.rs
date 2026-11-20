@@ -187,3 +187,131 @@ fn configured_service_ids_are_typed_until_the_yaml_changes() {
     assert_eq!(project.type_in_controller("$c->get('mailer')/*|*/;"), "App\\Entity\\Product");
     assert_eq!(project.type_in_controller("$c->get('mailer.default')/*|*/;"), "mixed");
 }
+
+/// [`configured`] with another controller on disk that names routes.
+fn with_usages() -> Project {
+    let other = controller("$this->redirectToRoute('about');\n        $urls->generate('blog_show');")
+        .replace("HomeController", "OtherController");
+    Project::new(&[
+        ("lib/libraries.php", LIBRARIES),
+        ("lib/app.php", APP),
+        ("lib/bundle.php", FRAMEWORK_BUNDLE),
+        ("config/routes.yaml", ROUTES_YAML),
+        ("src/Controller/OtherController.php", &other),
+    ])
+}
+
+impl Project {
+    /// The usages at the caret of `source` opened as `rel`, as `(relative
+    /// path, line, the text at the range)`, the document left open.
+    fn route_usages(&mut self, rel: &str, source: &str) -> Vec<(String, u32, String)> {
+        let (text, pos) = caret(source);
+        let doc = self.open(rel, &text);
+        let usages = self.engine.references(doc, pos, true, &CancellationToken::new()).expect("handled").unwrap();
+        let found = usages.iter().map(|usage| self.describe(&usage.path, usage.range)).collect();
+        self.engine.document_closed(doc);
+        found
+    }
+
+    /// The edits of renaming at the caret of `source` opened as `rel`, as
+    /// `(relative path, the text replaced)`, sorted.
+    fn route_rename(&mut self, rel: &str, source: &str, new_name: &str) -> Vec<(String, String)> {
+        let (text, pos) = caret(source);
+        let doc = self.open(rel, &text);
+        let edit = self.engine.rename(doc, pos, new_name, &CancellationToken::new()).expect("handled").unwrap();
+        let mut found = Vec::new();
+        for file in &edit.files {
+            let crate::base::FileEdit::Edit { path, edits, .. } = file else { panic!("only text edits") };
+            for edit in edits {
+                assert_eq!(edit.new_text, new_name);
+                let (rel, _, replaced) = self.describe(path, edit.range);
+                found.push((rel, replaced));
+            }
+        }
+        self.engine.document_closed(doc);
+        found.sort();
+        found
+    }
+}
+
+#[test]
+fn a_route_name_goes_to_where_the_route_is_declared() {
+    let mut project = configured();
+    // A route of a YAML routes file: its key.
+    let found = project.definition(CONTROLLER, &controller("return $this->redirectToRoute('ab/*|*/out');"));
+    assert_eq!(found, Some(vec![target("config/routes.yaml", 2, "about")]));
+    // A route of a `#[Route]` attribute: the name written there, after the class's prefix.
+    let found = project.definition(CONTROLLER, &controller("return $urls->generate('blog_sh/*|*/ow');")).unwrap();
+    let app = APP.lines().position(|line| line.contains("name: 'show'")).unwrap() as u32;
+    assert_eq!(found, [target("lib/app.php", app, "show")]);
+    // A name no route has goes nowhere; a string that names no route isn't one.
+    assert_eq!(project.definition(CONTROLLER, &controller("return $urls->generate('no/*|*/pe');")), Some(vec![]));
+    assert_eq!(project.definition(CONTROLLER, &controller("return strlen('ab/*|*/out');")), None);
+}
+
+#[test]
+fn hover_on_a_route_name_shows_its_path() {
+    let mut project = configured();
+    let (text, pos) = caret(&controller("return $this->redirectToRoute('ab/*|*/out');"));
+    let doc = project.open(CONTROLLER, &text);
+    let hover = project.engine.hover(doc, pos).expect("a hover").markdown;
+    assert!(hover.contains("**route** `about`"), "{hover}");
+    assert!(hover.contains("`/about`") && hover.contains("config/routes.yaml"), "{hover}");
+}
+
+#[test]
+fn usages_of_a_route_name_from_a_usage_and_from_its_attribute() {
+    let mut project = with_usages();
+    let found = project.route_usages(CONTROLLER, &controller("return $this->generateUrl('ab/*|*/out');"));
+    assert_eq!(
+        found,
+        [
+            target("config/routes.yaml", 2, "about"),
+            target("src/Controller/HomeController.php", 11, "about"),
+            target("src/Controller/OtherController.php", 11, "about"),
+        ]
+    );
+    // From the attribute declaring it: the usages write the full name.
+    let found = project.route_usages("lib/app.php", &APP.replace("name: 'show'", "name: 'sh/*|*/ow'"));
+    let usages: Vec<&(String, u32, String)> = found.iter().filter(|(rel, ..)| rel.starts_with("src/")).collect();
+    assert_eq!(usages, [&target("src/Controller/OtherController.php", 12, "blog_show")]);
+}
+
+#[test]
+fn renaming_a_route_renames_its_declaration_and_its_usages() {
+    let mut project = with_usages();
+    let found = project.route_rename(CONTROLLER, &controller("return $this->generateUrl('ab/*|*/out');"), "about_us");
+    assert_eq!(
+        found,
+        [
+            ("config/routes.yaml".to_owned(), "about".to_owned()),
+            ("src/Controller/HomeController.php".to_owned(), "about".to_owned()),
+            ("src/Controller/OtherController.php".to_owned(), "about".to_owned()),
+        ]
+    );
+    // The class's prefix stays: only the part the attribute writes changes.
+    let found = project.route_rename(CONTROLLER, &controller("return $urls->generate('blog_sh/*|*/ow');"), "view");
+    assert_eq!(
+        found,
+        [
+            ("lib/app.php".to_owned(), "show".to_owned()),
+            ("src/Controller/HomeController.php".to_owned(), "show".to_owned()),
+            ("src/Controller/OtherController.php".to_owned(), "show".to_owned()),
+        ]
+    );
+    // A name that can't be a route name is refused.
+    let (text, pos) = caret(&controller("return $this->generateUrl('ab/*|*/out');"));
+    let doc = project.open(CONTROLLER, &text);
+    let refused = project.engine.rename(doc, pos, "not a name", &CancellationToken::new()).expect("handled");
+    assert!(refused.is_err());
+}
+
+#[test]
+fn route_names_are_off_where_the_call_takes_none() {
+    let mut project = configured();
+    // `generateUrl` of another class, `generate` of a controller.
+    for body in ["(new \\App\\Service\\Mailer())->generateUrl('/*|*/');", "$this->generate('/*|*/');"] {
+        let found = project.complete_in_controller(body);
+        assert!(!has(&found, "home"), "{body}");
+    }
+}

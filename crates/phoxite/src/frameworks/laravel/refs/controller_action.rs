@@ -77,7 +77,7 @@ pub(super) fn controller_class(cx: &RefContext<'_>, name: &str) -> Option<String
     }
     let mut candidates: Vec<String> = cx.class().map(str::to_owned).into_iter().collect();
     candidates.push(name.clone());
-    candidates.push(format!("{}Http\\Controllers\\{name}", cx.project.app_namespace));
+    candidates.push(format!("{}Http\\Controllers\\{name}", cx.project().app_namespace));
     let resolver = cx.engine.resolver();
     let known = candidates.iter().find(|class| resolver.class_model(class).is_some()).cloned();
     known.or_else(|| candidates.into_iter().next())

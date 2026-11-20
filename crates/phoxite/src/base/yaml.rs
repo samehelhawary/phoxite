@@ -1,4 +1,5 @@
-//! A reader for the part of YAML Symfony's configuration files use: block
+//! A reader for the part of YAML that frameworks' configuration files use
+//! (Symfony's services and routes, Drupal's `*.services.yml`): block
 //! mappings and sequences by indentation, flow mappings and sequences
 //! (`{ resource: '../src/' }`, `[a, b]`), plain, single- and double-quoted
 //! scalars, comments, and block scalars (`|`, `>`), whose text is skipped.

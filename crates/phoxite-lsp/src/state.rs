@@ -198,6 +198,7 @@ impl State {
         match PhpEngine::open(config, sink) {
             Ok(engine) => {
                 engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
+                engine.set_framework_settings(php.frameworks);
                 engine.set_laravel_settings(php.laravel.clone());
                 tracing::info!("indexing {}", root.display());
                 let workspace = Workspace {
@@ -269,6 +270,7 @@ impl State {
             engine.set_layout_config(LayoutConfig::from_config(&root, &php));
             engine.set_stub_filter(StubFilter::from_config(&root, &php));
             engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
+            engine.set_framework_settings(php.frameworks);
             engine.set_laravel_settings(php.laravel.clone());
             crate::laravel::load_templates(self, &root, &engine);
             crate::schema::refresh_quietly(self, &root, &engine);

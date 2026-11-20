@@ -319,6 +319,68 @@ fn laravel_routes_views_and_blade() {
     c.shutdown();
 }
 
+/// A Symfony project written here: the two framework classes route names
+/// are about, a YAML route and a controller naming it.
+fn symfony_project() -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let files = [
+        ("composer.json", r#"{"require": {"symfony/framework-bundle": "^7.0"}}"#),
+        (
+            "lib/symfony.php",
+            "<?php\nnamespace Symfony\\Bundle\\FrameworkBundle;\nclass FrameworkBundle {}\n\nnamespace Symfony\\Bundle\\FrameworkBundle\\Controller;\nabstract class AbstractController {\n    protected function generateUrl(string $route, array $parameters = []): string { return ''; }\n}\n",
+        ),
+        ("config/routes.yaml", "home:\n    path: /\nabout:\n    path: /about\n"),
+        (
+            "src/Controller/HomeController.php",
+            "<?php\nnamespace App\\Controller;\n\nuse Symfony\\Bundle\\FrameworkBundle\\Controller\\AbstractController;\n\nclass HomeController extends AbstractController\n{\n    public function index(): string\n    {\n        return $this->generateUrl('about');\n    }\n}\n",
+        ),
+    ];
+    for (rel, text) in files {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    (dir, root)
+}
+
+#[test]
+fn symfony_route_names_go_to_their_route_and_rename_with_it() {
+    let (_dir, root) = symfony_project();
+    let mut c = Client::start(&root);
+    let controller = root.join("src/Controller/HomeController.php");
+    let uri = c.open(&controller, "php");
+    let (line, col) = find(&controller, "'about')", 2);
+    let found =
+        c.request_until::<r::GotoDefinition>(at(&uri, line, col), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    assert!(found.to_string().contains("config/routes.yaml"), "{found}");
+    assert_eq!(found[0]["range"]["start"]["line"], 2, "{found}");
+
+    let mut rename = at(&uri, line, col);
+    rename["newName"] = json!("about_us");
+    let edit = c.request::<r::Rename>(rename).to_string();
+    assert!(edit.contains("config/routes.yaml") && edit.contains("HomeController.php"), "{edit}");
+    assert!(edit.contains("about_us"), "{edit}");
+    c.shutdown();
+}
+
+#[test]
+fn a_framework_turned_off_in_the_settings_has_no_string_references() {
+    let (_dir, root) = symfony_project();
+    let mut c = Client::start(&root);
+    let controller = root.join("src/Controller/HomeController.php");
+    let uri = c.open(&controller, "php");
+    let (line, col) = find(&controller, "'about')", 2);
+    // On: the route's key in the YAML file.
+    c.request_until::<r::GotoDefinition>(at(&uri, line, col), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    c.notify::<n::DidChangeConfiguration>(
+        json!({ "settings": { "phoxite": { "frameworks": { "symfony": "disabled" } } } }),
+    );
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), |v| !v.to_string().contains("routes.yaml"));
+    assert!(!found.to_string().contains("routes.yaml"), "{found}");
+    c.shutdown();
+}
+
 fn copy_dir(from: &Path, to: &Path) {
     for entry in std::fs::read_dir(from).unwrap() {
         let entry = entry.unwrap();

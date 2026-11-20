@@ -19,7 +19,8 @@
 //! [`yaml`]. [`SymfonyConfig::load`] reads them from disk; the engine
 //! caches the result until a watcher batch touches a YAML file.
 
-pub mod yaml;
+/// The YAML reader, which other frameworks' configuration uses too.
+pub use crate::base::yaml;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

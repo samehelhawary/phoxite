@@ -210,7 +210,7 @@ fn create_controller(
     invokable: bool,
 ) -> Option<UndefinedFix> {
     let engine = cx.engine;
-    let project = &cx.project;
+    let project = &cx.project();
     let settings = engine.laravel_settings().generation;
     let target = engine.generation_target(project, &settings, None).ok()?;
     let mut short = studly(short_name(written));

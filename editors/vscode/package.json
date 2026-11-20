@@ -346,6 +346,105 @@
             }
           }
         },
+        "phoxite.frameworks": {
+          "type": "object",
+          "additionalProperties": false,
+          "markdownDescription": "Whether each framework's support is on: `auto` (when Composer installs the framework or one of its own files exists), `enabled` or `disabled`. `laravel` wins over `laravel.detection` unless it is `auto`. Laravel is the framework with support of its own today; the other names are read now and take effect as each framework's support is released.",
+          "properties": {
+            "laravel": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            },
+            "symfony": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            },
+            "wordpress": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            },
+            "drupal": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            },
+            "codeigniter": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            },
+            "yii": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            },
+            "cakephp": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            },
+            "laminas": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            },
+            "magento": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "enabled",
+                "disabled"
+              ],
+              "default": "auto"
+            }
+          },
+          "default": {
+            "laravel": "auto",
+            "symfony": "auto",
+            "wordpress": "auto",
+            "drupal": "auto",
+            "codeigniter": "auto",
+            "yii": "auto",
+            "cakephp": "auto",
+            "laminas": "auto",
+            "magento": "auto"
+          }
+        },
         "phoxite.laravel.detection": {
           "type": "string",
           "enum": [

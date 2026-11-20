@@ -9,7 +9,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::symfony::yaml;
+use crate::base::yaml;
 
 /// The most template names [`TemplatePaths::names`] lists.
 pub const MAX_NAMES: usize = 2000;

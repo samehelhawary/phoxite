@@ -59,7 +59,7 @@ use crate::navigate::{enclosing_class, rank, short_name};
 use crate::signature::Callee;
 use crate::summary::{ClassKind, FileSummary};
 use crate::syntax::ParsedFile;
-use crate::types::provider::{ArgumentOf, MagicTarget};
+use crate::types::provider::MagicTarget;
 use crate::types::{ClassModel, Context, ExprTypes, Frame, PROBE_VARIABLE, Resolver, SignatureParam, Type};
 
 /// The name put in place of the word being completed.
@@ -284,6 +284,8 @@ pub(crate) fn string_start(bytes: &[u8], offset: usize) -> Option<usize> {
             Some(quote) if byte == bytes[quote] => open = None,
             Some(_) => {}
             None if byte == b'\'' || byte == b'"' => open = Some(i),
+            // `#[` opens an attribute, whose arguments have strings too.
+            None if byte == b'#' && bytes.get(i + 1) == Some(&b'[') => i += 1,
             None if byte == b'#' || (byte == b'/' && bytes.get(i + 1) == Some(&b'/')) => return None,
             None => {}
         }
@@ -1168,18 +1170,18 @@ impl<'e, 'r> Collector<'e, 'r> {
                 }
             }
         }
-        // Values a type provider knows (route names).
-        let call = match callee {
-            Callee::Function(fqn) => ArgumentOf::Function(fqn),
-            Callee::Method { receiver, name } => ArgumentOf::Method { receiver, name },
-        };
-        let known = self.resolver.providers().known_strings(call, site.index, self.resolver, context);
-        for value in known.map(|known| known.values).unwrap_or_default() {
-            let escaped = value.value.replace('\\', "\\\\").replace('\'', "\\'");
-            let mut item = Self::item(value.value.clone(), CompletionKind::Value);
-            item.insert_text = if in_string { escaped } else { format!("'{escaped}'") };
-            item.detail = value.detail;
-            self.push(item, 0);
+        // The values of a string reference that isn't written yet (route
+        // names), inserted quoted. Inside a string the reference itself
+        // completes (`PhpEngine::string_ref_completion`).
+        if !in_string {
+            let self_class = context.self_class.as_deref();
+            for value in self.engine.unquoted_ref_items(callee, site.index, self_class, self.resolver) {
+                let escaped = value.insert.replace('\\', "\\\\").replace('\'', "\\'");
+                let mut item = Self::item(value.label, CompletionKind::Value);
+                item.insert_text = format!("'{escaped}'");
+                item.detail = value.detail;
+                self.push(item, 0);
+            }
         }
         // The cases of an enum-typed parameter.
         if !in_string {

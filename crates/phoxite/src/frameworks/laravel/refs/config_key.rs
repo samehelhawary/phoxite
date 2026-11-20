@@ -118,7 +118,7 @@ impl ReferenceKind for ConfigKey {
     }
 
     fn declared_at(&self, cx: &RefContext<'_>, path: &Path, parsed: &ParsedFile, offset: u32) -> Option<Declared> {
-        let prefix = file_prefix(&cx.project.paths.config, path)?;
+        let prefix = file_prefix(&cx.project().paths.config, path)?;
         let declared = declared_key_at(parsed, &prefix, offset)?;
         let at = declared.key.len() - (declared.end - offset.min(declared.end)) as usize;
         Some(Declared { value: declared.key, start: declared.start, end: declared.end, at })
@@ -129,7 +129,7 @@ impl ReferenceKind for ConfigKey {
         let end = segment_end(value, at);
         let key = &value[..end];
         let entry = keys.get(key)?;
-        if entry.is_file || !entry.path.starts_with(&cx.project.paths.config) {
+        if entry.is_file || !entry.path.starts_with(&cx.project().paths.config) {
             return None;
         }
         let start = key.rfind('.').map_or(0, |dot| dot + 1);
@@ -155,7 +155,7 @@ impl ReferenceKind for ConfigKey {
     fn hover(&self, cx: &RefContext<'_>, value: &str) -> Option<String> {
         let keys = Self::keys(cx);
         let entry = keys.get(value)?;
-        let file = entry.path.strip_prefix(&cx.project.root).unwrap_or(&entry.path);
+        let file = entry.path.strip_prefix(&cx.project().root).unwrap_or(&entry.path);
         let file = file.to_string_lossy().replace('\\', "/");
         let mut out = format!("**config** `{}`", entry.key);
         if let Some(value) = &entry.value {

@@ -3,7 +3,6 @@ use std::path::Path;
 use crate::summary::FileSummary;
 use crate::symfony::SymfonyConfig;
 use crate::syntax::ParsedFile;
-use crate::types::provider::{ArgumentOf, KnownKind};
 use crate::types::{Context, Resolver, SummarySet, Type, TypeCache, TypeProviders, type_at};
 
 const CARET: &str = "/*|*/";
@@ -430,45 +429,4 @@ fn container_get_by_configured_id() {
     }
     // Without the framework bundle the configuration says nothing.
     assert_eq!(type_with(&[LIBRARIES, APP], &config, "function f(Psr $c) { $c->get('mailer')/*|*/; }"), "mixed");
-}
-
-/// The route names argument 0 of `call` accepts, with the declarations of
-/// `libs` and `config`.
-fn routes(libs: &[&str], config: SymfonyConfig, call: ArgumentOf<'_>) -> Option<Vec<(String, Option<String>)>> {
-    let file = ParsedFile::parse("main.php", "<?php\n");
-    let mut decls = summaries(libs, &file);
-    decls.symfony_config = config;
-    let cache = TypeCache::new();
-    let resolver = Resolver::new(&decls, &cache, 1);
-    let known = TypeProviders::builtin().known_strings(call, 0, &resolver, &Context::default())?;
-    assert_eq!(known.kind, KnownKind::Route);
-    Some(known.values.into_iter().map(|value| (value.value, value.detail)).collect())
-}
-
-#[test]
-fn route_names_of_the_configuration_and_the_attributes() {
-    let controller = Type::named("App\\Controller\\BlogController");
-    let generator = Type::named("Symfony\\Component\\Routing\\Generator\\UrlGeneratorInterface");
-    let all = Some(vec![
-        ("home".to_owned(), Some("/".to_owned())),
-        ("about".to_owned(), Some("/about".to_owned())),
-        ("blog_show".to_owned(), Some("/blog/{slug}".to_owned())),
-    ]);
-    assert_eq!(routes(INSTALLED, config(), ArgumentOf::Function("Main\\path")), all);
-    assert_eq!(routes(INSTALLED, config(), ArgumentOf::Function("url")), all);
-    let method = |receiver, name| ArgumentOf::Method { receiver, name };
-    assert_eq!(routes(INSTALLED, config(), method(&controller, "generateUrl")), all);
-    assert_eq!(routes(INSTALLED, config(), method(&controller, "redirectToRoute")), all);
-    assert_eq!(routes(INSTALLED, config(), method(&generator, "generate")), all);
-    // Other calls, receivers and arguments.
-    let mailer = Type::named("App\\Service\\Mailer");
-    assert_eq!(routes(INSTALLED, config(), method(&mailer, "generateUrl")), None);
-    assert_eq!(routes(INSTALLED, config(), method(&controller, "generate")), None);
-    assert_eq!(routes(INSTALLED, config(), ArgumentOf::Function("strlen")), None);
-    // The attributes alone are enough.
-    let attributes = routes(INSTALLED, SymfonyConfig::default(), ArgumentOf::Function("path"));
-    assert_eq!(attributes, Some(vec![("blog_show".to_owned(), Some("/blog/{slug}".to_owned()))]));
-    // No route at all, or no framework bundle: nothing is known.
-    assert_eq!(routes(&[LIBRARIES, FRAMEWORK_BUNDLE], SymfonyConfig::default(), ArgumentOf::Function("path")), None);
-    assert_eq!(routes(&[LIBRARIES, APP], config(), ArgumentOf::Function("path")), None);
 }

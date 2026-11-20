@@ -104,7 +104,7 @@ impl ReferenceKind for LivewireComponentKind {
     }
 
     fn is_known(&self, cx: &RefContext<'_>, value: &str) -> bool {
-        !cx.project.packages.livewire || Self::components(cx).get(value).is_some()
+        !cx.project().packages.livewire || Self::components(cx).get(value).is_some()
     }
 
     /// The alias of a `Livewire::component('alias', …)` registration.
@@ -168,7 +168,7 @@ impl ReferenceKind for LivewireComponentKind {
         let component = components.get(value)?;
         let mut out = format!("Livewire component `{}`\n\n`{}`", component.name, component.class);
         if let Some(view) = &component.view {
-            let relative = view.strip_prefix(&cx.project.root).unwrap_or(view);
+            let relative = view.strip_prefix(&cx.project().root).unwrap_or(view);
             out.push_str(&format!("\n\nView: `{}`", relative.to_string_lossy().replace('\\', "/")));
         }
         Some(out)
@@ -257,7 +257,7 @@ impl PhpEngine {
     /// names, with the byte range of the last segment of its name: renaming
     /// it renames the class ([`Self::rename_discovered_livewire`]). `None`
     /// for anything else, and for a package's component.
-    pub(super) fn discovered_livewire(
+    pub(crate) fn discovered_livewire(
         &self,
         cx: &RefContext<'_>,
         subject: &Subject,
@@ -317,7 +317,7 @@ impl PhpEngine {
     /// Renames a discovered component to `segment`, the new last segment of
     /// its name: its class (`posts.edit-post` → `App\Livewire\Posts\EditPost`,
     /// with its file and usages), which renames every usage of the name.
-    pub(super) fn rename_discovered_livewire(
+    pub(crate) fn rename_discovered_livewire(
         &self,
         component: &LivewireComponent,
         segment: &str,

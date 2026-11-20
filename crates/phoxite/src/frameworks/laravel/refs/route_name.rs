@@ -134,7 +134,7 @@ impl ReferenceKind for RouteName {
             .named(value)
             .map(|route| {
                 let info = crate::frameworks::laravel::route_hints::route_info(route, &app_url);
-                let file = route.path.strip_prefix(&cx.project.root).unwrap_or(&route.path);
+                let file = route.path.strip_prefix(&cx.project().root).unwrap_or(&route.path);
                 let file = file.to_string_lossy().replace('\\', "/");
                 let mut out = format!("`{} {}` · `{}`", info.methods.join("|"), info.uri, info.action);
                 if !info.middleware.is_empty() {

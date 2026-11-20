@@ -150,6 +150,7 @@ fn check(options: &CheckOptions) -> Result<Report, Stop> {
 fn inspect(engine: &PhpEngine, settings: &Settings, root: &Path, wanted: &[PathBuf]) -> Result<Report, Stop> {
     let php = settings.engine_config();
     engine.configure_inspections(InspectionConfig::from_profile(&php.inspections));
+    engine.set_framework_settings(php.frameworks);
     engine.set_laravel_settings(php.laravel.clone());
     if !engine.wait_idle(INDEX_TIMEOUT) {
         return Err(Stop(FAILED, format!("indexing {} took too long", root.display())));

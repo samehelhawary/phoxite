@@ -50,8 +50,17 @@ pub struct UndefinedReference {
     kind: &'static dyn ReferenceKind,
 }
 
-/// The inspections, as `(inspection id, kind)`.
-const INSPECTIONS: [(&str, &dyn ReferenceKind); 13] = [
+/// One framework's inspections, as `(inspection id, kind)`.
+type Inspections = &'static [(&'static str, &'static dyn ReferenceKind)];
+
+/// The inspections of every framework's kinds: a framework with "undefined
+/// …" inspections of its own adds its list here. A kind is only asked in a
+/// project of its framework ([`crate::frameworks::refs::kinds_for`]), so an
+/// inspection reports nothing elsewhere.
+const INSPECTIONS: &[Inspections] = &[LARAVEL];
+
+/// Laravel's.
+const LARAVEL: Inspections = &[
     ("PhpUndefinedConfigKey", &ConfigKey),
     ("PhpUndefinedEnvKey", &EnvKey),
     ("PhpUndefinedTranslation", &TranslationKey),
@@ -70,7 +79,7 @@ const INSPECTIONS: [(&str, &dyn ReferenceKind); 13] = [
 impl UndefinedReference {
     /// Every inspection of the module.
     pub fn all() -> Vec<Self> {
-        INSPECTIONS.iter().map(|(id, kind)| Self { id, kind: *kind }).collect()
+        INSPECTIONS.iter().flat_map(|list| list.iter()).map(|(id, kind)| Self { id, kind: *kind }).collect()
     }
 }
 
@@ -80,7 +89,7 @@ pub fn inspection_id(kind: &str) -> Option<&'static str> {
     if kind == ViewName.id() {
         return Some("PhpUndefinedView");
     }
-    INSPECTIONS.iter().find(|(_, known)| known.id() == kind).map(|(id, _)| *id)
+    INSPECTIONS.iter().flat_map(|list| list.iter()).find(|(_, known)| known.id() == kind).map(|(id, _)| *id)
 }
 
 impl Inspection for UndefinedReference {

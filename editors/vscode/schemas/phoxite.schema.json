@@ -91,6 +91,22 @@
         }
       }
     },
+    "frameworks": {
+      "description": "Whether each framework's support is on: `auto` (when Composer installs the framework or one of its own files exists), `enabled` or `disabled`. `laravel` wins over `laravel.detection` unless it is `auto`. Laravel is the framework with support of its own today; the other names are read now and take effect as each framework's support is released.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "laravel": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "symfony": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "wordpress": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "drupal": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "codeigniter": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "yii": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "cakephp": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "laminas": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "magento": { "enum": ["auto", "enabled", "disabled"], "default": "auto" }
+      }
+    },
     "format": {
       "type": "object",
       "additionalProperties": false,

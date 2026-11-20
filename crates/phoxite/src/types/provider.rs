@@ -31,10 +31,9 @@
 //! ([`TypeProvider::magic_property`], asked by the resolver), such as
 //! Eloquent relation properties, and list the members a class only has
 //! through `__call`, `__callStatic` or `__get`
-//! ([`TypeProvider::magic_members`]) for completion, hover and goto, and
-//! the values a string argument accepts ([`TypeProvider::known_strings`]:
-//! Symfony's route names) for completion and the `PhpUndefinedRoute`
-//! inspection.
+//! ([`TypeProvider::magic_members`]) for completion, hover and goto. What
+//! a string argument names (a route, a view) isn't a provider's: that is a
+//! string reference ([`crate::frameworks::refs`]).
 
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
@@ -306,47 +305,6 @@ pub enum AttributeOrigin {
     Rule { rules: String, source: Option<Source> },
 }
 
-/// A call whose string argument a provider may know the values of.
-#[derive(Clone, Copy, Debug)]
-pub enum ArgumentOf<'a> {
-    /// A function, by FQN (the namespaced candidate of an unqualified name
-    /// that no file declares).
-    Function(&'a str),
-    /// A method, by the type of its receiver.
-    Method { receiver: &'a Type, name: &'a str },
-}
-
-impl ArgumentOf<'_> {
-    /// The function's short name or the method's name.
-    pub fn name(&self) -> &str {
-        match self {
-            Self::Function(fqn) => fqn.rsplit('\\').next().unwrap_or(fqn),
-            Self::Method { name, .. } => name,
-        }
-    }
-}
-
-/// What the values of a [`KnownStrings`] are.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum KnownKind {
-    /// Route names.
-    Route,
-}
-
-/// The values a string argument accepts: any other value is an error.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KnownStrings {
-    pub kind: KnownKind,
-    pub values: Vec<KnownString>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KnownString {
-    pub value: String,
-    /// Shown next to the value in completion (a route's path).
-    pub detail: Option<String>,
-}
-
 /// A place in another file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Source {
@@ -433,25 +391,6 @@ pub trait TypeProvider: Send + Sync {
     /// declares: `None` keeps the declared type. (Eloquent: the raw
     /// `Builder $query` of a model's local scope is the model's builder.)
     fn parameter(&self, _site: &ParameterSite<'_>, _resolver: &Resolver<'_>) -> Option<Type> {
-        None
-    }
-
-    /// The function and method names (any case) whose arguments
-    /// [`TypeProvider::known_strings`] may know: inspections only ask about
-    /// calls of these names.
-    fn known_string_calls(&self) -> &'static [&'static str] {
-        &[]
-    }
-
-    /// The values argument `index` of `call` accepts, when they form a
-    /// known, closed set; `None` lets the next provider answer.
-    fn known_strings(
-        &self,
-        _call: ArgumentOf<'_>,
-        _index: usize,
-        _resolver: &Resolver<'_>,
-        _context: &Context,
-    ) -> Option<KnownStrings> {
         None
     }
 }
@@ -601,29 +540,6 @@ impl TypeProviders {
             }
         }
         out
-    }
-
-    /// Whether some provider may know the string arguments of calls named
-    /// `name`.
-    pub fn has_known_strings(&self, name: &str) -> bool {
-        self.providers
-            .iter()
-            .any(|(_, provider)| provider.known_string_calls().iter().any(|known| known.eq_ignore_ascii_case(name)))
-    }
-
-    /// The first provider's answer for the values argument `index` of
-    /// `call` accepts.
-    pub fn known_strings(
-        &self,
-        call: ArgumentOf<'_>,
-        index: usize,
-        resolver: &Resolver<'_>,
-        context: &Context,
-    ) -> Option<KnownStrings> {
-        if !self.has_known_strings(call.name()) {
-            return None;
-        }
-        self.providers.iter().find_map(|(_, provider)| provider.known_strings(call, index, resolver, context))
     }
 
     /// The magic member `name` of `receiver` (a method when `method`).

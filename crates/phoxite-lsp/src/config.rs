@@ -10,6 +10,7 @@
 //!   "exclude": ["storage", "node_modules"],
 //!   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true, "severity": "error" } },
 //!   "laravel": { "routeHints": true, "modules": "auto", "generation": { "module": "Blog" } },
+//!   "frameworks": { "laravel": "auto", "symfony": "auto", "wordpress": "disabled" },
 //!   "format": { "lineWidth": 120, "tool": "phoxite" },
 //!   "templates": { "path": ".phoxite/templates" },
 //!   "analyzers": { "onSave": true, "phpPath": "php" }
@@ -29,7 +30,7 @@ use std::path::{Path, PathBuf};
 
 use phoxite::base::Severity;
 use phoxite::base::inspection_settings::InspectionOverride;
-use phoxite::base::settings::{LaravelSettings, PhpConfig};
+use phoxite::base::settings::{FrameworkSettings, LaravelSettings, PhpConfig};
 use phoxite::inspect::{PROFILE_ID, STRICT_OPTION};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,9 @@ pub struct Settings {
     pub exclude: Option<Vec<String>>,
     pub inspections: BTreeMap<String, InspectionSetting>,
     pub laravel: LaravelSettings,
+    /// Which frameworks' support is on: `auto`, `enabled` or `disabled`
+    /// for each (`{ "wordpress": "enabled" }`).
+    pub frameworks: FrameworkSettings,
     pub format: FormatSettings,
     pub templates: TemplateSettings,
     pub analyzers: AnalyzerSettings,
@@ -140,6 +144,7 @@ impl Settings {
             excludes,
             inspections,
             laravel: self.laravel.clone(),
+            frameworks: self.frameworks,
         }
     }
 
@@ -351,6 +356,22 @@ mod tests {
         assert!(!config.laravel.route_hints);
         assert_eq!(settings.severity("PhpTypeMismatch"), Some(Severity::Error));
         assert_eq!(settings.format.line_width, 120);
+    }
+
+    #[test]
+    fn frameworks_are_forced_on_or_off_by_name() {
+        use phoxite::base::settings::Detection;
+
+        let (settings, rejected) = Settings::from_json(&json!({
+            "frameworks": { "laravel": "disabled", "wordpress": "enabled", "drupal": "sometimes" }
+        }));
+        // A value that is no choice keeps its default and is named.
+        assert_eq!(rejected, ["frameworks.drupal"]);
+        let frameworks = settings.engine_config().frameworks;
+        assert_eq!(frameworks.laravel, Detection::Disabled);
+        assert_eq!(frameworks.wordpress, Detection::Enabled);
+        assert_eq!(frameworks.drupal, Detection::Auto);
+        assert_eq!(frameworks.symfony, Detection::Auto);
     }
 
     #[test]

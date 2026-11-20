@@ -535,6 +535,40 @@ fn the_settings_override_detection_and_modules() {
 }
 
 #[test]
+fn the_engine_says_which_frameworks_the_project_uses() {
+    use crate::base::settings::{Detection, FrameworkSettings, LaravelDetection, LaravelSettings};
+    use crate::frameworks::Framework;
+
+    let dir = Dir::new();
+    dir.write("composer.json", r#"{"require": {"symfony/framework-bundle": "^7.0"}}"#);
+    dir.write("index.php", "<?php\n");
+    let engine = open_engine(&dir);
+    let frameworks = |engine: &PhpEngine| engine.frameworks().iter().collect::<Vec<_>>();
+    assert_eq!(frameworks(&engine), [Framework::Symfony]);
+
+    // A watcher batch that touches `composer.json` reads them again.
+    let composer = dir.write("composer.json", LARAVEL);
+    engine.files_changed(&[composer], &[]);
+    assert!(engine.wait_idle(Duration::from_secs(60)));
+    assert_eq!(frameworks(&engine), [Framework::Laravel]);
+
+    // `frameworks.laravel` wins over `laravel.detection`, unless it is `auto`.
+    let forced = |laravel| FrameworkSettings { laravel, ..FrameworkSettings::default() };
+    engine.set_framework_settings(forced(Detection::Disabled));
+    assert!(engine.laravel().is_none(), "frameworks.laravel forced off");
+    assert_eq!(frameworks(&engine), []);
+    engine.set_laravel_settings(LaravelSettings { detection: LaravelDetection::Enabled, ..LaravelSettings::default() });
+    assert!(engine.laravel().is_none(), "frameworks.laravel still wins");
+    engine.set_framework_settings(forced(Detection::Auto));
+    assert!(engine.laravel().is_some(), "laravel.detection decides again");
+
+    // Another framework forced on is in the set beside the detected one.
+    engine.set_laravel_settings(LaravelSettings::default());
+    engine.set_framework_settings(FrameworkSettings { wordpress: Detection::Enabled, ..FrameworkSettings::default() });
+    assert_eq!(frameworks(&engine), [Framework::Laravel, Framework::WordPress]);
+}
+
+#[test]
 fn module_systems_keep_their_kind_of_module() {
     let dir = Dir::new();
     dir.write("composer.json", r#"{"require": {"laravel/framework": "^11.0", "nwidart/laravel-modules": "^11.0"}}"#);

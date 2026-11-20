@@ -6,6 +6,7 @@
 
 use super::blade_tests::{PAGE, Template};
 use super::*;
+use crate::base::TextEdit;
 use crate::frameworks::laravel::components::{ComponentRegistrations, default_alias};
 
 const USER_CARD: &str = r#"<?php

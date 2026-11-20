@@ -46,7 +46,7 @@ impl InertiaPageKind {
     }
 
     fn relative(cx: &RefContext<'_>, path: &std::path::Path) -> String {
-        path.strip_prefix(&cx.project.root).unwrap_or(path).to_string_lossy().replace('\\', "/")
+        path.strip_prefix(&cx.project().root).unwrap_or(path).to_string_lossy().replace('\\', "/")
     }
 }
 
@@ -79,7 +79,7 @@ impl ReferenceKind for InertiaPageKind {
     }
 
     fn is_known(&self, cx: &RefContext<'_>, value: &str) -> bool {
-        !cx.project.packages.inertia || Self::pages(cx).get(value).is_some()
+        !cx.project().packages.inertia || Self::pages(cx).get(value).is_some()
     }
 
     fn canonical(&self, _cx: &RefContext<'_>, value: &str) -> String {
@@ -131,7 +131,7 @@ impl ReferenceKind for InertiaPageKind {
 
     fn undefined(&self, cx: &RefContext<'_>, value: &str) -> Option<Undefined> {
         let pages = Self::pages(cx);
-        if !cx.project.packages.inertia || !pages.has_dir() || pages.get(value).is_some() {
+        if !cx.project().packages.inertia || !pages.has_dir() || pages.get(value).is_some() {
             return None;
         }
         let problem = Undefined {

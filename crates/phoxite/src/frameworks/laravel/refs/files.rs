@@ -37,7 +37,7 @@ impl PhpEngine {
     fn env_subject(&self, path: &Path, text: &str, pos: Pos) -> Option<(RefContext<'_>, String, Range)> {
         let cx = self.ref_context()?;
         let path = normalize(path);
-        if !ENV_FILES.iter().any(|file| normalize(&cx.project.root.join(file)) == path) {
+        if !ENV_FILES.iter().any(|file| normalize(&cx.project().root.join(file)) == path) {
             return None;
         }
         let (key, range) = env_key_at(text, pos)?;

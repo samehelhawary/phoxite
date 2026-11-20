@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Symfony route names (`generateUrl()`, `redirectToRoute()`, a URL generator's
+  `generate()`, `path()` and `url()`) have Go to Definition, Find References, Rename and
+  hover: to the key in a YAML routes file or the `name` of the `#[Route]` attribute.
+  Renaming a route whose class has a name prefix changes the part the attribute writes.
+  Completion and the undefined-route warning work as before.
+- Completion, hover, Go to Definition and Rename work in strings inside attributes
+  (`#[Route('/x', name: 'home')]`): the `#` of `#[` was read as the start of a comment.
+- A new setting, `frameworks` (`phoxite.frameworks` in VS Code), turns each framework's
+  support `enabled` or `disabled`; `auto`, the default, detects it. `frameworks.laravel`
+  wins over `laravel.detection` unless it is `auto`. Laravel and Symfony are the
+  frameworks with support today; the other names (`wordpress`, `drupal`, `codeigniter`,
+  `yii`, `cakephp`, `laminas`, `magento`) are read now and take effect as each one's
+  support is released.
+
 ## 0.6.1 — 2026-11-17
 
 - An include path brings what its `composer.json` autoloads: the one at the top of the

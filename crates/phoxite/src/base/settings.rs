@@ -32,6 +32,7 @@ pub struct PhpConfig {
     /// Inspection overrides by id (`php:PhpUndefinedClassInspection`).
     pub inspections: BTreeMap<String, InspectionOverride>,
     pub laravel: LaravelSettings,
+    pub frameworks: FrameworkSettings,
 }
 
 impl PhpConfig {
@@ -221,15 +222,49 @@ impl Default for LaravelSettings {
     }
 }
 
+/// Whether a framework's support is on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum LaravelDetection {
-    /// A Laravel project when `composer.json` requires `laravel/framework`, a
-    /// lock file lists it, or `artisan` exists.
+pub enum Detection {
+    /// On when the project looks like one of the framework: Composer
+    /// installs it, or one of its marker files exists (for Laravel:
+    /// `composer.json` requires `laravel/framework`, a lock file lists it,
+    /// or `artisan` exists). See [`crate::frameworks::detect`].
     #[default]
     Auto,
     Enabled,
     Disabled,
+}
+
+/// The name [`Detection`] had when Laravel was the only framework.
+pub type LaravelDetection = Detection;
+
+/// Which frameworks' support is on, by framework
+/// ([`crate::frameworks::Framework::key`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FrameworkSettings {
+    /// Wins over [`LaravelSettings::detection`] unless it is `auto`.
+    pub laravel: Detection,
+    pub symfony: Detection,
+    pub wordpress: Detection,
+    pub drupal: Detection,
+    pub codeigniter: Detection,
+    pub yii: Detection,
+    pub cakephp: Detection,
+    pub laminas: Detection,
+    pub magento: Detection,
+}
+
+impl FrameworkSettings {
+    /// These settings with Laravel's taken from `laravel.detection` when
+    /// `frameworks.laravel` doesn't say.
+    pub fn with_laravel(mut self, laravel: Detection) -> Self {
+        if self.laravel == Detection::Auto {
+            self.laravel = laravel;
+        }
+        self
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -54,8 +54,9 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::base::event::ServerStatus;
-use crate::base::settings::{LaravelDetection, LaravelSettings};
+use crate::base::settings::{Detection, FrameworkSettings, LaravelSettings};
 use crate::base::{CancellationToken, DocId, IdeError, IdeEvent, IdeResult, Pos, ServerId, SharedSink};
+use crate::frameworks::{Framework, Frameworks};
 use parking_lot::{Condvar, Mutex, RwLock};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -233,6 +234,13 @@ struct Shared {
     /// The project's Symfony configuration, read on first use; dropped
     /// when a YAML file changes.
     symfony_config: Mutex<Option<Arc<SymfonyConfig>>>,
+    /// Which frameworks' support the settings force on or off.
+    framework_settings: Mutex<FrameworkSettings>,
+    /// The frameworks of the project, until a file detection reads changes.
+    frameworks: Mutex<Option<Frameworks>>,
+    /// Whether Symfony's `FrameworkBundle` class is known, and the
+    /// modification count that was asked at.
+    symfony_class: Mutex<Option<(u64, bool)>>,
     laravel: Mutex<LaravelCache>,
     /// The Laravel configuration keys for a modification count.
     laravel_config: Mutex<Option<(u64, Arc<ConfigKeys>)>>,
@@ -461,6 +469,9 @@ impl PhpEngine {
             inspections: Arc::default(),
             inspection_config: Mutex::new(InspectionConfig::default()),
             symfony_config: Mutex::new(None),
+            framework_settings: Mutex::new(FrameworkSettings::default()),
+            frameworks: Mutex::new(None),
+            symfony_class: Mutex::new(None),
             laravel: Mutex::new(LaravelCache::default()),
             laravel_config: Mutex::new(None),
             laravel_env: Mutex::new(None),
@@ -692,6 +703,7 @@ impl PhpEngine {
     /// Loads the layout again and brings the indexes up to date.
     pub fn rescan(&self) {
         *self.shared.symfony_config.lock() = None;
+        *self.shared.frameworks.lock() = None;
         *self.shared.laravel.lock() = LaravelCache::default();
         self.shared.disk.fetch_add(1, Ordering::SeqCst);
         self.shared.modification.fetch_add(1, Ordering::SeqCst);
@@ -887,7 +899,8 @@ impl PhpEngine {
     pub fn laravel(&self) -> Option<Arc<LaravelProject>> {
         let modification = self.framework_count();
         let settings = self.laravel_settings();
-        if settings.detection == LaravelDetection::Disabled {
+        let detection = self.framework_settings().with_laravel(settings.detection).laravel;
+        if detection == Detection::Disabled {
             return None;
         }
         let loaded = {
@@ -902,7 +915,7 @@ impl PhpEngine {
         let loaded = match loaded {
             Some(loaded) => loaded,
             None => {
-                let force = settings.detection == LaravelDetection::Enabled;
+                let force = detection == Detection::Enabled;
                 let root = self.root();
                 // The resolver's facts (read from the index's summaries) are
                 // needed right after: built at the same time when the
@@ -969,6 +982,7 @@ impl PhpEngine {
     /// aren't PHP, and moves the modification count so every part built
     /// from it is built again.
     pub(crate) fn reset_laravel_cache(&self) {
+        *self.shared.frameworks.lock() = None;
         *self.shared.laravel.lock() = LaravelCache::default();
         self.shared.disk.fetch_add(1, Ordering::SeqCst);
         self.shared.modification.fetch_add(1, Ordering::SeqCst);
@@ -1214,6 +1228,69 @@ impl PhpEngine {
         *self.shared.laravel_templates.lock() = templates;
     }
 
+    /// The frameworks of the project ([`Frameworks::detect`], after the
+    /// `frameworks` settings). Laravel is in the set exactly when
+    /// [`laravel`](Self::laravel) has a project. Kept until a file that
+    /// detection reads changes.
+    pub fn frameworks(&self) -> Frameworks {
+        let known = *self.shared.frameworks.lock();
+        if let Some(known) = known {
+            return self.with_known_symfony(known);
+        }
+        // Laravel's answer is the project model's: what forces it on or
+        // off is settled there, and its Composer files are read once.
+        let laravel = self.laravel().is_some();
+        let settings = FrameworkSettings {
+            laravel: if laravel { Detection::Enabled } else { Detection::Disabled },
+            ..self.framework_settings()
+        };
+        let found = Frameworks::detect(&self.root(), &settings);
+        debug_assert_eq!(found.contains(Framework::Laravel), laravel);
+        *self.shared.frameworks.lock() = Some(found);
+        self.with_known_symfony(found)
+    }
+
+    /// `found` with Symfony when its `FrameworkBundle` class is known though
+    /// Composer doesn't install the bundle (Symfony's own source tree),
+    /// unless the settings say. Asked of the index once per modification.
+    fn with_known_symfony(&self, mut found: Frameworks) -> Frameworks {
+        if found.contains(Framework::Symfony) || self.framework_settings().symfony != Detection::Auto {
+            return found;
+        }
+        let modification = self.framework_count();
+        let cached = self.shared.symfony_class.lock().filter(|(at, _)| *at == modification).map(|(_, known)| known);
+        let known = cached.unwrap_or_else(|| {
+            let known = self.resolver().class_model(crate::frameworks::symfony::FRAMEWORK_BUNDLE).is_some();
+            *self.shared.symfony_class.lock() = Some((modification, known));
+            known
+        });
+        if known {
+            found.insert(Framework::Symfony);
+        }
+        found
+    }
+
+    /// Which frameworks' support the settings force on or off
+    /// ([`PhpEngine::set_framework_settings`]).
+    pub fn framework_settings(&self) -> FrameworkSettings {
+        *self.shared.framework_settings.lock()
+    }
+
+    /// Changes which frameworks' support is forced on or off. When
+    /// something changes, the project models are read again and open
+    /// documents are inspected again.
+    pub fn set_framework_settings(&self, settings: FrameworkSettings) {
+        {
+            let mut current = self.shared.framework_settings.lock();
+            if *current == settings {
+                return;
+            }
+            *current = settings;
+        }
+        self.reset_laravel_cache();
+        self.shared.inspect_open_documents();
+    }
+
     /// Changes what Laravel support shows (the front end's settings). When
     /// detection, the modules or the Inertia page folders change, the
     /// project model is read again and open documents are inspected again.
@@ -1227,9 +1304,7 @@ impl PhpEngine {
             changed
         };
         if model_changed {
-            *self.shared.laravel.lock() = LaravelCache::default();
-            self.shared.disk.fetch_add(1, Ordering::SeqCst);
-            self.shared.modification.fetch_add(1, Ordering::SeqCst);
+            self.reset_laravel_cache();
             self.shared.inspect_open_documents();
         }
     }

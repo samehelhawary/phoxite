@@ -24,9 +24,9 @@ editor ── LSP (stdio) ──▶ phoxite-lsp server.rs ──▶ handlers.rs 
   client's settings onto the engine's `PhpConfig`.
 - `handlers.rs` answers the standard requests and `convert.rs` turns the
   engine's types (`phoxite::base`) into the LSP's.
-- Twig templates need no engine: `phoxite::twig` answers the outline,
-  completion and template goto from the open document's text and the
-  project's template directories.
+- Twig templates: `phoxite::twig` answers the outline, completion and
+  template goto from a document's text and the project's template
+  directories, without an engine. The server doesn't serve it yet.
 - Blade templates (`*.blade.php`, whatever language id the client sends):
   directive completion and view/component goto need no engine. For the PHP
   inside echoes, directives and `@php` blocks the server asks the engine:
@@ -87,9 +87,13 @@ shared by every inspection of one run.
 `types::provider::TypeProvider` lets a framework add types without touching the
 core: a key, local steps for a call site or an untyped property (`call`,
 `property`, which return a `LazyType::Provided` payload) and a resolve step
-(`resolve`, with the indexes). PHPUnit test doubles, `setUp()` fields and
-`.phpstorm.meta.php` are built in; Laravel and Symfony are next on the roadmap
-(plan 7). Register a new provider in `TypeProviders::default`.
+(`resolve`, with the indexes). PHPUnit test doubles, `setUp()` fields,
+`.phpstorm.meta.php`, Laravel and Symfony are built in. Register a new provider
+in `TypeProviders::default`.
+
+What a string names (a route, a view, a configuration key) is not a type but a
+string reference. Those, and how the engine knows which frameworks a project
+uses, are in [frameworks.md](frameworks.md).
 
 ### Pest
 
