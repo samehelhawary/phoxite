@@ -1,7 +1,7 @@
 {
   "name": "phoxite",
   "displayName": "Phoxite — PHP & Laravel IntelliSense",
-  "description": "PHP and Laravel code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections and Laravel support (routes, views, config, translations, validation, Eloquent, Blade, generators, Artisan).",
+  "description": "PHP and Laravel code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections, Laravel support (routes, views, config, translations, validation, Eloquent, Blade, generators, Artisan) and Twig templates.",
   "version": "0.6.1",
   "publisher": "phoxite",
   "license": "Apache-2.0",
@@ -32,6 +32,8 @@
     "php",
     "laravel",
     "blade",
+    "twig",
+    "symfony",
     "intellisense",
     "refactoring",
     "language server",
@@ -46,6 +48,7 @@
   "activationEvents": [
     "onLanguage:php",
     "onLanguage:blade",
+    "onLanguage:twig",
     "workspaceContains:composer.json",
     "onWebviewPanel:phoxite.modelView",
     "onWebviewPanel:phoxite.newModel",
@@ -54,10 +57,11 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In Restricted Mode Phoxite gives code intelligence from the files it reads. It runs nothing of the project: Artisan, PHPStan and Psalm stay off, and the settings that name a program or a file outside the project are taken from your own settings only.",
+      "description": "In Restricted Mode Phoxite gives code intelligence from the files it reads. It runs nothing of the project: Artisan, PHPStan, Psalm, Pint and Prettier stay off, and the settings that name a program or a file outside the project are taken from your own settings only.",
       "restrictedConfigurations": [
         "phoxite.server.path",
         "phoxite.analyzers.phpPath",
+        "phoxite.analyzers.nodePath",
         "phoxite.analyzers.onSave",
         "phoxite.laravel.artisanCommand",
         "phoxite.laravel.database",
@@ -86,6 +90,17 @@
           ".blade.php"
         ],
         "configuration": "./languages/blade.language-configuration.json"
+      },
+      {
+        "id": "twig",
+        "aliases": [
+          "Twig",
+          "twig"
+        ],
+        "extensions": [
+          ".twig"
+        ],
+        "configuration": "./languages/twig.language-configuration.json"
       }
     ],
     "grammars": [
@@ -95,6 +110,16 @@
         "path": "./syntaxes/blade.tmLanguage.json",
         "embeddedLanguages": {
           "source.php": "php",
+          "text.html.basic": "html",
+          "source.css": "css",
+          "source.js": "javascript"
+        }
+      },
+      {
+        "language": "twig",
+        "scopeName": "text.html.twig",
+        "path": "./syntaxes/twig.tmLanguage.json",
+        "embeddedLanguages": {
           "text.html.basic": "html",
           "source.css": "css",
           "source.js": "javascript"
@@ -115,6 +140,10 @@
       {
         "language": "blade",
         "path": "./snippets/blade.json"
+      },
+      {
+        "language": "twig",
+        "path": "./snippets/twig.json"
       }
     ],
     "commands": [
@@ -566,6 +595,26 @@
             "Phoxite's own formatter (PSR-12). Needs nothing installed.",
             "The project's Laravel Pint (`vendor/bin/pint`, with its `pint.json`), run with the PHP of `phoxite.analyzers.phpPath`. Only in a trusted workspace; when the project doesn't install Pint, or Pint fails, Phoxite's formatter is used."
           ]
+        },
+        "phoxite.format.twig": {
+          "type": "string",
+          "enum": [
+            "phoxite",
+            "prettier"
+          ],
+          "default": "phoxite",
+          "scope": "window",
+          "markdownDescription": "What **Format Document** uses for a Twig template. A selection is always formatted by Phoxite.",
+          "markdownEnumDescriptions": [
+            "Phoxite's own formatter: the indentation of every line and the spacing inside tags. Needs nothing installed.",
+            "The project's Prettier (`node_modules/prettier`, with its configuration and a plugin that reads Twig, such as `@zackad/prettier-plugin-twig`), run with the Node.js of `phoxite.analyzers.nodePath`. It also rewraps lines and formats the JavaScript and CSS inside. Only in a trusted workspace; when the project doesn't install Prettier, or Prettier fails, Phoxite's formatter is used."
+          ]
+        },
+        "phoxite.analyzers.nodePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "The Node.js that runs the project's Prettier (`phoxite.format.twig`). Empty: `node` on `PATH`."
         },
         "phoxite.analyzers.onSave": {
           "type": "boolean",

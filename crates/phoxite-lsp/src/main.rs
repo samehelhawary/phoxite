@@ -15,6 +15,7 @@ mod convert;
 mod handlers;
 mod laravel;
 mod pint;
+mod prettier;
 mod refactor;
 mod report;
 mod schema;

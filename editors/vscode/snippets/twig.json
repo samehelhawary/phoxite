@@ -1,0 +1,138 @@
+{
+  "block": {
+    "prefix": "block",
+    "description": "{% block %} … {% endblock %}",
+    "body": [
+      "{% block ${1:name} %}",
+      "\t$0",
+      "{% endblock %}"
+    ]
+  },
+  "extends": {
+    "prefix": "extends",
+    "description": "{% extends %}",
+    "body": [
+      "{% extends '${1:base.html.twig}' %}"
+    ]
+  },
+  "include": {
+    "prefix": "include",
+    "description": "{% include %}",
+    "body": [
+      "{% include '${1:template.html.twig}' %}"
+    ]
+  },
+  "embed": {
+    "prefix": "embed",
+    "description": "{% embed %} … {% endembed %}",
+    "body": [
+      "{% embed '${1:template.html.twig}' %}",
+      "\t$0",
+      "{% endembed %}"
+    ]
+  },
+  "if": {
+    "prefix": "if",
+    "description": "{% if %} … {% endif %}",
+    "body": [
+      "{% if ${1:condition} %}",
+      "\t$0",
+      "{% endif %}"
+    ]
+  },
+  "if … else": {
+    "prefix": "ifelse",
+    "description": "{% if %} … {% else %} … {% endif %}",
+    "body": [
+      "{% if ${1:condition} %}",
+      "\t$2",
+      "{% else %}",
+      "\t$0",
+      "{% endif %}"
+    ]
+  },
+  "elseif": {
+    "prefix": "elseif",
+    "description": "{% elseif %}",
+    "body": [
+      "{% elseif ${1:condition} %}"
+    ]
+  },
+  "for": {
+    "prefix": "for",
+    "description": "{% for %} … {% endfor %}",
+    "body": [
+      "{% for ${1:item} in ${2:items} %}",
+      "\t$0",
+      "{% endfor %}"
+    ]
+  },
+  "for … else": {
+    "prefix": "forelse",
+    "description": "{% for %} … {% else %} … {% endfor %}",
+    "body": [
+      "{% for ${1:item} in ${2:items} %}",
+      "\t$3",
+      "{% else %}",
+      "\t$0",
+      "{% endfor %}"
+    ]
+  },
+  "set": {
+    "prefix": "set",
+    "description": "{% set %}",
+    "body": [
+      "{% set ${1:name} = ${2:value} %}"
+    ]
+  },
+  "macro": {
+    "prefix": "macro",
+    "description": "{% macro %} … {% endmacro %}",
+    "body": [
+      "{% macro ${1:name}(${2:arguments}) %}",
+      "\t$0",
+      "{% endmacro %}"
+    ]
+  },
+  "import": {
+    "prefix": "import",
+    "description": "{% import … as … %}",
+    "body": [
+      "{% import '${1:macros.html.twig}' as ${2:macros} %}"
+    ]
+  },
+  "from": {
+    "prefix": "from",
+    "description": "{% from … import … %}",
+    "body": [
+      "{% from '${1:macros.html.twig}' import ${2:name} %}"
+    ]
+  },
+  "apply": {
+    "prefix": "apply",
+    "description": "{% apply %} … {% endapply %}",
+    "body": [
+      "{% apply ${1:filter} %}",
+      "\t$0",
+      "{% endapply %}"
+    ]
+  },
+  "with": {
+    "prefix": "with",
+    "description": "{% with %} … {% endwith %}",
+    "body": [
+      "{% with ${1:{ name: value \\}} %}",
+      "\t$0",
+      "{% endwith %}"
+    ]
+  },
+  "verbatim": {
+    "prefix": "verbatim",
+    "description": "{% verbatim %} … {% endverbatim %}",
+    "body": [
+      "{% verbatim %}",
+      "\t$0",
+      "{% endverbatim %}"
+    ]
+  }
+}

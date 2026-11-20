@@ -11,6 +11,11 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | Symfony, Doctrine | yes | `types::provider::SymfonyProvider` | route names (`frameworks::symfony::refs`) |
 | WordPress, Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
 
+Twig templates are not a framework in this sense: `phoxite::twig` reads a template's text
+and the project's template folders, needs no engine, and is served for every `*.twig` file.
+Whether Symfony's Twig extensions are known there depends on Composer installing its bridge
+(`twig::TwigProject`).
+
 ## Detection
 
 `frameworks::detect::Frameworks::detect(root, settings)` answers with a set of

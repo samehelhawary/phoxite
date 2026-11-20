@@ -2,7 +2,7 @@
 // unit tests. The ids are the ones the Marketplace lists.
 
 /** What an extension doubles. */
-export type Overlap = "server" | "laravel" | "blade";
+export type Overlap = "server" | "laravel" | "blade" | "twig";
 
 export interface Other {
   /** The Marketplace id; VS Code compares ids without regard to case. */
@@ -21,6 +21,8 @@ export const OTHERS: readonly Other[] = [
   { id: "amiralizadeh9480.laravel-extra-intellisense", name: "Laravel Extra Intellisense", overlap: "laravel" },
   { id: "onecentlin.laravel-blade", name: "Laravel Blade Snippets", overlap: "blade" },
   { id: "cjhowe7.laravel-blade", name: "laravel-blade", overlap: "blade" },
+  { id: "mblode.twig-language-2", name: "Twig Language 2", overlap: "twig" },
+  { id: "mblode.twig-language", name: "Twig Language", overlap: "twig" },
 ];
 
 /** `A`, `A and B`, `A, B and C`. */
@@ -51,6 +53,12 @@ export function conflictMessage(found: readonly Other[]): string | undefined {
   if (blade.length) {
     sentences.push(
       `${listed(blade)} also ${verb(blade, "defines", "define")} the Blade language, so its highlighting may be the one you see.`,
+    );
+  }
+  const twig = of("twig");
+  if (twig.length) {
+    sentences.push(
+      `${listed(twig)} also ${verb(twig, "defines", "define")} the Twig language, so its highlighting may be the one you see.`,
     );
   }
   if (!sentences.length) return undefined;

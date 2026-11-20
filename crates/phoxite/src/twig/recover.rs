@@ -87,9 +87,34 @@ fn tag_around(text: &str, at: usize) -> Option<(usize, usize)> {
 
 /// End tags closing the blocks `text` leaves open, innermost first.
 fn missing_end_tags(text: &str) -> String {
-    let mut open: Vec<String> = Vec::new();
+    open_blocks(text).iter().rev().map(|(name, _)| format!("{{% end{name} %}}")).collect()
+}
+
+/// The blocks `text` leaves open, outermost first: the tag's name and the
+/// byte its `{%` is at.
+pub(super) fn open_blocks(text: &str) -> Vec<(String, usize)> {
+    scan_blocks(text).open
+}
+
+/// What [`scan_blocks`] finds.
+#[derive(Default)]
+struct Blocks {
+    /// The blocks still open at the end, outermost first: the tag's name
+    /// and the byte its `{%` is at.
+    open: Vec<(String, usize)>,
+    /// The blocks an end tag of a block around them closed over
+    /// (`{% block b %}{% if a %}{% endblock %}`: the `if`).
+    abandoned: Vec<(String, usize)>,
+    /// Where those end tags are.
+    closers: Vec<usize>,
+}
+
+fn scan_blocks(text: &str) -> Blocks {
+    let mut found = Blocks::default();
+    let mut open: Vec<(String, usize)> = Vec::new();
     let mut rest = text;
     while let Some(at) = rest.find("{%") {
+        let tag_at = text.len() - rest.len() + at;
         let after = &rest[at + 2..];
         let Some(close) = after.find("%}") else { break };
         let inner = after[..close].trim_matches(|c: char| c == '-' || c == '~' || c.is_whitespace());
@@ -101,12 +126,16 @@ fn missing_end_tags(text: &str) -> String {
             let end = format!("end{name}");
             match rest.find(&end) {
                 Some(at) => rest = &rest[at..],
-                None => open.push(name),
+                None => open.push((name, tag_at)),
             }
             continue;
         }
         if let Some(ended) = name.strip_prefix("end") {
-            if let Some(at) = open.iter().rposition(|o| o == ended) {
+            if let Some(at) = open.iter().rposition(|(o, _)| o == ended) {
+                if at + 1 < open.len() {
+                    found.abandoned.extend(open.drain(at + 1..));
+                    found.closers.push(tag_at);
+                }
                 open.truncate(at);
             }
             continue;
@@ -119,10 +148,113 @@ fn missing_end_tags(text: &str) -> String {
                 _ => true,
             };
         if has_body {
-            open.push(name);
+            open.push((name, tag_at));
         }
     }
-    open.iter().rev().map(|name| format!("{{% end{name} %}}")).collect()
+    found.open = open;
+    found
+}
+
+/// A syntax error of a template: the byte range it is at and what the
+/// parser says.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SyntaxProblem {
+    pub start: usize,
+    pub end: usize,
+    pub message: String,
+}
+
+/// The syntax errors of `text`: the blocks it leaves open, then what the
+/// parser reports, each broken tag blanked in turn so that the errors after
+/// it are found too (at most [`MAX_REPAIRS`]).
+///
+/// A tag the parser doesn't know isn't an error: extensions add tags
+/// (`{% trans %}`, `{% form_theme %}`), and which ones a project has can't
+/// be told from the template.
+pub(super) fn syntax_problems(text: &str) -> Vec<SyntaxProblem> {
+    let mut out: Vec<SyntaxProblem> = Vec::new();
+    let Blocks { open, abandoned, closers } = scan_blocks(text);
+    for (name, at) in open.iter().chain(&abandoned) {
+        let end = text[*at..].find("%}").map_or(text.len(), |close| at + close + 2);
+        out.push(SyntaxProblem { start: *at, end, message: format!("Unclosed '{name}' block") });
+    }
+    let closing: String = open.iter().rev().map(|(name, _)| format!("{{% end{name} %}}")).collect();
+    let mut current = format!("{text}{closing}");
+    // Tags extensions add, whose end tags aren't errors either.
+    let mut unknown: Vec<String> = Vec::new();
+    for _ in 0..MAX_REPAIRS {
+        let Some((errors, fatal)) = parse_errors(&current) else { break };
+        let first = errors.iter().map(|error| error.0).min();
+        for (start, end, message, unknown_tag) in errors {
+            let Some((tag_start, tag_end)) = tag_around(&current, start) else { continue };
+            let name = tag_name(&current[tag_start..tag_end]);
+            if unknown_tag {
+                if !unknown.contains(&name) {
+                    unknown.push(name);
+                }
+                continue;
+            }
+            if name.strip_prefix("end").is_some_and(|ended| unknown.iter().any(|known| known == ended)) {
+                continue;
+            }
+            // Errors in the end tags appended above are the open blocks',
+            // and so is the one at an end tag that closed over a block.
+            if start >= text.len() || closers.contains(&tag_start) {
+                continue;
+            }
+            let end = end.clamp(start, text.len());
+            // An error without a width marks its tag.
+            let (start, end) = if end > start { (start, end) } else { (tag_start, tag_end.min(text.len())) };
+            if !out.iter().any(|known| known.start == start && known.message == message) {
+                out.push(SyntaxProblem { start, end, message });
+            }
+        }
+        if !fatal {
+            break;
+        }
+        let Some((start, end)) = first.and_then(|at| tag_around(&current, at)) else { break };
+        if current[start..end].trim().is_empty() {
+            break;
+        }
+        current = blank(&current, start, end);
+    }
+    out.sort_by_key(|problem| problem.start);
+    out
+}
+
+/// The first word of a tag (`{%- endif %}` → `endif`).
+fn tag_name(tag: &str) -> String {
+    tag.trim_start_matches(['{', '%', '-', '~'])
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect()
+}
+
+/// One error of a parse: `(start, end, message, an unknown tag)`.
+type ParsedError = (usize, usize, String, bool);
+
+/// The errors of one parse as `(start, end, message, an unknown tag)`, and
+/// whether the parse kept no statement; `None` when there is no error.
+fn parse_errors(text: &str) -> Option<(Vec<ParsedError>, bool)> {
+    use mago_twig_syntax::error::ParseError;
+    crate::syntax::stack::parser_stack(|| {
+        let arena = LocalArena::new();
+        let template = parse_file_content(&arena, FileId::zero(), text.as_bytes());
+        if template.errors.is_empty() {
+            return None;
+        }
+        let errors = template
+            .errors
+            .iter()
+            .map(|error| {
+                let span = error.span();
+                let unknown = matches!(error, ParseError::UnknownTag(..));
+                (span.start.offset as usize, span.end.offset as usize, error.to_string(), unknown)
+            })
+            .collect();
+        Some((errors, template.statements.is_empty()))
+    })
 }
 
 /// `text` with the bytes `start..end` turned into spaces (newlines kept, so

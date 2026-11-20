@@ -30,6 +30,9 @@ use crate::convert::{self, EditSupport};
 pub enum Kind {
     Php,
     Blade,
+    /// `*.twig`: answered from the template's text and the project's
+    /// template folders, without the engine.
+    Twig,
     /// `.env`, `.env.example`…: environment keys.
     Env,
     /// `lang/*.json`: translation keys.
@@ -42,6 +45,8 @@ impl Kind {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_ascii_lowercase();
         if language == "blade" || name.ends_with(".blade.php") {
             Kind::Blade
+        } else if language == "twig" || name.ends_with(".twig") {
+            Kind::Twig
         } else if language == "php" || phoxite::project::is_php_path(path) {
             Kind::Php
         } else if name == ".env" || name.starts_with(".env.") {
@@ -145,6 +150,9 @@ pub struct State {
     pub problems: Mutex<HashMap<PathBuf, BTreeMap<String, Vec<e::Diagnostic>>>>,
     /// The PHPStan and Psalm runs (`analyzers.rs`).
     pub analyzers: Mutex<crate::analyzers::Analyzers>,
+    /// What the Twig support read about each project folder, until a
+    /// template or a file it reads changes there ([`State::forget_twig`]).
+    twig: Mutex<HashMap<PathBuf, Arc<phoxite::twig::TwigProject>>>,
     /// The user trusts the workspace: programs of the project may run.
     trusted: AtomicBool,
     /// The settings last left at their defaults for a value that didn't fit,
@@ -171,6 +179,7 @@ impl State {
             events,
             problems: Mutex::new(HashMap::new()),
             analyzers: Mutex::default(),
+            twig: Mutex::default(),
             trusted: AtomicBool::new(true),
             rejected_settings: Mutex::default(),
             next_doc: AtomicU32::new(1),
@@ -470,9 +479,33 @@ impl State {
         });
     }
 
-    /// A Blade template's own problems (unclosed sections and pushes).
+    /// The template folders of the project at `root`, and whether it has
+    /// Symfony's Twig extensions. Read once, then kept.
+    pub fn twig_project(&self, root: &Path) -> Arc<phoxite::twig::TwigProject> {
+        if let Some(known) = self.twig.lock().get(root) {
+            return known.clone();
+        }
+        let project = Arc::new(phoxite::twig::TwigProject::discover(root));
+        self.twig.lock().insert(root.to_path_buf(), project.clone());
+        project
+    }
+
+    /// Reads the Twig project at `root` again on next use: a template was
+    /// created or removed, or `twig.yaml` or a Composer file changed.
+    pub fn forget_twig(&self, root: &Path) {
+        self.twig.lock().remove(root);
+    }
+
+    /// A template's own problems: a Blade template's unclosed sections and
+    /// pushes, a Twig template's syntax errors.
     fn template_problems(&self, uri: &Url) {
         let Some(doc) = self.snapshot(uri) else { return };
+        if doc.kind == Kind::Twig {
+            let reported = self.settings_for(&doc.path).inspection_enabled(phoxite::twig::SYNTAX_CODE);
+            let items = if reported { phoxite::twig::problems(&doc.text) } else { Vec::new() };
+            self.problems_changed(&doc.path, phoxite::twig::DIAGNOSTIC_SOURCE.to_owned(), items);
+            return;
+        }
         if doc.kind != Kind::Blade {
             return;
         }

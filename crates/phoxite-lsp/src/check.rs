@@ -205,8 +205,29 @@ fn inspect(engine: &PhpEngine, settings: &Settings, root: &Path, wanted: &[PathB
         return Err(Stop(FAILED, "the inspection was cancelled".to_owned()));
     }
     let mut found = found.into_inner();
+    // The Twig templates of the project's template folders.
+    let twig = phoxite::twig::TemplatePaths::discover(root);
+    let reported = settings.inspection_enabled(phoxite::twig::SYNTAX_CODE);
+    let templates: Vec<PathBuf> = twig
+        .names()
+        .iter()
+        .filter(|_| reported)
+        .filter_map(|name| twig.resolve(name))
+        .filter(|path| wanted.is_empty() || wanted.iter().any(|folder| path.starts_with(folder)))
+        .collect();
+    for path in &templates {
+        let Ok(bytes) = std::fs::read(path) else { continue };
+        let mut problems = phoxite::twig::problems(&String::from_utf8_lossy(&bytes));
+        if problems.is_empty() {
+            continue;
+        }
+        for problem in &mut problems {
+            settings.apply_severity(problem);
+        }
+        found.push((path.clone(), problems));
+    }
     found.sort_by(|a, b| a.0.cmp(&b.0));
-    // A Blade template's problems have rules no inspection declares.
+    // A template's problems have rules no inspection declares.
     for problem in found.iter().flat_map(|(_, problems)| problems) {
         if let Some(code) = &problem.code
             && !rules.iter().any(|(id, _)| id == code)
@@ -214,7 +235,7 @@ fn inspect(engine: &PhpEngine, settings: &Settings, root: &Path, wanted: &[PathB
             rules.push((code.clone(), problem.severity));
         }
     }
-    Ok(Report { rules, ..report(files.len(), found) })
+    Ok(Report { rules, ..report(files.len() + templates.len(), found) })
 }
 
 #[cfg(test)]
@@ -258,6 +279,30 @@ mod tests {
 
     fn found(report: &Report) -> Vec<String> {
         report.render(Format::Text).lines().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn twig_templates_are_inspected_too() {
+        let (_dir, root) = project_with_problems();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("templates/base.html.twig", "{% block body %}{% endblock %}\n");
+        write("templates/admin/broken.html.twig", "{% if a %}\nnever closed\n");
+        let report = check(&options(&[&root])).unwrap_or_else(|Stop(_, message)| panic!("{message}"));
+        assert_eq!(report.inspected, 6, "the four PHP files and the two templates");
+        let found = found(&report);
+        let twig: Vec<&String> = found.iter().filter(|line| line.contains(".twig")).collect();
+        assert_eq!(twig.len(), 1, "{found:?}");
+        assert!(twig[0].starts_with("templates/admin/broken.html.twig:1:1: ") && twig[0].contains("[TwigSyntax]"));
+        assert!(report.rules.iter().any(|(id, _)| id == "TwigSyntax"));
+        assert_eq!(exit_code(&report, FailOn::Error), PROBLEMS);
+
+        // Below a path: only its templates.
+        let src = check(&options(&[&root.join("src")])).unwrap_or_else(|Stop(_, message)| panic!("{message}"));
+        assert!(!src.render(Format::Text).contains(".twig"));
     }
 
     #[test]

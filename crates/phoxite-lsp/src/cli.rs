@@ -17,8 +17,8 @@ Environment:
 `phoxite-lsp check --help` says more about check.";
 
 pub const CHECK_USAGE: &str = "\
-Inspects a project's own PHP files and Blade templates (not vendor/) and prints
-their problems, as the language server reports them in an editor.
+Inspects a project's own PHP files and Blade and Twig templates (not vendor/)
+and prints their problems, as the language server reports them in an editor.
 
 Usage: phoxite-lsp check [OPTIONS] [PATH...]
 

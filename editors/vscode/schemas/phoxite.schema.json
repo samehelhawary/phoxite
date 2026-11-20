@@ -121,6 +121,11 @@
           "description": "What formats a whole PHP file: `phoxite` (the built-in formatter) or `pint` (the project's Laravel Pint). A selection, and Blade files, are always formatted by Phoxite.",
           "enum": ["phoxite", "pint"],
           "default": "phoxite"
+        },
+        "twig": {
+          "description": "What formats a whole Twig template: `phoxite` (the built-in formatter: indentation and the spacing inside tags) or `prettier` (the project's Prettier with a Twig plugin, which also rewraps lines and formats the JavaScript and CSS inside). A selection is always formatted by Phoxite.",
+          "enum": ["phoxite", "prettier"],
+          "default": "phoxite"
         }
       }
     },

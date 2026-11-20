@@ -11,9 +11,9 @@
 //!   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true, "severity": "error" } },
 //!   "laravel": { "routeHints": true, "modules": "auto", "generation": { "module": "Blog" } },
 //!   "frameworks": { "laravel": "auto", "symfony": "auto", "wordpress": "disabled" },
-//!   "format": { "lineWidth": 120, "tool": "phoxite" },
+//!   "format": { "lineWidth": 120, "tool": "phoxite", "twig": "phoxite" },
 //!   "templates": { "path": ".phoxite/templates" },
-//!   "analyzers": { "onSave": true, "phpPath": "php" }
+//!   "analyzers": { "onSave": true, "phpPath": "php", "nodePath": "node" }
 //! }
 //! ```
 //!
@@ -73,6 +73,9 @@ pub struct FormatSettings {
     /// What formats a whole PHP file: `phoxite` (the built-in formatter) or
     /// `pint` (the project's Laravel Pint, `pint.rs`).
     pub tool: String,
+    /// What formats a whole Twig template: `phoxite` (the built-in formatter) or
+    /// `prettier` (the project's Prettier, `prettier.rs`).
+    pub twig: String,
 }
 
 /// The generators' templates the user edited.
@@ -92,6 +95,9 @@ pub struct AnalyzerSettings {
     pub on_save: bool,
     /// The PHP interpreter that runs them; empty: `php` on `PATH`.
     pub php_path: String,
+    /// The Node.js that runs the project's Prettier (`format.twig`); empty: `node` on
+    /// `PATH`.
+    pub node_path: String,
 }
 
 /// Where the edited templates of a project are unless the settings say.
@@ -99,7 +105,7 @@ pub const DEFAULT_TEMPLATES_PATH: &str = ".phoxite/templates";
 
 impl Default for FormatSettings {
     fn default() -> Self {
-        Self { line_width: 120, tool: "phoxite".to_owned() }
+        Self { line_width: 120, tool: "phoxite".to_owned(), twig: "phoxite".to_owned() }
     }
 }
 
@@ -153,6 +159,14 @@ impl Settings {
         if let Some(severity) = problem.code.as_deref().and_then(|code| self.severity(code)) {
             problem.severity = severity;
         }
+    }
+
+    /// Whether the inspection `code` is on: what its own setting says, else
+    /// what `*` says, else yes. For the problems the server finds itself
+    /// (a Twig template's); the engine reads the same settings for its own.
+    pub fn inspection_enabled(&self, code: &str) -> bool {
+        let enabled = |id: &str| self.inspections.get(id).and_then(|setting| setting.enabled);
+        enabled(code).or_else(|| enabled("*")).unwrap_or(true)
     }
 
     /// The severity the user chose for inspection `code`.
@@ -452,7 +466,10 @@ mod tests {
             InspectionSetting { enabled: Some(false), strict: Some(true), severity: None }
         );
         // A project doesn't choose the programs that run or the files read outside it.
-        assert_eq!(settings.analyzers, AnalyzerSettings { on_save: false, php_path: "php8.3".into() });
+        assert_eq!(
+            settings.analyzers,
+            AnalyzerSettings { on_save: false, php_path: "php8.3".into(), node_path: String::new() }
+        );
         assert_eq!(settings.laravel.database, "auto");
         assert!(settings.include_paths.is_empty());
 

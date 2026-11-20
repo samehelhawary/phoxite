@@ -28,6 +28,10 @@ test("the warning says what each other extension doubles", () => {
   assert.match(several ?? "", /PHP Intelephense and PHP \(DEVSENSE\) are enabled too/);
   assert.match(several ?? "", /Laravel also completes Laravel names/);
   assert.match(several ?? "", /Laravel Blade Snippets also defines the Blade language/);
+  assert.match(
+    conflictMessage([other("mblode.twig-language-2"), other("mblode.twig-language")]) ?? "",
+    /Twig Language 2 and Twig Language also define the Twig language/,
+  );
 });
 
 test("the warning is remembered for the extensions it named, in any order", () => {

@@ -8,6 +8,7 @@
 //! (TwigBridge for Laravel).
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
 use crate::base::yaml;
 
@@ -15,10 +16,47 @@ use crate::base::yaml;
 pub const MAX_NAMES: usize = 2000;
 
 /// The template directories of one project.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+///
+/// The template names are listed once ([`names`](Self::names)) and kept:
+/// whoever keeps a `TemplatePaths` discovers it again when a template is
+/// created or removed.
+#[derive(Clone, Debug, Default)]
 pub struct TemplatePaths {
     /// `(namespace, directory)`; unnamespaced ones first, in lookup order.
     dirs: Vec<(Option<String>, PathBuf)>,
+    names: Arc<OnceLock<Vec<String>>>,
+}
+
+impl PartialEq for TemplatePaths {
+    fn eq(&self, other: &Self) -> bool {
+        self.dirs == other.dirs
+    }
+}
+
+impl Eq for TemplatePaths {}
+
+/// What the Twig support knows about one project: where its templates are,
+/// and whether it has Symfony's Twig bridge (whose tags, filters and
+/// functions completion and hover then know).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TwigProject {
+    pub paths: TemplatePaths,
+    pub symfony: bool,
+}
+
+/// The Composer packages that bring Symfony's Twig extensions.
+const SYMFONY_PACKAGES: [&str; 3] = ["symfony/twig-bridge", "symfony/twig-bundle", "symfony/framework-bundle"];
+
+impl TwigProject {
+    /// Reads the project at `root`: its template directories and its
+    /// Composer files.
+    pub fn discover(root: &Path) -> Self {
+        let composer = crate::frameworks::ComposerPackages::read(root);
+        Self {
+            paths: TemplatePaths::discover(root),
+            symfony: SYMFONY_PACKAGES.iter().any(|package| composer.installed(package)),
+        }
+    }
 }
 
 impl TemplatePaths {
@@ -54,12 +92,23 @@ impl TemplatePaths {
             }
         });
         dirs.sort_by_key(|(ns, _)| ns.is_some());
-        Self { dirs }
+        Self::from_dirs(dirs)
     }
 
     /// From explicit directories (tests).
     pub fn from_dirs(dirs: Vec<(Option<String>, PathBuf)>) -> Self {
-        Self { dirs }
+        Self { dirs, names: Arc::default() }
+    }
+
+    /// The name of the template file `path` (`admin/list.html.twig`,
+    /// `@Admin/list.html.twig`), when it is below a template directory.
+    pub fn name_of(&self, path: &Path) -> Option<String> {
+        self.dirs.iter().find_map(|(namespace, dir)| {
+            let relative = path.strip_prefix(dir).ok()?;
+            let relative: Vec<_> = relative.components().map(|c| c.as_os_str().to_string_lossy()).collect();
+            let prefix = namespace.as_ref().map(|ns| format!("@{ns}/")).unwrap_or_default();
+            (!relative.is_empty()).then(|| format!("{prefix}{}", relative.join("/")))
+        })
     }
 
     /// The file of template `name`, if it exists.
@@ -77,8 +126,12 @@ impl TemplatePaths {
     }
 
     /// The names of the project's templates (files ending in `.twig`), sorted;
-    /// at most [`MAX_NAMES`].
+    /// at most [`MAX_NAMES`]. Listed from disk the first time.
     pub fn names(&self) -> Vec<String> {
+        self.names.get_or_init(|| self.list_names()).clone()
+    }
+
+    fn list_names(&self) -> Vec<String> {
         let mut names = Vec::new();
         for (namespace, dir) in &self.dirs {
             let prefix = namespace.as_ref().map(|ns| format!("@{ns}/")).unwrap_or_default();

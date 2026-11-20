@@ -77,7 +77,7 @@ export interface PhoxiteApi {
 
 export async function activate(context: vscode.ExtensionContext): Promise<PhoxiteApi> {
   output = vscode.window.createOutputChannel("Phoxite", { log: true });
-  statusItem = vscode.languages.createLanguageStatusItem("phoxite.status", [{ language: "php" }, { language: "blade" }]);
+  statusItem = vscode.languages.createLanguageStatusItem("phoxite.status", [{ language: "php" }, { language: "blade" }, { language: "twig" }]);
   statusItem.name = "Phoxite";
   statusItem.command = { title: "Actions", command: "phoxite.status" };
   show({});
@@ -188,6 +188,7 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     documentSelector: [
       { scheme: "file", language: "php" },
       { scheme: "file", language: "blade" },
+      { scheme: "file", language: "twig" },
       // Environment keys and JSON translations: usages and rename.
       { scheme: "file", pattern: "**/.env*" },
       { scheme: "file", pattern: "**/lang/**/*.json" },

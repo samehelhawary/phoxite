@@ -103,6 +103,25 @@ fn directive_items(text: &str, at: e::Pos) -> Vec<lsp::CompletionItem> {
         .collect()
 }
 
+fn twig_completion_item(state: &State, item: phoxite::twig::TwigCompletion) -> lsp::CompletionItem {
+    use phoxite::twig::TwigCompletionKind as K;
+    let kind = match item.kind {
+        K::Variable => lsp::CompletionItemKind::VARIABLE,
+        K::Macro | K::Function | K::Filter | K::Test => lsp::CompletionItemKind::FUNCTION,
+        K::Tag => lsp::CompletionItemKind::KEYWORD,
+        K::Template => lsp::CompletionItemKind::FILE,
+    };
+    lsp::CompletionItem {
+        label: item.label,
+        kind: Some(kind),
+        detail: item.detail,
+        documentation: item.documentation.map(|text| lsp::Documentation::MarkupContent(markup(state, text))),
+        sort_text: Some(item.sort_text),
+        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit::new(lsp_range(item.replace), item.insert_text))),
+        ..lsp::CompletionItem::default()
+    }
+}
+
 pub fn completion(
     state: &State,
     p: lsp::CompletionParams,
@@ -112,6 +131,18 @@ pub fn completion(
     let doc = snapshot(state, &uri)?;
     let at = pos(p.text_document_position.position);
     let trigger = p.context.and_then(|c| c.trigger_character);
+    if doc.kind == Kind::Twig {
+        let project = state.twig_project(&doc.root);
+        let items = phoxite::twig::completions(&doc.text, at, project.symfony, &project.paths)
+            .into_iter()
+            .map(|item| twig_completion_item(state, item))
+            .collect();
+        return Ok(Some(lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })));
+    }
+    // `|` opens completion in Twig only (its filters).
+    if trigger.as_deref() == Some("|") {
+        return Ok(None);
+    }
     let found: Option<Completions> = match (&doc.engine, doc.kind) {
         (Some(engine), Kind::Php) => engine.completion(doc.id, at, trigger.as_deref(), cancel),
         (Some(engine), Kind::Blade) => engine
@@ -150,6 +181,13 @@ pub fn resolve_completion(state: &State, mut item: lsp::CompletionItem) -> Resul
 pub fn hover(state: &State, p: lsp::HoverParams) -> Result<Option<lsp::Hover>> {
     let doc = snapshot(state, &p.text_document_position_params.text_document.uri)?;
     let at = pos(p.text_document_position_params.position);
+    if doc.kind == Kind::Twig {
+        let symfony = state.twig_project(&doc.root).symfony;
+        return Ok(phoxite::twig::hover(&doc.text, at, symfony).map(|(markdown, range)| lsp::Hover {
+            contents: lsp::HoverContents::Markup(markup(state, markdown)),
+            range: Some(lsp_range(range)),
+        }));
+    }
     let Some(engine) = &doc.engine else { return Ok(None) };
     let found = match doc.kind {
         Kind::Php => engine.hover(doc.id, at),
@@ -225,6 +263,13 @@ pub fn goto(
             }
         }
         (Kind::Blade, Goto::Definition) => blade_definition(&doc, at),
+        (Kind::Twig, Goto::Definition) => {
+            let project = state.twig_project(&doc.root);
+            let found = phoxite::twig::definition(&doc.text, at, &project.paths);
+            // A macro of the template itself is in the document's own file.
+            let found = found.into_iter().map(|target| (target.path.unwrap_or_else(|| doc.path.clone()), target.range));
+            Some(locations(found))
+        }
         _ => None,
     };
     Ok(found.map(lsp::GotoDefinitionResponse::Array))
@@ -257,13 +302,32 @@ pub fn references(
     let doc = snapshot(state, &p.text_document_position.text_document.uri)?;
     let at = pos(p.text_document_position.position);
     let include = p.context.include_declaration;
+    if doc.kind == Kind::Twig {
+        // The templates naming the one named at the caret.
+        let Some(named) = phoxite::twig::template_at(&doc.text, at) else { return Ok(None) };
+        let project = state.twig_project(&doc.root);
+        let mut found = phoxite::twig::template_usages(&named.name, &project.paths);
+        // The document as it is now, not as it was saved.
+        found.retain(|(path, _)| *path != doc.path);
+        found.extend(
+            phoxite::twig::template_refs(&doc.text)
+                .into_iter()
+                .filter(|other| other.name == named.name)
+                .map(|other| (doc.path.clone(), other.range)),
+        );
+        if include && let Some(file) = project.paths.resolve(&named.name) {
+            found.push((file, e::Range::default()));
+        }
+        found.sort_by(|a, b| (&a.0, a.1.start).cmp(&(&b.0, b.1.start)));
+        return Ok(Some(locations(found)));
+    }
     let Some(engine) = doc.engine.clone() else { return Ok(None) };
     let found = match doc.kind {
         Kind::Php => engine.references(doc.id, at, include, cancel),
         Kind::Blade => return blade_references(&engine, &doc, at, include, cancel),
         Kind::Env => engine.laravel_env_references(&doc.path, &doc.text, at, include, cancel),
         Kind::TranslationJson => engine.laravel_translation_json_references(&doc.path, &doc.text, at, include, cancel),
-        Kind::Other => None,
+        Kind::Twig | Kind::Other => None,
     };
     match found {
         Some(Ok(found)) => Ok(Some(usages(found))),
@@ -339,6 +403,7 @@ pub fn document_symbols(state: &State, p: lsp::DocumentSymbolParams) -> Result<O
         (Kind::Php, Some(engine)) => engine.document_symbols(doc.id),
         (Kind::Blade, Some(engine)) => Some(engine.blade_outline(&doc.text)),
         (Kind::Blade, None) => Some(phoxite::blade::structure::outline(&doc.text, &[])),
+        (Kind::Twig, _) => Some(phoxite::twig::outline(&doc.text)),
         _ => None,
     };
     Ok(items
@@ -376,13 +441,20 @@ pub fn workspace_symbols(
 pub fn prepare_rename(state: &State, p: lsp::TextDocumentPositionParams) -> Result<Option<lsp::PrepareRenameResponse>> {
     let doc = snapshot(state, &p.text_document.uri)?;
     let at = pos(p.position);
+    if doc.kind == Kind::Twig {
+        let project = state.twig_project(&doc.root);
+        return match phoxite::twig::prepare_rename(&doc.text, at, &doc.path, &project.paths) {
+            Some(range) => Ok(Some(lsp::PrepareRenameResponse::Range(lsp_range(range)))),
+            None => Err("Nothing to rename here".into()),
+        };
+    }
     let Some(engine) = &doc.engine else { return Ok(None) };
     let found = match doc.kind {
         Kind::Php => engine.prepare_rename(doc.id, at).flatten(),
         Kind::Blade => engine.blade_prepare_rename(&doc.blade(), at).flatten(),
         Kind::Env => engine.laravel_env_prepare_rename(&doc.path, &doc.text, at),
         Kind::TranslationJson => engine.laravel_translation_json_prepare_rename(&doc.path, &doc.text, at),
-        Kind::Other => None,
+        Kind::Twig | Kind::Other => None,
     };
     match found {
         Some(range) => Ok(Some(lsp::PrepareRenameResponse::Range(lsp_range(range)))),
@@ -393,6 +465,23 @@ pub fn prepare_rename(state: &State, p: lsp::TextDocumentPositionParams) -> Resu
 pub fn rename(state: &State, p: lsp::RenameParams, cancel: &CancellationToken) -> Result<Option<lsp::WorkspaceEdit>> {
     let doc = snapshot(state, &p.text_document_position.text_document.uri)?;
     let at = pos(p.text_document_position.position);
+    if doc.kind == Kind::Twig {
+        let project = state.twig_project(&doc.root);
+        let found = phoxite::twig::rename(&doc.text, at, &doc.path, &p.new_name, &project.paths);
+        let files = match found {
+            Some(Ok(files)) => files,
+            Some(Err(message)) => return Err(message),
+            None => return Err("Nothing to rename here".into()),
+        };
+        let mut edit = e::WorkspaceEdit::default();
+        for (path, ranges) in files {
+            let edits = ranges.into_iter().map(|range| e::TextEdit { range, new_text: p.new_name.clone() }).collect();
+            // The document as the editor has it; the other templates as they are on disk.
+            let version = (dunce::simplified(&path) == dunce::simplified(&doc.path)).then_some(doc.version);
+            edit.files.push(e::FileEdit::Edit { path, edits, version });
+        }
+        return Ok(Some(convert::workspace_edit(edit, state.support.edits)));
+    }
     let Some(engine) = &doc.engine else { return Ok(None) };
     let new = p.new_name.as_str();
     let found = match doc.kind {
@@ -400,7 +489,7 @@ pub fn rename(state: &State, p: lsp::RenameParams, cancel: &CancellationToken) -
         Kind::Blade => engine.blade_rename(&doc.blade(), at, new, cancel),
         Kind::Env => engine.laravel_env_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::TranslationJson => engine.laravel_translation_json_rename(&doc.path, &doc.text, at, new, cancel),
-        Kind::Other => None,
+        Kind::Twig | Kind::Other => None,
     };
     match found {
         Some(Ok(edit)) => Ok(Some(convert::workspace_edit(edit, state.support.edits))),
@@ -545,6 +634,24 @@ pub fn format(
                 None => edits(&doc.text, &format(&doc.text, &options, &[]), within.map(|r| (r.start.line, r.end.line))),
             })
         }
+        Kind::Twig => {
+            // The whole template, by the project's Prettier when that is the formatter and it can run.
+            if within.is_none()
+                && let Some(formatted) = crate::prettier::format(state, &doc)
+            {
+                if formatted == *doc.text {
+                    return Ok(Some(Vec::new()));
+                }
+                // Prettier rewraps as it likes: the whole text is replaced.
+                let last = doc.text.rsplit('\n').next().unwrap_or_default();
+                let end = lsp::Position::new(doc.text.matches('\n').count() as u32, last.encode_utf16().count() as u32);
+                let whole = lsp::Range::new(lsp::Position::new(0, 0), end);
+                return Ok(Some(vec![lsp::TextEdit::new(whole, formatted)]));
+            }
+            let options =
+                phoxite::twig::TwigFormatOptions { indent: options.tab_size, use_tabs: !options.insert_spaces };
+            Some(phoxite::twig::format(&doc.text, &options, within.map(|r| (r.start.line, r.end.line))))
+        }
         _ => None,
     };
     Ok(edits.map(|edits| edits.into_iter().map(convert::text_edit).collect()))
@@ -654,8 +761,14 @@ pub fn semantic_tokens_legend() -> lsp::SemanticTokensLegend {
 
 pub fn semantic_tokens(state: &State, p: lsp::SemanticTokensParams) -> Result<Option<lsp::SemanticTokensResult>> {
     let doc = snapshot(state, &p.text_document.uri)?;
-    let (Kind::Php, Some(engine)) = (doc.kind, &doc.engine) else { return Ok(None) };
-    let Some(tokens) = engine.semantic_tokens(doc.id) else { return Ok(None) };
+    let tokens = match (doc.kind, &doc.engine) {
+        (Kind::Twig, _) => phoxite::twig::semantic_tokens(&doc.text),
+        (Kind::Php, Some(engine)) => match engine.semantic_tokens(doc.id) {
+            Some(tokens) => tokens,
+            None => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
     let tokens = tokens.into_iter().map(|t| (t.start.line, t.start.col, t.len, t.ty.index(), t.modifiers)).collect();
     Ok(Some(lsp::SemanticTokensResult::Tokens(lsp::SemanticTokens {
         result_id: None,

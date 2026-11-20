@@ -1,7 +1,11 @@
 //! Twig templates: the structure outline, completion of variables, tags,
 //! filters, functions, tests and template names, and goto definition of the
 //! templates `{% extends %}`, `{% include %}`, `{% embed %}`, `{% import %}`,
-//! `{% from %}`, `{% use %}` and the `include()`/`source()` functions name.
+//! `{% from %}`, `{% use %}` and the `include()`/`source()` functions name;
+//! syntax problems, hover, goto for macros and blocks, and the usages of a
+//! template name (`navigate.rs`); rename of blocks and macros (`rename.rs`);
+//! formatting of the spacing inside tags (`format.rs`); and semantic tokens
+//! (`tokens.rs`).
 //!
 //! Templates are parsed with `mago-twig-syntax` (Twig 3), after the repairs
 //! of [`recover`] so that broken templates keep their structure; completion
@@ -12,10 +16,14 @@
 
 pub mod builtins;
 mod complete;
+mod format;
+mod navigate;
 mod recover;
+mod rename;
 pub mod templates;
 #[cfg(test)]
 mod tests;
+mod tokens;
 
 use std::path::PathBuf;
 
@@ -33,7 +41,14 @@ use mago_twig_syntax::walker::Walker;
 use crate::syntax::LineIndex;
 
 pub use complete::{TwigCompletion, TwigCompletionKind, completions};
+pub use format::{TwigFormatOptions, format, format_text};
+pub use navigate::{
+    DIAGNOSTIC_SOURCE, MAX_PARENTS, SYNTAX_CODE, TwigTarget, definition, hover, problems, template_usages,
+};
+pub use rename::{prepare_rename, rename};
 pub use templates::TemplatePaths;
+pub use templates::TwigProject;
+pub use tokens::semantic_tokens;
 
 /// Parses `text` (repaired by [`recover::recovered`]) and hands the text
 /// parsed and the template to `f`. Offsets in the template are offsets in

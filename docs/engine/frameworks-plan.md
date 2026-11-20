@@ -14,8 +14,8 @@ Last updated: 2026-11-20.
 | Phase | What | Status |
 | --- | --- | --- |
 | 0 | Framework-neutral foundations | Done |
-| 1 | Twig, end to end | Not started (next) |
-| 2 | Symfony and Doctrine, deeper | Not started |
+| 1 | Twig, end to end | Done |
+| 2 | Symfony and Doctrine, deeper | Not started (next) |
 | 2.5 | Callable-string references | Not started |
 | 3 | WordPress | Not started |
 | 4 | Drupal | Not started |
@@ -80,36 +80,89 @@ project. Move them only if they get in the way.
 
 Engine (`crates/phoxite/src/twig/`):
 
-- [ ] `problems(text)` from the parse error `recover.rs` locates.
-- [ ] `hover(text, pos, symfony)` from `Builtin.doc`.
-- [ ] Goto for macros and blocks; usages of a template name.
-- [ ] Cache `TemplatePaths` in the engine, invalidated by watcher batches.
+- [x] `problems(text)`: the blocks left open and what the parser reports, each broken tag
+      blanked in turn so the errors after it are found. A tag Twig doesn't have is not an
+      error (extensions add tags).
+- [x] `hover(text, pos, symfony)`: the built-ins and the macros in scope.
+- [x] `definition`: template names, macro calls (`forms.input()`, `_self.input()`, names of
+      `from … import`), the block a block overrides in a parent. `template_usages`.
+- [x] Template names are listed once per `TemplatePaths`; `TwigProject` (the paths and
+      whether Symfony's bridge is installed) is kept by the server, not the engine, since
+      Twig needs no engine, and dropped when a template, `twig.yaml` or a Composer file
+      changes.
 
 Server (`crates/phoxite-lsp/src/`):
 
-- [ ] `Kind::Twig` in `state.rs` (language id `twig`, or a name ending in `.twig`).
-- [ ] Twig problems in `template_problems`, source `twig`.
-- [ ] Twig branches in `handlers.rs`: completion, hover, goto, references, document symbols;
-      a `TwigCompletionKind` mapping.
-- [ ] `|` as a completion trigger character; `**/*.twig` and
-      `**/config/packages/twig.{yaml,yml}` in `WATCHED_FILES`.
-- [ ] `phoxite-lsp check` reports Twig files.
+- [x] `Kind::Twig` in `state.rs` (language id `twig`, or a name ending in `.twig`).
+- [x] Twig problems in `template_problems`, source `twig`, code `TwigSyntax`.
+- [x] Twig branches in `handlers.rs`: completion, hover, goto, references, document symbols.
+- [x] `|` as a completion trigger character (answered in Twig only); `**/*.twig` and
+      `**/config/**/*.{yaml,yml}` in `WATCHED_FILES`. The YAML glob is wider than planned:
+      Symfony's routes and services files weren't watched at all.
+- [x] `phoxite-lsp check` reports Twig files.
 
 VS Code (`editors/vscode/`):
 
-- [ ] `twig` language, grammar, snippets and `onLanguage:twig` in `package.json`.
-- [ ] `syntaxes/twig.tmLanguage.json` and `languages/twig.language-configuration.json`,
-      written for this project; credit in `THIRD_PARTY_LICENSES.md`.
-- [ ] `twig` in the status item and the document selector (`src/extension.ts`).
-- [ ] A `twig` overlap in `src/conflicts.ts` (extension ids checked on the Marketplace).
-- [ ] Grammar test and an end-to-end check.
+- [x] `twig` language, grammar, snippets and `onLanguage:twig` in `package.json`.
+- [x] `syntaxes/twig.tmLanguage.json`, `languages/twig.language-configuration.json` and
+      `snippets/twig.json`, written for this project; credit in `THIRD_PARTY_LICENSES.md`.
+- [x] `twig` in the status item and the document selector (`src/extension.ts`).
+- [x] A `twig` overlap in `src/conflicts.ts`: `mblode.twig-language-2` and
+      `mblode.twig-language`, both found on the Marketplace. `whatwedo.twig` was not
+      confirmed and is left out.
+- [x] Grammar tests (`test/twig-grammar.test.mts`) and an end-to-end check.
 
 Docs:
 
-- [ ] `docs/editors.md`: a `twig` filetype for Neovim, Helix, Zed and Sublime.
-- [ ] `docs/openidea.md`: OpenIDEA's own Twig service and how to avoid doubled answers.
-- [ ] `architecture.md`: the Twig line (it says the server doesn't serve it yet).
-- [ ] README and both changelogs.
+- [x] `docs/editors.md`: Twig for Neovim, Helix, Zed and Sublime.
+- [x] `docs/openidea.md`: OpenIDEA's own Twig service and how to avoid doubled answers.
+- [x] `architecture.md`: the Twig line.
+- [x] README and the changelog.
+
+Added after the first pass (they were this phase's leftovers):
+
+- [x] Highlighting looked at in VS Code 1.147.0 (2026-11-20): tags, strings, filters,
+      numbers and comments are coloured in text, inside attribute values and in script and
+      style blocks; a `verbatim` body is plain; the HTML parts match a plain HTML file in
+      the same theme.
+- [x] Twig 1 and 2: the parser accepts what was tried (`{% for … if … %}`, `spaceless`,
+      `filter`, `sameas`, `divisibleby`), so no error is known to be wrong there and
+      nothing depends on the Twig version. `"TwigSyntax": { "enabled": false }` under
+      `inspections` turns the errors off (server and `check`).
+- [x] Rename (`twig/rename.rs`): a block in its `extends`/`use` family; a macro where it is
+      declared, imported and called.
+- [x] Formatting (`twig/format.rs`): the indentation of every line from the HTML elements
+      and Twig blocks around it, and the spacing inside tags per Twig's coding standards.
+      Only whitespace changes; nothing is rewrapped.
+- [x] A block inside `{% embed 'x' %}` is a block of `x`: rename takes the family of `x`,
+      and goto goes to the block of `x`.
+- [x] Formatting: the elements every branch of an `{% if %}` … `{% else %}` opens are open
+      after `{% endif %}`, so what follows nests in them until their closing tags. An element
+      opened in one block and closed in another doesn't nest.
+- [x] Formatting: the code of `<script>` and `<style>` is indented by its brackets, with a
+      chained line (`.then(…)`, `&& …`) one level further. Where that isn't safe (a template
+      literal, a string left open at the end of a line, brackets that don't balance) it
+      keeps its own indentation, shifted as a whole.
+- [x] Semantic tokens (`twig/tokens.rs`): filters, tests, functions, methods, properties
+      and variables, with the legend PHP uses.
+
+Left over from phase 1:
+
+- Rename of a template's own name: moved to phase 2, right after "Template names in PHP".
+  It depends on that one item only: until PHP's `render('x.html.twig')` is a reference, a
+  rename would move the file and leave those calls pointing at nothing.
+- [x] Decided and built: full formatting (the JavaScript and CSS themselves, rewrapped
+      lines) is the project's Prettier's, not ours. `format.twig: "prettier"` runs
+      `node_modules/prettier` on the template's text through `--stdin-filepath`, so the
+      project's configuration and its Twig plugin apply (`crates/phoxite-lsp/src/prettier.rs`,
+      modelled on `pint.rs`): trusted workspaces only, whole templates only, the built-in
+      formatter when Prettier is missing or fails. `analyzers.nodePath` names the Node.js.
+      The other option, embedding Rust formatters (`markup_fmt` with a JavaScript and a CSS
+      formatter), would grow the binary and wouldn't match what a team's CI runs.
+      Tested with a stand-in, and with Prettier 3 and `@zackad/prettier-plugin-twig` through
+      the ignored test `a_real_prettier_formats_the_template` (`PHOXITE_REAL_PRETTIER`).
+
+Nothing else of phase 1 is open.
 
 ## Phase 2 — Symfony and Doctrine, deeper
 
@@ -118,6 +171,9 @@ Docs:
 - [ ] Route names in Twig's `path()` and `url()`.
 - [ ] Template names in PHP (`render()`, `renderView()`, `renderBlock()`, `#[Template]`) to
       the Twig file, with usages from the Twig side.
+- [ ] Then: rename of a template's own name. The file moves, and its name changes in the
+      Twig templates naming it and in the PHP calls (needs the item above, nothing else of
+      this phase).
 - [ ] Service ids and parameters: `$container->get('id')`, `getParameter('x')`, `%x%` and
       `@id` in YAML, `#[Autowire]`.
 - [ ] Translation keys: `trans('key')` and `|trans` to `translations/*.yaml`.

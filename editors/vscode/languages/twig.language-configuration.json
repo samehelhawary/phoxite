@@ -1,0 +1,116 @@
+{
+  "comments": {
+    "blockComment": [
+      "{#",
+      "#}"
+    ]
+  },
+  "brackets": [
+    [
+      "<!--",
+      "-->"
+    ],
+    [
+      "{#",
+      "#}"
+    ],
+    [
+      "{%",
+      "%}"
+    ],
+    [
+      "{{",
+      "}}"
+    ],
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "{%",
+      "close": "%"
+    },
+    {
+      "open": "{#",
+      "close": "#"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "'",
+      "close": "'",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "<!--",
+      "close": "-->",
+      "notIn": [
+        "comment",
+        "string"
+      ]
+    }
+  ],
+  "surroundingPairs": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ],
+    [
+      "'",
+      "'"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "<",
+      ">"
+    ]
+  ],
+  "folding": {
+    "markers": {
+      "start": "\\{%[-~]?\\s*(?:if|for|block|macro|embed|with|apply|autoescape|sandbox|verbatim|cache|guard)\\b",
+      "end": "\\{%[-~]?\\s*end(?:if|for|block|macro|embed|with|apply|autoescape|sandbox|verbatim|cache|guard)\\b"
+    }
+  }
+}

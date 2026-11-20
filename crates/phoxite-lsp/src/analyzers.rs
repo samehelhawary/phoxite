@@ -217,6 +217,24 @@ pub(crate) fn run_php(
     timeout: Duration,
     name: &str,
 ) -> Result<(String, bool), String> {
+    let mut all = vec![script.as_os_str().to_owned()];
+    all.extend_from_slice(args);
+    run_program(interpreter, &all, root, None, cancel, timeout, name)
+}
+
+/// Runs `program <args>` in `root`, with `input` on its standard input when given, and
+/// returns its stdout and whether it ended well. Killed when `cancel` fires or after
+/// `timeout`; `name` is what the tool is called in the reason it failed.
+pub(crate) fn run_program(
+    program: &Path,
+    args: &[std::ffi::OsString],
+    root: &Path,
+    input: Option<String>,
+    cancel: &CancellationToken,
+    timeout: Duration,
+    name: &str,
+) -> Result<(String, bool), String> {
+    let interpreter = program;
     let mut cmd = Command::new(interpreter);
     #[cfg(windows)]
     {
@@ -224,8 +242,16 @@ pub(crate) fn run_php(
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
-    cmd.arg(script).args(args).current_dir(root).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let stdin = if input.is_some() { Stdio::piped() } else { Stdio::null() };
+    cmd.args(args).current_dir(root).stdin(stdin).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("cannot start {}: {e}", interpreter.display()))?;
+    // Written on a thread of its own: the program may print before it has read everything.
+    if let (Some(input), Some(mut pipe)) = (input, child.stdin.take()) {
+        std::thread::spawn(move || {
+            use std::io::Write;
+            let _ = pipe.write_all(input.as_bytes());
+        });
+    }
     let reader = |pipe: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
             let mut bytes = Vec::new();

@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- Twig templates (`*.twig`) are served: the outline; completion of tags, filters,
+  functions, tests, the variables and macros in scope and template names; hover on the
+  built-ins and on macros; Go to Definition for template names, macro calls and the block a
+  block overrides; Find References on a template name; Rename of a block (in every template
+  of its `extends` and `use` family) and of a macro (where it is declared, imported and
+  called); Format Document, which indents every line by the HTML elements and Twig blocks around it
+  and puts the spacing inside the tags right (`{{x|upper}}` → `{{ x|upper }}`), without
+  moving anything to another line (the code of a `<script>` or a `<style>` is indented by
+  its brackets); semantic tokens; and
+  syntax errors as you type. A tag Twig itself doesn't have is not an error, since
+  extensions add tags, and `"TwigSyntax": { "enabled": false }` under `inspections` turns
+  the errors off. With Symfony's Twig bridge installed, its tags, filters and functions
+  are known too. None of it needs the index.
+- Format Document can use the project's **Prettier** for Twig templates: `format.twig`
+  (`phoxite.format.twig` in VS Code) set to `prettier` runs `node_modules/prettier` on the
+  template's text, with the project's Prettier configuration and its Twig plugin
+  (`@zackad/prettier-plugin-twig`, say). Prettier also rewraps lines and formats the
+  JavaScript and CSS inside, which the built-in formatter doesn't. In a trusted workspace
+  only; without Prettier, for a selection, and when Prettier fails, the built-in formatter
+  answers. `analyzers.nodePath` names the Node.js that runs it (`node` on `PATH` when
+  empty). Tested against a stand-in and, by hand, against Prettier 3 with that plugin.
+- The VS Code extension has a Twig language: highlighting in the text, inside HTML tags
+  and attribute values and in scripts and styles, snippets for the tags, and a warning when
+  another extension defines the language too.
+- `phoxite-lsp check` reports the syntax errors of the Twig templates in the project's
+  template folders (`TwigSyntax`).
+- Clients are asked to watch `*.twig` and the YAML files below `config/`: a route or a
+  service added to a YAML file outside the editor is known without a restart.
 - Symfony route names (`generateUrl()`, `redirectToRoute()`, a URL generator's
   `generate()`, `path()` and `url()`) have Go to Definition, Find References, Rename and
   hover: to the key in a YAML routes file or the `name` of the `#[Route]` attribute.

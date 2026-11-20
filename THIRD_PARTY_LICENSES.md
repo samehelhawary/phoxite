@@ -44,3 +44,9 @@ compiled in through the `rusqlite` crate (MIT License). SQLite itself is in the
 
 `editors/vscode/syntaxes/blade.tmLanguage.json` is written for this project and contains no
 third-party text.
+
+## The Twig grammar of the VS Code extension
+
+`editors/vscode/syntaxes/twig.tmLanguage.json`, its language configuration and its snippets
+are written for this project, from Twig's public documentation of its syntax, and contain
+no third-party text.

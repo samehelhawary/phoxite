@@ -52,12 +52,14 @@ pub struct TwigCompletion {
 
 /// Where the caret is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Context {
+pub(super) enum Context {
     Tag,
     Filter,
     Test,
     Expression,
     Template,
+    /// After a `.`: an attribute, or a macro of an import.
+    Attribute,
 }
 
 /// Tags whose first argument is a template name.
@@ -98,6 +100,8 @@ pub fn completions(text: &str, pos: Pos, symfony: bool, templates: &TemplatePath
             }
         }
         Context::Test => builtin(&mut out, builtins::TESTS, TwigCompletionKind::Test, "2", None),
+        // Attributes aren't known.
+        Context::Attribute => {}
         Context::Template => {
             for name in templates.names() {
                 out.push(TwigCompletion {
@@ -142,21 +146,21 @@ pub fn completions(text: &str, pos: Pos, symfony: bool, templates: &TemplatePath
     out
 }
 
-struct Found {
-    context: Context,
+pub(super) struct Found {
+    pub context: Context,
     /// Byte range replaced by an item.
-    start: usize,
-    end: usize,
+    pub start: usize,
+    pub end: usize,
     /// Byte range of the tag around the caret (from `{{`/`{%` to its closing
     /// delimiter, or to the end of the word when it isn't closed yet).
-    tag: (usize, usize),
+    pub tag: (usize, usize),
 }
 
 fn is_word(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
 }
 
-fn context_at(text: &str, offset: usize) -> Option<Found> {
+pub(super) fn context_at(text: &str, offset: usize) -> Option<Found> {
     let bytes = text.as_bytes();
     let before = text.get(..offset)?;
     // The last delimiter opening before the caret.
@@ -218,7 +222,7 @@ fn context_at(text: &str, offset: usize) -> Option<Found> {
     let context = if lead.ends_with('|') {
         Context::Filter
     } else if lead.ends_with('.') {
-        return None;
+        Context::Attribute
     } else if ends_with_word(lead, "is") || ends_with_word(lead, "is not") {
         Context::Test
     } else if kind == "{%" && lead.is_empty() {

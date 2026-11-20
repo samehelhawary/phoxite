@@ -1,6 +1,6 @@
 # Phoxite
 
-PHP and Laravel code intelligence written in Rust, packaged for any editor: a library
+PHP, Laravel and Twig code intelligence written in Rust, packaged for any editor: a library
 (`phoxite`), a language server (`phoxite-lsp`) and a VS Code extension.
 
 Phoxite is a standalone engine: it depends on no editor.
@@ -25,6 +25,13 @@ servers. What it does:
   them all.
 - **Blade:** completion, hover, goto and usages in echoes, directives and `@php` blocks;
   directive, section, stack and component names; the template's own problems; formatting.
+- **Twig:** the outline; completion of tags, filters, functions, tests, the variables and
+  macros in scope and template names; hover; goto for template names, macros and the block
+  a block overrides; the usages of a template name; rename of blocks and macros; formatting
+  (indentation and the spacing inside tags); syntax errors. With Symfony's Twig bridge installed, its
+  tags, filters and functions too.
+- **Symfony:** the types of services (`$container->get()`) and of Doctrine repositories and
+  their finders; route names with completion, goto, usages and rename.
 
 ## Performance
 
@@ -104,9 +111,9 @@ The server reads its settings from `initializationOptions.settings` and from
     "generation": { "module": "", "controllerSuffix": "Controller", "typeHints": true }
   },
   "frameworks": { "laravel": "auto", "symfony": "auto" },
-  "format": { "lineWidth": 120, "tool": "phoxite" },
+  "format": { "lineWidth": 120, "tool": "phoxite", "twig": "phoxite" },
   "templates": { "path": ".phoxite/templates" },
-  "analyzers": { "onSave": false, "phpPath": "" }
+  "analyzers": { "onSave": false, "phpPath": "", "nodePath": "" }
 }
 ```
 
@@ -141,7 +148,7 @@ phoxite-lsp check app routes           # only what is below these paths
 phoxite-lsp check --format sarif > phoxite.sarif
 ```
 
-It reports the problems of the project's own PHP files and Blade templates (not
+It reports the problems of the project's own PHP files, Blade and Twig templates (not
 `vendor/`) as an editor shows them, with the settings of the project's `phoxite.json`.
 The exit code is 1 when there is an error or a warning; `--fail-on error` lets warnings
 pass and `--fail-on never` only reports. `--format` takes `text`, `json`, `sarif`

@@ -60,7 +60,7 @@ pub fn capabilities() -> Value {
         completion_provider: Some(lsp::CompletionOptions {
             resolve_provider: Some(true),
             trigger_characters: Some(
-                ["$", ">", ":", "\\", "'", "\"", "@", "<", "-", ".", "/"].iter().map(|s| s.to_string()).collect(),
+                ["$", ">", ":", "\\", "'", "\"", "@", "<", "-", ".", "/", "|"].iter().map(|s| s.to_string()).collect(),
             ),
             ..lsp::CompletionOptions::default()
         }),
@@ -450,6 +450,10 @@ impl Server {
             if !c.is_empty() || !r.is_empty() {
                 w.engine.files_changed(&c, &r);
             }
+            // Templates created or removed, and what says where they are.
+            if c.iter().chain(&r).any(|path| concerns_twig(path)) {
+                self.state.forget_twig(&w.root);
+            }
             // The database file or the `.env` naming it: the live schema.
             if changed.iter().chain(&removed).any(|path| crate::schema::concerns(&self.state, &w.root, path)) {
                 crate::schema::refresh_quietly(&self.state, &w.root, &w.engine);
@@ -481,8 +485,12 @@ impl Server {
 
 /// The files on disk the index is built from, as glob patterns: what a client watches
 /// for the server.
-pub const WATCHED_FILES: [&str; 9] = [
+pub const WATCHED_FILES: [&str; 11] = [
     "**/*.php",
+    // Twig templates, and the YAML configuration that names template
+    // folders, services and routes.
+    "**/*.twig",
+    "**/config/**/*.{yaml,yml}",
     // The settings file of a project.
     "**/phoxite.json",
     "**/composer.{json,lock}",
@@ -519,6 +527,15 @@ impl Server {
         );
         let _ = self.state.sender.send(Message::Request(request));
     }
+}
+
+/// Whether a change of `path` changes what the Twig support read about its
+/// project: a template, `twig.yaml`, or a Composer file.
+fn concerns_twig(path: &std::path::Path) -> bool {
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default().to_ascii_lowercase();
+    name.ends_with(".twig")
+        || matches!(name.as_str(), "twig.yaml" | "twig.yml" | "composer.json" | "composer.lock" | "installed.json")
+        || path.extension().is_none()
 }
 
 fn params<P: DeserializeOwned>(value: Value) -> Option<P> {

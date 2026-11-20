@@ -107,6 +107,37 @@ attribute values (`<a href="{{ route('home') }}">`, `@class([...])`), in a compo
 bound attributes (`:type="$type"`) and in scripts and styles. Type `@` for snippets of
 the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
 
+## Twig
+
+Highlighting of Twig in the text, inside HTML tags and attribute values, and in scripts and
+styles; snippets for the tags (`block`, `if`, `for`, `macro`…).
+
+- Completion of tags, filters (after `|`), functions, tests (after `is`), the variables and
+  macros in scope, and template names in `extends`, `include`, `embed`, `import`, `from`,
+  `use`, `include()` and `source()`
+- Hover on a built-in tag, filter, function or test, and on a macro
+- Go to Definition: a template name to its file, a macro call to the macro (in this
+  template or the one it is imported from), a block's name to the block it overrides in
+  the parent template
+- Find All References on a template name: the templates naming it
+- Rename a block, in every template of its `extends` and `use` family, or a macro, where it
+  is declared, imported and called
+- Format Document and Format Selection indent every line by the HTML elements and Twig
+  blocks around it and put the spacing inside the tags right (`{{x|upper}}` →
+  `{{ x|upper }}`). Nothing moves to another line; `<pre>`, `<textarea>`, `verbatim`,
+  comments and tags written over several lines stay as written. The code of a script or
+  a style is indented by its brackets, or keeps its own indentation where that isn't safe
+  (a template literal, say); the code itself isn't reformatted. For that and for rewrapped
+  lines, set `phoxite.format.twig` to `prettier`: the project's Prettier, with a plugin
+  that reads Twig, then formats whole templates
+- Syntax errors as you type; a tag Twig itself doesn't have is not one (extensions add
+  tags). `"TwigSyntax": { "enabled": false }` in `phoxite.inspections` turns them off
+- With Symfony's Twig bridge installed: its tags, filters and functions (`path`, `trans`…)
+
+Templates are found in `templates/` (or the `default_path` and `paths` of
+`config/packages/twig.yaml`), `app/Resources/views` and `resources/views`. Twig needs no
+index, so it works in any folder.
+
 ## Settings
 
 | Setting | |
@@ -124,6 +155,8 @@ the directives (`@if`, `@foreach`, `@section`…), or `x-` for a component tag.
 | `phoxite.templates.path` | The folder of edited generator templates. |
 | `phoxite.format.lineWidth` | The line length for Format Document. |
 | `phoxite.format.tool` | `phoxite` (the built-in PSR-12 formatter) or `pint`: the project's Laravel Pint formats whole PHP files. |
+| `phoxite.format.twig` | `phoxite` (the built-in formatter of Twig templates) or `prettier`: the project's Prettier with a Twig plugin formats whole templates, rewrapping lines and formatting the JavaScript and CSS inside. |
+| `phoxite.analyzers.nodePath` | The Node.js that runs the project's Prettier; empty: `node` on `PATH`. |
 | `phoxite.analyzers.onSave` | Run the project's PHPStan and Psalm on each saved PHP file. |
 | `phoxite.analyzers.phpPath` | The PHP interpreter that runs them; empty: `php` on `PATH`. |
 | `phoxite.server.path` | Use another `phoxite-lsp` binary (`~` and a path relative to the workspace folder work). |
@@ -174,14 +207,15 @@ Command Palette under **Phoxite**.
 Disable Intelephense or other PHP language servers in the workspaces where you use this
 extension: both would answer every request, so completions and problems show twice. The
 extension says so when it finds one (also for Laravel extensions that complete the same
-names, and for ones that define the Blade language too), once per workspace.
+names, and for ones that define the Blade or the Twig language too), once per workspace.
 
 ## Restricted Mode
 
 In a workspace you haven't trusted, Phoxite still gives code intelligence, from the
-files it reads. It runs nothing of the project there: Artisan, PHPStan, Psalm and Pint stay
-off, and the settings that name a program or a file outside the project
-(`phoxite.server.path`, `phoxite.analyzers.phpPath`, `phoxite.laravel.artisanCommand`,
+files it reads. It runs nothing of the project there: Artisan, PHPStan, Psalm, Pint and
+Prettier stay off, and the settings that name a program or a file outside the project
+(`phoxite.server.path`, `phoxite.analyzers.phpPath`, `phoxite.analyzers.nodePath`,
+`phoxite.laravel.artisanCommand`,
 `phoxite.laravel.database`, `phoxite.includePaths`) are read from your own settings
 only, not from the workspace's.
 

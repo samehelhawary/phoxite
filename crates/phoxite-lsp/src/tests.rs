@@ -381,6 +381,190 @@ fn a_framework_turned_off_in_the_settings_has_no_string_references() {
     c.shutdown();
 }
 
+/// A project with a layout, a template of macros and a page using both.
+fn twig_project() -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let files = [
+        ("composer.json", r#"{"require": {"symfony/twig-bundle": "^7.0"}}"#),
+        ("templates/base.html.twig", "<html>\n{% block body %}{% endblock %}\n</html>\n"),
+        ("templates/forms.html.twig", "{% macro input(name) %}<input name=\"{{ name }}\">{% endmacro %}\n"),
+        (
+            "templates/page.html.twig",
+            "{% extends 'base.html.twig' %}\n{% import 'forms.html.twig' as forms %}\n{% block body %}\n  {{ forms.input('q') }}\n  {{ title|upper }}\n{% endblock %}\n",
+        ),
+        ("templates/other.html.twig", "{% extends 'base.html.twig' %}\n"),
+    ];
+    for (rel, text) in files {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    (dir, root)
+}
+
+#[test]
+fn twig_templates_are_served_without_an_index() {
+    let (_dir, root) = twig_project();
+    let mut c = Client::start(&root);
+    let page = root.join("templates/page.html.twig");
+    let uri = c.open(&page, "twig");
+
+    // The outline: the parent, the import and the block.
+    let outline = c.request::<r::DocumentSymbolRequest>(json!({ "textDocument": { "uri": uri } })).to_string();
+    assert!(outline.contains("base.html.twig") && outline.contains("forms") && outline.contains("body"), "{outline}");
+
+    // Filters after `|`, with what Symfony's bridge adds elsewhere.
+    let (line, col) = find(&page, "upper", 0);
+    let filters = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(filters.contains("\"upper\"") && filters.contains("\"trans\""), "{filters}");
+
+    // Hover on a filter.
+    let hover = c.request::<r::HoverRequest>(at(&uri, line, col + 2)).to_string();
+    assert!(hover.contains("upper") && hover.contains("filter"), "{hover}");
+
+    // Goto: the parent template, the macro of the imported template, the block it overrides.
+    let (line, col) = find(&page, "base.html.twig", 2);
+    let parent = c.request::<r::GotoDefinition>(at(&uri, line, col)).to_string();
+    assert!(parent.contains("templates/base.html.twig"), "{parent}");
+    let (line, col) = find(&page, "input('q')", 2);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found.to_string().contains("templates/forms.html.twig"), "{found}");
+    assert_eq!(found[0]["range"]["start"]["character"], 9, "{found}");
+    let (line, col) = find(&page, "block body", 7);
+    let block = c.request::<r::GotoDefinition>(at(&uri, line, col)).to_string();
+    assert!(block.contains("templates/base.html.twig"), "{block}");
+
+    // Usages of a template name: every template naming it, and the file itself.
+    let (line, col) = find(&page, "base.html.twig", 2);
+    let mut params = at(&uri, line, col);
+    params["context"] = json!({ "includeDeclaration": true });
+    let usages = c.request::<r::References>(params);
+    let files: Vec<String> = usages.as_array().unwrap().iter().map(|usage| usage["uri"].to_string()).collect();
+    assert_eq!(files.len(), 3, "{usages}");
+    assert!(files.iter().any(|file| file.contains("other.html.twig")), "{usages}");
+    c.shutdown();
+}
+
+#[test]
+fn a_twig_templates_syntax_errors_are_published_and_cleared() {
+    let (_dir, root) = twig_project();
+    let mut c = Client::start(&root);
+    let page = root.join("templates/broken.html.twig");
+    std::fs::write(&page, "{% if a %}\n{{ a| }}\n").unwrap();
+    // A client without a Twig language: the file name decides.
+    let uri = c.open(&page, "plaintext");
+    let problems = c.diagnostics(&uri, |d| d.len() == 2);
+    assert!(problems.iter().all(|d| d["source"] == "twig" && d["code"] == "TwigSyntax"), "{problems:?}");
+    assert!(problems.iter().any(|d| d["message"] == "Unclosed 'if' block"), "{problems:?}");
+
+    c.notify::<n::DidChangeTextDocument>(json!({
+        "textDocument": { "uri": uri, "version": 2 },
+        "contentChanges": [{ "text": "{% if a %}\n{{ a|upper }}\n{% endif %}\n" }]
+    }));
+    assert!(c.diagnostics(&uri, |d| d.is_empty()).is_empty());
+    c.shutdown();
+}
+
+#[test]
+fn twig_rename_formatting_and_semantic_tokens() {
+    let (_dir, root) = twig_project();
+    let mut c = Client::start(&root);
+    let page = root.join("templates/page.html.twig");
+    let uri = c.open(&page, "twig");
+
+    // A block: here and in the parent it overrides.
+    let (line, col) = find(&page, "block body", 7);
+    let range = c.request::<r::PrepareRenameRequest>(at(&uri, line, col));
+    assert_eq!(range["start"]["character"], 9, "{range}");
+    let mut params = at(&uri, line, col);
+    params["newName"] = json!("main");
+    let edit = c.request::<r::Rename>(params).to_string();
+    assert!(edit.contains("page.html.twig") && edit.contains("base.html.twig") && edit.contains("main"), "{edit}");
+    assert!(!edit.contains("other.html.twig"), "it has no such block: {edit}");
+
+    // A macro, from its call: the call and the declaration.
+    let (line, col) = find(&page, "input('q')", 2);
+    let mut params = at(&uri, line, col);
+    params["newName"] = json!("field");
+    let edit = c.request::<r::Rename>(params).to_string();
+    assert!(edit.contains("page.html.twig") && edit.contains("forms.html.twig"), "{edit}");
+    // A template's name isn't renamed.
+    let (line, col) = find(&page, "base.html.twig", 2);
+    assert!(c.call("textDocument/prepareRename", at(&uri, line, col)).is_err());
+
+    // Formatting: the spacing inside the tags.
+    c.notify::<n::DidChangeTextDocument>(json!({
+        "textDocument": { "uri": uri, "version": 2 },
+        "contentChanges": [{ "text": "<p>\n{{title | upper}}\n</p>\n{%if a%}x{% endif %}\n" }]
+    }));
+    let edits = c.request::<r::Formatting>(json!({
+        "textDocument": { "uri": uri }, "options": { "tabSize": 4, "insertSpaces": true }
+    }));
+    let texts: Vec<&str> = edits.as_array().unwrap().iter().map(|edit| edit["newText"].as_str().unwrap()).collect();
+    // A line per change: the indentation, and the spacing inside the tags.
+    assert_eq!(texts, ["    {{ title|upper }}", "{% if a %}x{% endif %}"]);
+
+    // Semantic tokens: `title` and `upper`, then `a`.
+    let tokens = c.request::<r::SemanticTokensFullRequest>(json!({ "textDocument": { "uri": uri } }));
+    assert_eq!(tokens["data"].as_array().unwrap().len(), 3 * 5, "{tokens}");
+    c.shutdown();
+}
+
+#[test]
+fn twig_syntax_errors_are_off_when_the_inspection_is() {
+    let (_dir, root) = twig_project();
+    let broken = root.join("templates/broken.html.twig");
+    std::fs::write(&broken, "{% if a %}\n").unwrap();
+    let other = root.join("templates/other.html.twig");
+
+    // The inspection turned off in the settings.
+    let mut c = Client::start(&root);
+    c.notify::<n::DidChangeConfiguration>(
+        json!({ "settings": { "phoxite": { "inspections": { "TwigSyntax": { "enabled": false } } } } }),
+    );
+    let uri = c.open(&broken, "twig");
+    // A second document's diagnostics come after the first one's.
+    let later = c.open(&other, "twig");
+    c.diagnostics(&later, |_| true);
+    assert!(c.diagnostics(&uri, |_| true).is_empty());
+    c.shutdown();
+}
+
+#[test]
+fn a_new_template_is_a_template_name_once_the_client_reports_it() {
+    let (_dir, root) = twig_project();
+    let mut c = Client::start(&root);
+    let page = root.join("templates/page.html.twig");
+    let uri = c.open(&page, "twig");
+    let (line, col) = find(&page, "base.html.twig", 0);
+    let names = |c: &mut Client| c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(names(&mut c).contains("other.html.twig"));
+    assert!(!names(&mut c).contains("fresh.html.twig"));
+
+    let fresh = root.join("templates/fresh.html.twig");
+    std::fs::write(&fresh, "x").unwrap();
+    c.notify::<n::DidChangeWatchedFiles>(json!({
+        "changes": [{ "uri": Url::from_file_path(&fresh).unwrap(), "type": 1 }]
+    }));
+    let found = c.request_until::<r::Completion>(at(&uri, line, col), |v| v.to_string().contains("fresh.html.twig"));
+    assert!(found.to_string().contains("fresh.html.twig"), "{found}");
+    c.shutdown();
+}
+
+#[test]
+fn a_pipe_opens_completion_in_twig_only() {
+    let root = fixture("php-library");
+    let mut c = Client::start(&root);
+    let file =
+        std::fs::read_dir(root.join("src")).unwrap().flatten().map(|entry| entry.path()).find(|path| path.is_file());
+    let uri = c.open(&file.unwrap(), "php");
+    let mut params = at(&uri, 1, 0);
+    params["context"] = json!({ "triggerKind": 2, "triggerCharacter": "|" });
+    assert!(c.request::<r::Completion>(params).is_null());
+    c.shutdown();
+}
+
 fn copy_dir(from: &Path, to: &Path) {
     for entry in std::fs::read_dir(from).unwrap() {
         let entry = entry.unwrap();
@@ -844,6 +1028,88 @@ fn fake_pint(dir: &Path, formatted: &str) -> PathBuf {
     }
 }
 
+/// A stand-in for the Node.js running Prettier: whatever it is given, it prints
+/// `formatted`, or fails when the template's path has `fail` in it. Answers its path.
+fn fake_node(dir: &Path, formatted: &str) -> PathBuf {
+    std::fs::write(dir.join("formatted.twig"), formatted).unwrap();
+    if cfg!(windows) {
+        let node = dir.join("node.cmd");
+        let script = "@echo off\r\necho %3 | findstr fail >nul && (echo No parser could be inferred 1>&2 & exit /b 2)\r\ntype \"%~dp0formatted.twig\"\r\n";
+        std::fs::write(&node, script).unwrap();
+        node
+    } else {
+        let node = dir.join("node");
+        let script = "#!/bin/sh\ncase \"$3\" in *fail*) echo 'No parser could be inferred' >&2; exit 2;; esac\ncat \"$(dirname \"$0\")/formatted.twig\"\n";
+        std::fs::write(&node, script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        node
+    }
+}
+
+#[test]
+fn prettier_formats_the_whole_template_of_a_trusted_project() {
+    let (_tmp, root) = twig_project();
+    let page = root.join("templates/page.html.twig");
+    let before = std::fs::read_to_string(&page).unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    let by_prettier = "{# formatted by the stand-in for Prettier #}\n";
+    let node = fake_node(tools.path(), by_prettier);
+    let settings = |tool: &str| json!({ "settings": { "phoxite": { "format": { "twig": tool }, "analyzers": { "nodePath": node } } } });
+    let options = json!({ "tabSize": 4, "insertSpaces": true });
+
+    let mut c = Client::start(&root);
+    let uri = c.open(&page, "twig");
+    let format = |c: &mut Client, uri: &Url| {
+        c.request::<r::Formatting>(json!({ "textDocument": { "uri": uri }, "options": options }))
+    };
+    let from_prettier =
+        |edits: &Value| edits.as_array().is_some_and(|edits| edits.iter().any(|e| e["newText"] == by_prettier));
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": true }));
+
+    // The project doesn't install Prettier: the built-in formatter answers.
+    c.notify::<n::DidChangeConfiguration>(settings("prettier"));
+    assert!(!from_prettier(&format(&mut c, &uri)));
+
+    std::fs::create_dir_all(root.join("node_modules/prettier/bin")).unwrap();
+    std::fs::write(root.join("node_modules/prettier/bin/prettier.cjs"), "// the project's Prettier\n").unwrap();
+    // One edit replaces the whole text with what Prettier printed; the project's file is untouched.
+    let edits = format(&mut c, &uri);
+    assert_eq!(edits.as_array().map(Vec::len), Some(1), "{edits}");
+    assert_eq!(edits[0]["newText"], by_prettier);
+    assert_eq!(edits[0]["range"]["start"], json!({ "line": 0, "character": 0 }));
+    assert_eq!(edits[0]["range"]["end"], json!({ "line": before.matches('\n').count(), "character": 0 }));
+    assert_eq!(std::fs::read_to_string(&page).unwrap(), before);
+
+    // A range is the built-in formatter's.
+    let range = json!({ "start": { "line": 2, "character": 0 }, "end": { "line": 4, "character": 0 } });
+    let ranged =
+        c.request::<r::RangeFormatting>(json!({ "textDocument": { "uri": uri }, "range": range, "options": options }));
+    assert!(!from_prettier(&ranged), "{ranged}");
+
+    // Prettier fails (no plugin reads the file): the built-in formatter answers.
+    let failing = root.join("templates/fail.html.twig");
+    std::fs::write(&failing, "<p>\n{{x}}\n</p>\n").unwrap();
+    let failing_uri = c.open(&failing, "twig");
+    let edits = format(&mut c, &failing_uri);
+    assert!(!from_prettier(&edits), "{edits}");
+    assert!(edits.to_string().contains("{{ x }}"), "the built-in formatter's edit: {edits}");
+
+    // Prettier is code of the project: nothing of it runs in a workspace that isn't trusted.
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": false }));
+    assert!(!from_prettier(&format(&mut c, &uri)));
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": true }));
+    assert!(from_prettier(&format(&mut c, &uri)));
+
+    // And the setting's default is the built-in formatter.
+    c.notify::<n::DidChangeConfiguration>(settings("phoxite"));
+    assert!(!from_prettier(&format(&mut c, &uri)));
+    c.shutdown();
+}
+
 #[test]
 fn pint_formats_the_whole_file_of_a_trusted_project() {
     let (_tmp, root) = shop_project();
@@ -891,6 +1157,41 @@ fn pint_formats_the_whole_file_of_a_trusted_project() {
     // And the setting's default is the built-in formatter.
     c.notify::<n::DidChangeConfiguration>(settings("phoxite"));
     assert!(!from_pint(&format(&mut c)));
+    c.shutdown();
+}
+
+/// Format Document of a Twig template through a real Prettier, run by a real Node.js.
+/// `PHOXITE_REAL_PRETTIER` names a project that installs it with a plugin that reads
+/// Twig (`npm install --save-dev prettier @zackad/prettier-plugin-twig`, and the plugin
+/// in its `.prettierrc`), and `node` is on `PATH`.
+#[test]
+#[ignore = "needs Node.js and Prettier: set PHOXITE_REAL_PRETTIER to a project that installs it"]
+fn a_real_prettier_formats_the_template() {
+    let project = std::env::var("PHOXITE_REAL_PRETTIER")
+        .expect("PHOXITE_REAL_PRETTIER names a project with node_modules/prettier");
+    let root = dunce::canonicalize(project).unwrap();
+    assert!(root.join("node_modules/prettier").is_dir(), "{} doesn't install Prettier", root.display());
+    std::fs::create_dir_all(root.join("templates")).unwrap();
+    let messy = root.join("templates/messy.html.twig");
+    let before = "{%if user%}\n<p   class=\"a\">{{user.name|upper}}</p>\n{%endif%}\n";
+    std::fs::write(&messy, before).unwrap();
+    let options = json!({ "tabSize": 4, "insertSpaces": true });
+
+    let mut c = Client::start(&root);
+    let uri = c.open(&messy, "twig");
+    c.notify_custom("phoxite/workspaceTrust", json!({ "trusted": true }));
+    c.notify::<n::DidChangeConfiguration>(json!({ "settings": { "phoxite": { "format": { "twig": "prettier" } } } }));
+    let edits = c.request::<r::Formatting>(json!({ "textDocument": { "uri": uri }, "options": options }));
+
+    // One edit over the whole text, as Prettier writes it.
+    assert_eq!(edits.as_array().map(Vec::len), Some(1), "{edits}");
+    assert_eq!(edits[0]["range"]["start"], json!({ "line": 0, "character": 0 }));
+    let formatted = edits[0]["newText"].as_str().unwrap();
+    assert!(formatted.contains("{% if user %}"), "{formatted}");
+    assert!(formatted.contains("<p class=\"a\">"), "what the built-in formatter leaves alone: {formatted}");
+    assert!(formatted.contains("{{ user.name|upper }}"), "{formatted}");
+    // Prettier read the text from the editor: the project's file is as it was.
+    assert_eq!(std::fs::read_to_string(&messy).unwrap(), before);
     c.shutdown();
 }
 

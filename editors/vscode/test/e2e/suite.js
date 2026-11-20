@@ -161,6 +161,24 @@ const checks = [
     }
     return `languageId blade, ${(symbols ?? []).length} top-level symbols${hover ? `, hover: ${hover}` : ""}`;
   }],
+  ["Twig: language, outline, a filter's hover, goto the parent template", async () => {
+    await vscode.workspace.fs.writeFile(file("templates/base.html.twig"), Buffer.from("{% block body %}{% endblock %}\n"));
+    await vscode.workspace.fs.writeFile(
+      file("templates/page.html.twig"),
+      Buffer.from("{% extends 'base.html.twig' %}\n{% block body %}{{ title|upper }}{% endblock %}\n"),
+    );
+    const doc = await open("templates/page.html.twig");
+    assert.equal(doc.languageId, "twig");
+    const symbols = await until("twig outline", () => vscode.commands.executeCommand("vscode.executeDocumentSymbolProvider", doc.uri),
+      (s) => (s ?? []).length > 0, 30_000);
+    assert.ok(symbols.some((s) => s.name === "body"), symbols.map((s) => s.name).join(", "));
+    const hovers = await vscode.commands.executeCommand("vscode.executeHoverProvider", doc.uri, at(doc, "upper", 2));
+    assert.match(hoverText(hovers), /upper/);
+    const targets = await vscode.commands.executeCommand("vscode.executeDefinitionProvider", doc.uri, at(doc, "base.html.twig", 2));
+    const target = (targets[0].targetUri ?? targets[0].uri).fsPath;
+    assert.ok(target.endsWith(path.join("templates", "base.html.twig")), target);
+    return `languageId twig, ${symbols.length} top-level symbols, hover: ${hoverText(hovers).split("\n").find((l) => l.includes("upper"))}`;
+  }],
   ["format a PHP document", async () => {
     const uri = file("app/Messy.php");
     await vscode.workspace.fs.writeFile(uri, Buffer.from("<?php\nnamespace App;\nclass Messy{public function a( $x ){return $x+1;}}\n"));

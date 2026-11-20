@@ -4,7 +4,12 @@
 the GitHub releases (or `cargo install --path crates/phoxite-lsp`) and put it on `PATH`.
 Each binary has a `.sha256` file beside it.
 
-A file named `*.blade.php` is a Blade template whatever language id the client sends.
+A file named `*.blade.php` is a Blade template whatever language id the client sends, and
+a file named `*.twig` is a Twig template. The server gives Twig templates an outline,
+completion, hover, Go to Definition (template names, macros, the block a block overrides),
+the usages of a template name, rename of blocks and macros, formatting (indentation and the
+spacing inside tags), semantic tokens and their syntax errors. Highlighting of the tags themselves
+is the editor's.
 
 Turn off other PHP language servers (Intelephense, Phpactor) for the same files; otherwise
 completions and problems show twice.
@@ -33,7 +38,7 @@ vim.filetype.add({ pattern = { [".*%.blade%.php"] = "blade" } })
 
 vim.lsp.config("phoxite", {
   cmd = { "phoxite-lsp" },
-  filetypes = { "php", "blade" },
+  filetypes = { "php", "blade", "twig" },
   root_markers = { "composer.json", ".git" },
   init_options = { settings = { phpVersion = "", laravel = { routeHints = true } } },
 })
@@ -69,6 +74,10 @@ name = "blade"
 scope = "text.html.php.blade"
 file-types = [{ glob = "*.blade.php" }]
 language-servers = ["phoxite"]
+
+[[language]]
+name = "twig"
+language-servers = ["phoxite"]
 ```
 
 ## Zed
@@ -85,10 +94,13 @@ Zed's PHP extension starts Intelephense or Phpactor. Point it at phoxite instead
     }
   },
   "languages": {
-    "PHP": { "language_servers": ["phoxite", "!intelephense", "!phpactor"] }
+    "PHP": { "language_servers": ["phoxite", "!intelephense", "!phpactor"] },
+    "Twig": { "language_servers": ["phoxite"] }
   }
 }
 ```
+
+The `Twig` entry needs a Zed extension that defines the Twig language.
 
 A Zed extension that registers the `phoxite` server is planned; until then the PHP
 extension's server entry has to be overridden as above.
@@ -103,7 +115,7 @@ extension's server entry has to be overridden as above.
     "phoxite": {
       "enabled": true,
       "command": ["phoxite-lsp"],
-      "selector": "embedding.php | text.html.blade",
+      "selector": "embedding.php | text.html.blade | text.html.twig",
       "initializationOptions": { "settings": {} }
     }
   }

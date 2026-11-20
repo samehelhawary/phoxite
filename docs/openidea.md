@@ -12,6 +12,11 @@ does, through `phoxite-lsp`.
   serves a project, `laravel-lsp` is not started (`replaces = ["laravel-lsp"]`).
 - `.blade.php` files open with the language id `php` there; the server treats a file as
   Blade by its name, so they get code insight (without Blade highlighting).
+- **Twig.** `phoxite-lsp` answers for `*.twig` files (outline, completion, hover, goto,
+  usages of a template name, syntax errors) when OpenIDEA sends them to it. The engine's
+  Twig module was first written for a service inside OpenIDEA's host; where that service
+  still runs for `twig` files, send them to one of the two, or the outline and completion
+  show twice.
 - **Pull Members Up / Push Members Down** through OpenIDEA's own dialogs
   ([#3603](https://github.com/l0ng-ai/openidea/pull/3603)): a small adapter there sends
   `phoxite/refactor/hierarchyMembers` and `phoxite/refactor/hierarchy` to a server that

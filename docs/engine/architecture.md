@@ -24,9 +24,13 @@ editor ── LSP (stdio) ──▶ phoxite-lsp server.rs ──▶ handlers.rs 
   client's settings onto the engine's `PhpConfig`.
 - `handlers.rs` answers the standard requests and `convert.rs` turns the
   engine's types (`phoxite::base`) into the LSP's.
-- Twig templates: `phoxite::twig` answers the outline, completion and
-  template goto from a document's text and the project's template
-  directories, without an engine. The server doesn't serve it yet.
+- Twig templates (`*.twig`, whatever language id the client sends) need no
+  engine: `phoxite::twig` answers the outline, completion, hover, goto, the
+  usages of a template name, rename, formatting, semantic tokens and the
+  syntax errors from the document's text
+  and the project's template directories. `state.rs` keeps what was read
+  about a project (`twig_project`) until a template, `twig.yaml` or a
+  Composer file changes there.
 - Blade templates (`*.blade.php`, whatever language id the client sends):
   directive completion and view/component goto need no engine. For the PHP
   inside echoes, directives and `@php` blocks the server asks the engine:
