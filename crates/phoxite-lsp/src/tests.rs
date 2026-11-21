@@ -50,7 +50,8 @@ impl Client {
         let caps = json!({
             "workspace": {
                 "workspaceEdit": { "documentChanges": true, "resourceOperations": ["create", "rename", "delete"] },
-                "didChangeWatchedFiles": { "dynamicRegistration": watches_files }
+                "didChangeWatchedFiles": { "dynamicRegistration": watches_files },
+                "inlayHint": { "refreshSupport": true }
             },
             "textDocument": {
                 "synchronization": { "dynamicRegistration": watches_files },
@@ -1892,6 +1893,70 @@ fn the_php_version_and_the_extensions_follow_composer_json() {
     }));
     let found = c.diagnostics(&uri, |d| d.is_empty());
     assert!(found.is_empty());
+    c.shutdown();
+}
+
+/// `inlayHints.arrayShapes`: an array shape reads `array` in a type hint, the tooltip keeps
+/// the full type, and the client is asked for the hints again when the setting changes.
+#[test]
+fn array_shapes_in_inlay_hints_follow_the_setting() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let file = root.join("Example.php");
+    let text = r#"<?php
+
+final class Example
+{
+    private const REGISTER_FIELDS = ['id' => 1, 'name' => 2];
+    private const QUERY_FIELDS = ['id' => 1, 'status' => 2];
+
+    public function fields(bool $registering): array
+    {
+        $fields = $registering ? self::REGISTER_FIELDS : self::QUERY_FIELDS;
+        $flag = $registering;
+        return $fields;
+    }
+}
+"#;
+    std::fs::write(&file, text).unwrap();
+    let mut c = Client::start(&root);
+    let uri = c.open(&file, "php");
+    let whole = json!({
+        "textDocument": { "uri": uri },
+        "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 9999, "character": 0 } }
+    });
+    let full = "array{id: int, name: int}|array{id: int, status: int}";
+    let labels = |hints: &Value| -> Vec<String> {
+        hints.as_array().into_iter().flatten().filter_map(|hint| hint["label"].as_str().map(str::to_owned)).collect()
+    };
+
+    let refreshes = |c: &Client| {
+        c.requests.iter().filter(|request| request.method == <r::InlayHintRefreshRequest as r::Request>::METHOD).count()
+    };
+
+    // Compact by default: `array` once, the full type in the tooltip.
+    let hints = c.request_until::<r::InlayHintRequest>(whole.clone(), |v| v.as_array().is_some_and(|a| a.len() == 2));
+    assert_eq!(labels(&hints), [": array", ": bool"]);
+    assert_eq!(hints[0]["tooltip"], full);
+    assert_eq!(refreshes(&c), 0);
+
+    // Full: the shapes with their keys, the other hint as it was.
+    let wanted = json!({ "settings": { "phoxite": { "inlayHints": { "arrayShapes": "full" } } } });
+    c.notify::<n::DidChangeConfiguration>(wanted.clone());
+    let hints = c.request::<r::InlayHintRequest>(whole.clone());
+    assert_eq!(labels(&hints), [format!(": {full}"), ": bool".to_owned()]);
+    assert_eq!(refreshes(&c), 1);
+
+    // The same settings again change nothing; the project's settings file wins over them.
+    c.notify::<n::DidChangeConfiguration>(wanted);
+    let settings_file = root.join("phoxite.json");
+    std::fs::write(&settings_file, r#"{ "inlayHints": { "arrayShapes": "compact" } }"#).unwrap();
+    c.notify::<n::DidChangeWatchedFiles>(json!({
+        "changes": [{ "uri": Url::from_file_path(&settings_file).unwrap(), "type": 1 }]
+    }));
+    let hints = c.request::<r::InlayHintRequest>(whole);
+    assert_eq!(labels(&hints), [": array", ": bool"]);
+    assert_eq!(refreshes(&c), 2);
     c.shutdown();
 }
 

@@ -13,13 +13,16 @@
 //!   values), unless the value spells it (literals, `new`, casts, closures,
 //!   `Foo::create()` returning a `Foo`), and after the parameter list of
 //!   closures and arrow functions without a return type. `mixed` and `void`
-//!   are not shown.
+//!   are not shown. An array shape reads `array` in the hint
+//!   (`array{…}|array{…}` is one `array`) and the tooltip keeps the full
+//!   type; with [`ArrayShapeHints::Full`] the hint has its keys too.
 //!
 //! Which kinds show is up to Editor › Inlay Hints (Types, Parameter names,
 //! and the languages they're on), applied by the editor.
 
 use std::collections::HashSet;
 
+use crate::base::settings::{ArrayShapeHints, InlayHintSettings};
 use crate::base::{DocId, Pos, Range};
 use mago_span::HasSpan;
 use mago_syntax::cst::{
@@ -61,6 +64,16 @@ impl PhpEngine {
     /// The inlay hints in `range` of an open document; `None` when the engine
     /// doesn't hold it.
     pub fn inlay_hints(&self, doc: DocId, range: Range) -> Option<Vec<InlayHintInfo>> {
+        self.inlay_hints_with(doc, range, InlayHintSettings::default())
+    }
+
+    /// [`inlay_hints`](Self::inlay_hints), shown as `settings` say.
+    pub fn inlay_hints_with(
+        &self,
+        doc: DocId,
+        range: Range,
+        settings: InlayHintSettings,
+    ) -> Option<Vec<InlayHintInfo>> {
         let parsed = self.parsed_document(doc)?;
         let resolver = self.resolver();
         let names = FileNames::resolve(&parsed);
@@ -74,6 +87,7 @@ impl PhpEngine {
             here: &here,
             resolver: &resolver,
             types: &types,
+            settings,
             start: lines.byte(range.start),
             end: lines.byte(range.end),
             frames: Vec::new(),
@@ -93,6 +107,7 @@ struct Hints<'a, 'r> {
     here: &'a FileSummary,
     resolver: &'r Resolver<'r>,
     types: &'r ExprTypes<'a, 'r>,
+    settings: InlayHintSettings,
     start: u32,
     end: u32,
     frames: Vec<Frame<'a>>,
@@ -160,6 +175,17 @@ pub(super) fn short_type(ty: &Type) -> String {
     out
 }
 
+/// Array shapes without their keys, wherever they are in the type:
+/// `array{id: int}|array{name: string}|null` → `?array`, `list{int, int}` →
+/// `list`.
+pub(super) fn compact_shapes(ty: &Type) -> Type {
+    ty.map(&mut |ty| match ty {
+        Type::Shape(shape) if shape.list => Some(Type::list_of(Type::Mixed)),
+        Type::Shape(_) => Some(Type::array()),
+        _ => None,
+    })
+}
+
 fn shown(ty: &Type) -> bool {
     !matches!(ty, Type::Mixed | Type::Void | Type::Never)
 }
@@ -198,9 +224,13 @@ impl<'a> Hints<'a, '_> {
         if !shown(&ty) {
             return;
         }
+        let label = match self.settings.array_shapes {
+            ArrayShapeHints::Full => short_type(&ty),
+            ArrayShapeHints::Compact => short_type(&compact_shapes(&ty)),
+        };
         self.out.push(InlayHintInfo {
             position: self.pos(at),
-            label: format!(": {}", short_type(&ty)),
+            label: format!(": {label}"),
             kind: InlayHintKind::Type,
             padding_left: false,
             padding_right: false,

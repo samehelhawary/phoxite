@@ -222,6 +222,26 @@ impl Default for LaravelSettings {
     }
 }
 
+/// What the inlay hints show.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct InlayHintSettings {
+    /// How an array shape reads in a type hint.
+    pub array_shapes: ArrayShapeHints,
+}
+
+/// How an array shape reads in a type hint. The hint's tooltip has the full
+/// type either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ArrayShapeHints {
+    /// With its keys and their types: `array{id: int, name: string}`.
+    Full,
+    /// As `array` (`list` for a list shape), once in a union of shapes.
+    #[default]
+    Compact,
+}
+
 /// Whether a framework's support is on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::base::settings::{ArrayShapeHints, InlayHintSettings};
 use crate::base::{IdeEvent, Range, SharedSink};
 
 use super::*;
@@ -108,17 +109,28 @@ impl Project {
     /// `text` with the hints of `range` (the whole file when `None`) written
     /// in as `⟨label⟩`.
     fn hints(&mut self, text: &str, range: Option<Range>) -> String {
-        let doc = self.open(text);
+        self.hints_with(text, range, InlayHintSettings::default())
+    }
+
+    /// [`hints`](Self::hints), shown as `settings` say.
+    fn hints_with(&mut self, text: &str, range: Option<Range>, settings: InlayHintSettings) -> String {
+        let hints = self.hint_infos(text, range, settings);
         let lines = LineIndex::new(text);
-        let range = range.unwrap_or_else(|| Range::new(Pos::new(0, 0), lines.pos(text.len() as u32)));
-        let hints = self.engine.inlay_hints(doc, range).expect("handled");
-        self.engine.document_closed(doc);
         let mut out = text.to_owned();
         for hint in hints.iter().rev() {
             let at = lines.byte(hint.position) as usize;
             out.insert_str(at, &format!("⟨{}⟩", hint.label));
         }
         out
+    }
+
+    fn hint_infos(&mut self, text: &str, range: Option<Range>, settings: InlayHintSettings) -> Vec<InlayHintInfo> {
+        let doc = self.open(text);
+        let lines = LineIndex::new(text);
+        let range = range.unwrap_or_else(|| Range::new(Pos::new(0, 0), lines.pos(text.len() as u32)));
+        let hints = self.engine.inlay_hints_with(doc, range, settings).expect("handled");
+        self.engine.document_closed(doc);
+        hints
     }
 }
 
@@ -282,6 +294,69 @@ fn hints_only_in_the_range() {
         p.hints(text, Some(range)),
         "<?php\nnamespace App;\n\nfmt(1, 'a');\nfmt(⟨cents:⟩2, ⟨currency:⟩'b');\n$x = (new Library())->checkout('3');\n"
     );
+}
+
+/// Array shapes read `array` unless the settings ask for them in full; the
+/// tooltip keeps the full type, and the other hints stay as they are.
+#[test]
+fn compact_array_shapes_in_type_hints() {
+    let mut p = Project::new();
+    let text = r#"<?php
+namespace App;
+
+final class Example
+{
+    private const REGISTER_FIELDS = ['id' => 1, 'name' => 2];
+    private const QUERY_FIELDS = ['id' => 1, 'status' => 2];
+
+    public function fields(bool $registering, Library $lib): array
+    {
+        $fields = $registering ? self::REGISTER_FIELDS : self::QUERY_FIELDS;
+        $one = self::REGISTER_FIELDS;
+        $mixed = $registering ? self::REGISTER_FIELDS : 'none';
+        $maybe = $registering ? self::REGISTER_FIELDS : null;
+        $flag = $registering;
+        $lent = $lib->checkout('1');
+        return $fields;
+    }
+}
+"#;
+    let full = p.hints_with(text, None, InlayHintSettings { array_shapes: ArrayShapeHints::Full });
+    assert!(full.contains("$fields⟨: array{id: int, name: int}|array{id: int, status: int}⟩ ="), "{full}");
+    assert!(full.contains("$one⟨: array{id: int, name: int}⟩ ="), "{full}");
+
+    // Compact unless the settings say otherwise.
+    let compact = InlayHintSettings::default();
+    assert_eq!(compact.array_shapes, ArrayShapeHints::Compact);
+    let shown = p.hints(text, None);
+    assert!(shown.contains("$fields⟨: array⟩ ="), "{shown}");
+    assert!(shown.contains("$one⟨: array⟩ ="), "{shown}");
+    assert!(shown.contains("$mixed⟨: array|string⟩ ="), "{shown}");
+    assert!(shown.contains("$maybe⟨: ?array⟩ ="), "{shown}");
+    // Nothing else changes.
+    assert!(shown.contains("$flag⟨: bool⟩ ="), "{shown}");
+    assert!(shown.contains("$lent⟨: Book⟩ ="), "{shown}");
+    for line in ["$flag", "$lent"] {
+        let of = |hints: &str| hints.lines().find(|l| l.contains(line)).map(str::to_owned);
+        assert_eq!(of(&full), of(&shown));
+    }
+
+    // The tooltip has the type in full.
+    let infos = p.hint_infos(text, None, compact);
+    let fields = infos.iter().find(|hint| hint.label == ": array").expect("the hint of $fields");
+    assert_eq!(fields.tooltip.as_deref(), Some("array{id: int, name: int}|array{id: int, status: int}"));
+}
+
+#[test]
+fn compact_shapes_inside_other_types() {
+    let compact =
+        |doc: &str| super::inlay::compact_shapes(&crate::types::parse_doc_type(doc, &[]).unwrap()).to_string();
+    assert_eq!(compact("array{id: int}|array{name: string}|null"), "?array");
+    assert_eq!(compact("list<array{id: int}>"), "list<array>");
+    assert_eq!(compact("list{int, string}"), "list");
+    // Only shapes: other array types say what they hold in a few words.
+    assert_eq!(compact("array<string, int>"), "array<string, int>");
+    assert_eq!(compact("list<int>|false"), "list<int>|false");
 }
 
 #[test]

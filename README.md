@@ -127,10 +127,15 @@ The server reads its settings from `initializationOptions.settings` and from
   },
   "frameworks": { "laravel": "auto", "symfony": "auto" },
   "format": { "lineWidth": 120, "tool": "phoxite", "twig": "phoxite" },
+  "inlayHints": { "arrayShapes": "compact" },
   "templates": { "path": ".phoxite/templates" },
   "analyzers": { "onSave": false, "phpPath": "", "nodePath": "" }
 }
 ```
+
+A type inlay hint shows an array shape as `array` (`array{…}|array{…}` reads `array`); its
+tooltip and the hover keep the full type. `inlayHints.arrayShapes` set to `full` shows the
+keys and their types in the hint too.
 
 `initializationOptions.cacheDir` sets where the indexes live (default: the user's cache
 folder, `phoxite/<hash of the folder>`).

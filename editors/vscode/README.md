@@ -23,7 +23,8 @@ commands, and PHPStan or Psalm on save.
 ## PHP
 
 - Completion with auto-import, named arguments, array keys and enum cases
-- Hover, signature help, inlay hints (parameter names, types), semantic highlighting
+- Hover, signature help, inlay hints (parameter names, types; an array shape reads `array`
+  unless `phoxite.inlayHints.arrayShapes` is `full`), semantic highlighting
 - Go to Definition, Type Definition and Implementation; Find All References; call and type
   hierarchies; workspace symbols
 - Rename (a class's file is renamed with it); moving files updates namespaces and references

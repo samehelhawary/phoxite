@@ -163,6 +163,12 @@ fn client_support(caps: &lsp::ClientCapabilities) -> ClientSupport {
             .and_then(|s| s.dynamic_registration)
             .unwrap_or(false),
         markdown: hover_markdown,
+        inlay_hint_refresh: caps
+            .workspace
+            .as_ref()
+            .and_then(|w| w.inlay_hint.as_ref())
+            .and_then(|hints| hints.refresh_support)
+            .unwrap_or(false),
         dialogs: caps
             .experimental
             .as_ref()

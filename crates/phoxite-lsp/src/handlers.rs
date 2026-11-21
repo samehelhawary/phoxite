@@ -961,8 +961,9 @@ pub fn inlay_hints(state: &State, p: lsp::InlayHintParams) -> Result<Option<Vec<
     let doc = snapshot(state, &p.text_document.uri)?;
     let (Kind::Php, Some(engine)) = (doc.kind, &doc.engine) else { return Ok(None) };
     let within = range(p.range);
+    let settings = state.settings_for(&doc.path).inlay_hints;
     let mut hints: Vec<lsp::InlayHint> = engine
-        .inlay_hints(doc.id, within)
+        .inlay_hints_with(doc.id, within, settings)
         .unwrap_or_default()
         .into_iter()
         .map(|hint| lsp::InlayHint {

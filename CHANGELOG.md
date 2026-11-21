@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.1 — 2026-11-21
+
+- **Compact array shapes in type inlay hints.** An array shape now reads `array` in a
+  hint: `array{…}|array{…}` is one `array`, `array{…}|string` is `array|string`. The
+  hint's tooltip and the hover keep the full type, and nothing changes in what is
+  inferred, completed or reported. To see the keys and their types in the hint as before,
+  set `inlayHints.arrayShapes` to `full` (`phoxite.inlayHints.arrayShapes` in VS Code, or
+  in a project's `phoxite.json`). The hints are asked for again when the setting changes,
+  in a client that takes `workspace/inlayHint/refresh`
+  ([#2](https://github.com/samehelhawary/phoxite/issues/2)).
+
 ## 0.8.0 — 2026-11-21
 
 - **CodeIgniter** (4, and 3). In a CodeIgniter application the names its helper functions

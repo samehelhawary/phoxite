@@ -129,6 +129,17 @@
         }
       }
     },
+    "inlayHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "arrayShapes": {
+          "description": "How an array shape reads in a type inlay hint: `compact` (`array`, once in a union of shapes) or `full` (with its keys and their types, `array{id: int, name: string}`). The hint's tooltip and hover show the full type either way.",
+          "enum": ["compact", "full"],
+          "default": "compact"
+        }
+      }
+    },
     "templates": {
       "type": "object",
       "additionalProperties": false,

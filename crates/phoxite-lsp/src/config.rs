@@ -12,6 +12,7 @@
 //!   "laravel": { "routeHints": true, "modules": "auto", "generation": { "module": "Blog" } },
 //!   "frameworks": { "laravel": "auto", "symfony": "auto", "wordpress": "disabled" },
 //!   "format": { "lineWidth": 120, "tool": "phoxite", "twig": "phoxite" },
+//!   "inlayHints": { "arrayShapes": "compact" },
 //!   "templates": { "path": ".phoxite/templates" },
 //!   "analyzers": { "onSave": true, "phpPath": "php", "nodePath": "node" }
 //! }
@@ -30,7 +31,7 @@ use std::path::{Path, PathBuf};
 
 use phoxite::base::Severity;
 use phoxite::base::inspection_settings::InspectionOverride;
-use phoxite::base::settings::{FrameworkSettings, LaravelSettings, PhpConfig};
+use phoxite::base::settings::{FrameworkSettings, InlayHintSettings, LaravelSettings, PhpConfig};
 use phoxite::inspect::{PROFILE_ID, STRICT_OPTION};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -52,6 +53,8 @@ pub struct Settings {
     /// for each (`{ "wordpress": "enabled" }`).
     pub frameworks: FrameworkSettings,
     pub format: FormatSettings,
+    /// What the inlay hints show (`{ "arrayShapes": "compact" }`).
+    pub inlay_hints: InlayHintSettings,
     pub templates: TemplateSettings,
     pub analyzers: AnalyzerSettings,
 }
@@ -424,6 +427,25 @@ mod tests {
         );
         assert_eq!(settings.inspections["PhpParams"], InspectionSetting { enabled: Some(false), ..Default::default() });
         assert_eq!(settings.format, FormatSettings::default());
+    }
+
+    #[test]
+    fn array_shapes_in_inlay_hints_are_full_or_compact() {
+        use phoxite::base::settings::ArrayShapeHints;
+
+        assert_eq!(Settings::default().inlay_hints.array_shapes, ArrayShapeHints::Compact);
+        let (settings, rejected) = Settings::from_json(&json!({ "inlayHints": { "arrayShapes": "full" } }));
+        assert!(rejected.is_empty(), "{rejected:?}");
+        assert_eq!(settings.inlay_hints.array_shapes, ArrayShapeHints::Full);
+        // A value that is no choice keeps the default and is named.
+        let (settings, rejected) = Settings::from_json(&json!({ "inlayHints": { "arrayShapes": "short" } }));
+        assert_eq!(rejected, ["inlayHints.arrayShapes"]);
+        assert_eq!(settings.inlay_hints, InlayHintSettings::default());
+        // A project's settings file may choose it.
+        let client = json!({ "phoxite": { "inlayHints": { "arrayShapes": "compact" } } });
+        let file = json!({ "inlayHints": { "arrayShapes": "full" } });
+        let (settings, _) = Settings::layered(&client, Some(&file), false);
+        assert_eq!(settings.inlay_hints.array_shapes, ArrayShapeHints::Full);
     }
 
     #[test]

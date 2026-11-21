@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use crossbeam_channel::Sender;
-use lsp_server::{Message, Notification};
+use lsp_server::{Message, Notification, Request, RequestId};
 use lsp_types::{self as lsp, Url};
 use parking_lot::{Mutex, RwLock};
 use phoxite::base::settings::PhpConfig;
@@ -146,6 +146,9 @@ pub struct ClientSupport {
     /// (`textDocument.synchronization.dynamicRegistration`).
     pub document_registration: bool,
     pub markdown: bool,
+    /// The client asks for the inlay hints again when told to
+    /// (`workspace.inlayHint.refreshSupport`).
+    pub inlay_hint_refresh: bool,
     /// The client has the dialogs of the refactorings that ask something first
     /// (`experimental.phoxite.dialogs`).
     pub dialogs: bool,
@@ -268,16 +271,35 @@ impl State {
     /// The settings file of the project at `root` changed (or appeared, or
     /// went): its settings are worked out again and passed to its engine.
     pub fn project_file_changed(&self, root: &Path) {
-        self.configure(Some(root), true);
+        if self.configure(Some(root), true) {
+            self.refresh_inlay_hints();
+        }
         self.settings_rejected();
+    }
+
+    /// Asks the client for the inlay hints again (their settings changed),
+    /// when it takes the request.
+    fn refresh_inlay_hints(&self) {
+        if !self.support.inlay_hint_refresh {
+            return;
+        }
+        use lsp::request::{InlayHintRefreshRequest, Request as _};
+        let request = Request::new(
+            RequestId::from("phoxite/inlayHint/refresh".to_owned()),
+            InlayHintRefreshRequest::METHOD.to_owned(),
+            (),
+        );
+        let _ = self.sender.send(Message::Request(request));
     }
 
     /// Works out the settings of the workspace at `only` (of every one
     /// without it) and passes them to its engine; `reread` reads its settings
-    /// file again first.
-    fn configure(&self, only: Option<&Path>, reread: bool) {
+    /// file again first. True when the inlay hints of one of them show
+    /// differently now.
+    fn configure(&self, only: Option<&Path>, reread: bool) -> bool {
         let trusted = self.is_trusted();
         let mut changed = Vec::new();
+        let mut hints = false;
         {
             let client = self.client_settings.read();
             let mut workspaces = self.workspaces.write();
@@ -288,6 +310,7 @@ impl State {
                 let (settings, rejected) = Settings::layered(&client.0, w.file.as_ref(), trusted);
                 w.rejected = rejected;
                 if *w.settings != settings {
+                    hints |= w.settings.inlay_hints != settings.inlay_hints;
                     w.settings = Arc::new(settings);
                     changed.push((w.root.clone(), w.engine.clone(), w.settings.clone()));
                 }
@@ -305,6 +328,7 @@ impl State {
             // The severities the user chose are applied when problems are published.
             self.republish_below(&root);
         }
+        hints
     }
 
     /// Publishes the problems of the files below `root` again.
@@ -343,12 +367,16 @@ impl State {
         rejected.extend(more);
         let analyzers = settings.analyzers.on_save;
         let database = settings.laravel.database != self.settings.read().laravel.database;
+        // A file outside every workspace folder is shown as the client's settings say.
+        let hints = settings.inlay_hints != self.settings.read().inlay_hints;
         *self.settings.write() = settings;
         *self.client_settings.write() = (client.clone(), rejected);
         if !analyzers {
             crate::analyzers::clear_all(self);
         }
-        self.configure(None, false);
+        if self.configure(None, false) || hints {
+            self.refresh_inlay_hints();
+        }
         if database {
             // Read from the client's settings alone, so no workspace's changed with it.
             for w in self.workspaces.read().iter() {
@@ -400,7 +428,9 @@ impl State {
             crate::analyzers::clear_all(self);
         }
         // What a settings file may set depends on it.
-        self.configure(None, false);
+        if self.configure(None, false) {
+            self.refresh_inlay_hints();
+        }
     }
 
     /// The workspace `path` belongs to (the innermost folder holding it).
