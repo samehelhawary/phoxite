@@ -75,15 +75,15 @@ use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
     Access, AnonymousClass, Argument, ArgumentList, ArrowFunction, AssignmentOperator, BinaryOperator, Call, Class,
     ClassLikeMemberSelector, Closure, Construct, Enum, Expression, Function, FunctionLikeParameterList,
-    FunctionLikeReturnTypeHint, Interface, Method, PropertyHook, PropertyHookBody, PropertyHookConcreteBody, Return,
-    Statement, Trait, Variable,
+    FunctionLikeReturnTypeHint, Interface, LocalIdentifier, Method, PartialApplication, PartialArgument, PropertyHook,
+    PropertyHookBody, PropertyHookConcreteBody, Return, Statement, Trait, Variable,
 };
 use mago_syntax::walker::Walker;
 
 use super::{Inspection, InspectionContext, Problems};
 use crate::engine::{EngineState, is_meta_path};
 use crate::names::NameKind;
-use crate::signature::{Callee, argument_list, callee, parameter_index};
+use crate::signature::{Arguments, Callee, argument_list, callee, parameter_index};
 use crate::summary::{ClassKind, DocBlock, Param};
 use crate::types::expr::{MAX_CHAIN, chain_depth};
 use crate::types::model::Origin;
@@ -445,6 +445,112 @@ impl<'a> Scan<'a, '_> {
         let Some(callee) = callee(self.types, self.cx.names(), self.resolver, expr, &self.frames) else { return };
         let Some(target) = self.target(&callee) else { return };
         self.arguments(&target, list);
+    }
+
+    /// A partial application (`f(?, 1)`, PHP 8.6): the arguments it binds
+    /// are checked as a call's, and its placeholders must have a parameter
+    /// to stand for. Without `...` every required parameter needs an
+    /// argument or a placeholder; PHP throws when the closure is made.
+    fn partial(&mut self, expr: &'a Expression<'a>) {
+        let Some(Arguments::Partial(list)) = Arguments::of(expr) else { return };
+        let args: Vec<&'a PartialArgument<'a>> = list.arguments.iter().collect();
+        // `f(...)` binds nothing and leaves everything open.
+        if let [PartialArgument::VariadicPlaceholder(_)] = args.as_slice() {
+            return;
+        }
+        if args.iter().any(|arg| matches!(arg, PartialArgument::Positional(p) if p.ellipsis.is_some())) {
+            return;
+        }
+        if let Expression::PartialApplication(PartialApplication::Method(partial)) = expr
+            && chain_depth(partial.object) > MAX_CHAIN
+        {
+            return;
+        }
+        let Some(callee) = callee(self.types, self.cx.names(), self.resolver, expr, &self.frames) else { return };
+        let Some(target) = self.target(&callee) else { return };
+        let params = &target.native;
+        let variadic = params.last().is_some_and(|param| param.variadic);
+        let fixed = params.iter().filter(|param| !param.variadic).count();
+        let required = params.iter().filter(|param| param.is_required()).count();
+        let rest = args.iter().any(|arg| matches!(arg, PartialArgument::VariadicPlaceholder(_)));
+        let mut covered = vec![false; params.len()];
+        let mut positional = 0usize;
+        let mut named = false;
+        for arg in &args {
+            // The parameter the argument goes to, and the value it binds.
+            let (index, value) = match arg {
+                PartialArgument::Positional(arg) => {
+                    positional += 1;
+                    (Some(positional - 1), Some(arg.value))
+                }
+                PartialArgument::Placeholder(_) => {
+                    positional += 1;
+                    (Some(positional - 1), None)
+                }
+                PartialArgument::Named(arg) => (self.named_parameter(params, &arg.name, positional), Some(arg.value)),
+                PartialArgument::NamedPlaceholder(arg) => (self.named_parameter(params, &arg.name, positional), None),
+                PartialArgument::VariadicPlaceholder(_) => continue,
+            };
+            named |= matches!(arg, PartialArgument::Named(_) | PartialArgument::NamedPlaceholder(_));
+            let Some(index) = index.map(|index| if variadic { index.min(params.len() - 1) } else { index }) else {
+                continue;
+            };
+            let (Some(native), Some(declared)) = (params.get(index), target.declared.get(index)) else { continue };
+            covered[index] = true;
+            let Some(value) = value else { continue };
+            if native.by_ref {
+                continue;
+            }
+            self.null_coerces = target.builtin && !self.strict_types;
+            self.value(Check::Argument, value, &native.ty, &declared.ty, |expected, given| {
+                format!("Expected parameter of type '{expected}', '{given}' provided")
+            });
+            self.null_coerces = false;
+        }
+        if !variadic && positional > fixed {
+            let extra = args[fixed].span().join(args[positional - 1].span());
+            let at_most = if required == fixed { "" } else { "at most " };
+            self.push(Check::Count, true, extra, format!("Expected {at_most}{}, found {positional}", plural(fixed)));
+        }
+        if rest {
+            return;
+        }
+        let missing = params.iter().zip(&covered).find(|(param, covered)| param.is_required() && !**covered);
+        if let Some((first, _)) = missing {
+            let message = if named {
+                format!("Missing argument for parameter '${}'", first.name.as_deref().unwrap_or_default())
+            } else {
+                let at_least = if required == fixed && !variadic { "" } else { "at least " };
+                format!("Expected {at_least}{}, found {positional}", plural(required))
+            };
+            self.push(Check::Count, true, list.left_parenthesis.join(list.right_parenthesis), message);
+        }
+    }
+
+    /// The parameter a named argument or placeholder of a partial
+    /// application names, after `positional` arguments by position; one it
+    /// can't name is reported.
+    fn named_parameter(
+        &mut self,
+        params: &[SignatureParam],
+        name: &LocalIdentifier<'a>,
+        positional: usize,
+    ) -> Option<usize> {
+        let text = lossy(name.value);
+        match params.iter().position(|param| param.name.as_deref() == Some(text.as_str())) {
+            None => {
+                if !params.last().is_some_and(|param| param.variadic) {
+                    self.push(Check::Named, true, name.span, format!("Unknown named argument '${text}'"));
+                }
+                None
+            }
+            Some(index) if index < positional && !params[index].variadic => {
+                let message = format!("Named argument '${text}' overwrites a positional argument");
+                self.push(Check::Named, true, name.span, message);
+                None
+            }
+            Some(index) => Some(index),
+        }
     }
 
     fn target(&self, callee: &Callee) -> Option<Target> {
@@ -1005,6 +1111,7 @@ impl<'a> Scan<'a, '_> {
         match expr {
             Expression::Call(Call::Function(_) | Call::Method(_) | Call::NullSafeMethod(_) | Call::StaticMethod(_))
             | Expression::Instantiation(_) => self.call(expr),
+            Expression::PartialApplication(_) => self.partial(expr),
             Expression::Assignment(assignment) if matches!(assignment.operator, AssignmentOperator::Assign(_)) => {
                 self.assignment(assignment.lhs, assignment.rhs)
             }

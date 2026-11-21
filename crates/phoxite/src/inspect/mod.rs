@@ -52,6 +52,7 @@
 pub mod access;
 pub mod calls;
 pub mod control;
+pub mod deprecated_syntax;
 pub(crate) mod fixes;
 pub(crate) mod intentions;
 pub mod laravel;
@@ -165,6 +166,7 @@ impl Inspections {
             Arc::new(control::NeverReturn),
             Arc::new(level::LanguageLevel),
             Arc::new(level::Deprecation),
+            Arc::new(deprecated_syntax::DeprecatedSyntax),
             Arc::new(routes::UndefinedRoute),
             Arc::new(views::UndefinedView),
         ];

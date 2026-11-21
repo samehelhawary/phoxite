@@ -33,6 +33,8 @@ commands, and PHPStan or Psalm on save.
 - Quick-fixes and refactorings, Organize Imports, Format Document (PSR-12)
 - Inspections: undefined classes, functions, methods and properties, type mismatches, unused
   imports and more, each one configurable (`phoxite.inspections`)
+- PHP up to 8.6: partial function application (`f(?, 1)`) is a typed closure, and syntax
+  newer than the project's PHP version is reported
 - PHPStan and Psalm on save, when the project installs them (`phoxite.analyzers.onSave`)
 
 ### Refactorings that ask first

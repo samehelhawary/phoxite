@@ -397,6 +397,7 @@ fn replacing_the_inspections_runs_them_again() {
             "PhpNeverFunctionReturns",
             "PhpLanguageLevel",
             "PhpDeprecation",
+            "PhpDeprecatedSyntax",
             "PhpUndefinedRoute",
             "PhpUndefinedView",
             "PhpUndefinedConfigKey",
@@ -474,6 +475,8 @@ mod unused_tests;
 #[path = "control_tests.rs"]
 mod control_tests;
 
+#[path = "deprecated_syntax_tests.rs"]
+mod deprecated_syntax_tests;
 #[path = "level_tests.rs"]
 mod level_tests;
 

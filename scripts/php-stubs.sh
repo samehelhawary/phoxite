@@ -7,8 +7,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-TAG=v2026.2
-COMMIT=709e512210784a7c0a677b3a89d35def844a59b9
+TAG=v2026.3
+COMMIT=912ae721089fc48534d3a5795997ee8a2802b8cd
 SRC=target/phpstorm-stubs-src
 OUT=crates/phoxite/stubs/phpstorm-stubs.zip
 

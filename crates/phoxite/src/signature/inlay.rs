@@ -26,12 +26,12 @@ use crate::base::settings::{ArrayShapeHints, InlayHintSettings};
 use crate::base::{DocId, Pos, Range};
 use mago_span::HasSpan;
 use mago_syntax::cst::{
-    AnonymousClass, Argument, ArrowFunction, AssignmentOperator, Call, Class, Closure, Enum, Expression, Foreach,
-    ForeachTarget, Function, Interface, Method, PropertyHook, Trait, UnaryPrefixOperator, Variable,
+    AnonymousClass, ArrowFunction, AssignmentOperator, Call, Class, Closure, Enum, Expression, Foreach, ForeachTarget,
+    Function, Interface, Method, PartialApplication, PropertyHook, Trait, UnaryPrefixOperator, Variable,
 };
 use mago_syntax::walker::Walker;
 
-use super::{argument_list, callee, callee_params, method_name};
+use super::{Arguments, callee, callee_params, method_name};
 use crate::engine::PhpEngine;
 use crate::names::FileNames;
 use crate::summary::FileSummary;
@@ -240,16 +240,10 @@ impl<'a> Hints<'a, '_> {
 
     /// Parameter names before the opaque arguments of `call`.
     fn parameters(&mut self, call: &'a Expression<'a>) {
-        let Some(list) = argument_list(call) else { return };
-        let positional: Vec<&Expression<'a>> = list
-            .arguments
-            .iter()
-            .map_while(|argument| match argument {
-                Argument::Positional(positional) if positional.ellipsis.is_none() => Some(positional.value),
-                _ => None,
-            })
-            .collect();
-        if !positional.iter().any(|value| is_opaque(value) && self.in_range(value.span().start.offset)) {
+        let Some(list) = Arguments::of(call) else { return };
+        // A `?` of a partial application takes its parameter and has no value to name.
+        let positional = list.positional();
+        if !positional.iter().flatten().any(|value| is_opaque(value) && self.in_range(value.span().start.offset)) {
             return;
         }
         let Some(callee) = callee(self.types, self.names, self.resolver, call, &self.frames) else { return };
@@ -265,11 +259,22 @@ impl<'a> Hints<'a, '_> {
             Expression::Call(Call::Method(method)) => method_name(&method.method).unwrap_or_default(),
             Expression::Call(Call::NullSafeMethod(method)) => method_name(&method.method).unwrap_or_default(),
             Expression::Call(Call::StaticMethod(method)) => method_name(&method.method).unwrap_or_default(),
+            Expression::PartialApplication(PartialApplication::Function(partial)) => match partial.function {
+                Expression::Identifier(identifier) => String::from_utf8_lossy(identifier.last_segment()).into_owned(),
+                _ => String::new(),
+            },
+            Expression::PartialApplication(PartialApplication::Method(partial)) => {
+                method_name(&partial.method).unwrap_or_default()
+            }
+            Expression::PartialApplication(PartialApplication::StaticMethod(partial)) => {
+                method_name(&partial.method).unwrap_or_default()
+            }
             _ => String::new(),
         }
         .to_ascii_lowercase();
-        let only = list.arguments.len() == 1;
+        let only = list.len() == 1;
         for (index, value) in positional.iter().enumerate() {
+            let Some(value) = value else { continue };
             let Some(param) = params.get(index).or_else(|| params.last().filter(|p| p.variadic)) else { break };
             let first_variadic = params.len().saturating_sub(1);
             if param.variadic && index > first_variadic {
@@ -392,7 +397,7 @@ impl<'a, 'r> Walker<'a, 'a, Hints<'a, 'r>> for HintWalker {
         }
         match expr {
             Expression::Closure(_) | Expression::ArrowFunction(_) => cx.closure_return(expr),
-            _ if argument_list(expr).is_some() => cx.parameters(expr),
+            _ if Arguments::of(expr).is_some() => cx.parameters(expr),
             _ => {}
         }
     }

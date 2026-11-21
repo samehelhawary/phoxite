@@ -177,6 +177,27 @@ fn innermost_call_and_constructors() {
     assert_eq!(p.active("Book::make(/*|*/\n").0, r"make(string $isbn): App\Book");
 }
 
+/// PHP 8.6: the arguments of a partial application are those of the call it
+/// prepares.
+#[test]
+fn partial_applications_have_signature_help_and_hints() {
+    let mut p = Project::new();
+    let (label, active) = p.active("$f = fmt(?, /*|*/);\n");
+    assert_eq!(label, "fmt(int $cents, string $currency = 'EUR'): string");
+    assert_eq!(active.as_deref(), Some("string $currency = 'EUR'"));
+    assert_eq!(p.active("$f = fmt(/*|*/?, 'USD');\n").1.as_deref(), Some("int $cents"));
+    assert_eq!(p.active("$f = fmt(currency: ?, cents: /*|*/1);\n").1.as_deref(), Some("int $cents"));
+    assert_eq!(p.active("$lib = new Library();\n$f = $lib->checkout(/*|*/?);\n").1.as_deref(), Some("string $isbn"));
+    assert_eq!(p.active("$f = Book::make(/*|*/?);\n").1.as_deref(), Some("string $isbn"));
+
+    // A `?` takes its parameter; the values beside it are named.
+    let text =
+        "<?php\nnamespace App;\n\n$a = fmt(?, 'USD');\n$b = fmt(100, ?);\n$c = pick(?, 2);\n$d = total(1, ...);\n";
+    // The variable is the closure of what is left open.
+    let want = "<?php\nnamespace App;\n\n$a⟨: Closure(int $cents): string⟩ = fmt(?, ⟨currency:⟩'USD');\n$b⟨: Closure(string $currency): string⟩ = fmt(⟨cents:⟩100, ?);\n$c⟨: Closure(int $a): int⟩ = pick(?, 2);\n$d⟨: Closure(int ...$amounts): int⟩ = total(⟨...amounts:⟩1, ...);\n";
+    assert_eq!(p.hints(text, None), want);
+}
+
 #[test]
 fn no_signature_outside_call_arguments() {
     let mut p = Project::new();

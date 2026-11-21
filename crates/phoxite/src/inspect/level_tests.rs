@@ -210,6 +210,80 @@ class C {
 }
 
 #[test]
+fn php_8_6_features() {
+    let text = r#"<?php
+const SHARED = new \stdClass();
+enum Suit {
+    #[\Override]
+    case Hearts;
+    public function __debugInfo(): array { return []; }
+    public function label(): string { return 'x'; }
+}
+class Base { const LIMIT = 1; }
+class C extends Base {
+    #[\Override]
+    const LIMIT = 2;
+    #[Other]
+    const FREE = 3;
+    public readonly int $a = 1;
+    public readonly int $b;
+    public int $c = 3;
+    public function __construct(public readonly int $d = 4) {}
+    public function m() {
+        $one = str_replace(?, '-', ?);
+        $named = str_replace(subject: ?, search: 'a', replace: 'b');
+        $rest = str_replace('a', ...);
+        $all = strlen(...);
+        SHARED->count = 1;
+    }
+}
+readonly class R {
+    public int $e = 5;
+    public int $f;
+}
+$anonymous = new readonly class { public int $g = 6; };
+trait T { public int $h = 7; }
+"#;
+    let mut p = project_at("8.5");
+    let inspected = p.inspect(text);
+    assert_eq!(
+        covered(text, &inspected),
+        [
+            "\\Override",
+            "__debugInfo",
+            "\\Override",
+            "= 1",
+            "(?, '-', ?)",
+            "(subject: ?, search: 'a', replace: 'b')",
+            "('a', ...)",
+            "= 5",
+            "= 6",
+        ],
+        "{:?}",
+        found(text, &inspected)
+    );
+    let messages: Vec<&str> = inspected.problems.iter().map(|p| p.message.as_str()).collect();
+    assert_eq!(
+        messages[..5],
+        [
+            r"'#[\Override]' on enum cases is only available since PHP 8.6 (the project's language level is PHP 8.5)",
+            "'__debugInfo()' on enums is only available since PHP 8.6 (the project's language level is PHP 8.5)",
+            r"'#[\Override]' on class constants is only available since PHP 8.6 (the project's language level is PHP 8.5)",
+            "Default values of readonly properties are only available since PHP 8.6 (the project's language level is PHP 8.5)",
+            "Partial function application is only available since PHP 8.6 (the project's language level is PHP 8.5)",
+        ]
+    );
+
+    // `strlen(...)` alone is the first-class callable syntax of 8.1.
+    let mut p = project_at("8.0");
+    let inspected = p.inspect(text);
+    assert!(inspected.problems.iter().any(|p| p.message.starts_with("First-class callable syntax is only")));
+
+    let mut p = project_at("8.6");
+    assert!(p.inspect(text).problems.is_empty());
+}
+
+#[test]
 fn deprecated_uses_are_struck_through() {
     let mut p = Project::with_files(&[(
         "src/lib.php",

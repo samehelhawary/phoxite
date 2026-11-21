@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.0 — 2026-11-21
+
+- **PHP 8.6.** It is the version of a project that names none, and the built-in
+  declarations are those of phpstorm-stubs `v2026.3`, which has what 8.6 adds
+  (`Time\Duration`, `clamp()`, the URI builders, the stream errors and polling APIs…).
+  - Partial function application: `f(?, 1)`, `f(name: ?)` and `f(1, ...)` are closures
+    of the parameters left open, with the callee's return type, so calling one, passing
+    it and piping into it (`$x |> f(?, 2)`) are typed. A `?` is a required parameter
+    whatever its default, a named one moves its parameter, and `...` adds the rest as
+    declared. Signature help and parameter-name hints work inside its arguments, and what
+    it binds is checked as a call's arguments are; without `...` a required parameter
+    with neither an argument nor a placeholder is reported.
+  - `PhpLanguageLevel` reports the syntax of 8.6 in a project on an older version: partial
+    application, a default value on a readonly property, `#[\Override]` on a class
+    constant or an enum case, and `__debugInfo()` on an enum.
+  - New inspection `PhpDeprecatedSyntax`, for what 8.6 deprecates in the code itself:
+    `return` in a `finally` block, a value returned from `__construct()` or
+    `__destruct()` (or either as a generator), a function named `readonly`, `let` and `is`
+    as names, `_` as a constant's name, a class constant named `namespace`, the third
+    argument of `define()`, and `?array` as the return type of `__debugInfo()`. Silent
+    below 8.6.
+  - A built-in that a later version deprecates (`#[Deprecated(since: '8.6')]`, such as
+    `mysqli_get_charset()`) is no longer struck through in a project on an older version.
+
 ## 0.8.1 — 2026-11-21
 
 - **Compact array shapes in type inlay hints.** An array shape now reads `array` in a

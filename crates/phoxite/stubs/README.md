@@ -2,8 +2,8 @@
 
 `phpstorm-stubs.zip` holds the built-in PHP declarations the native engine embeds
 (`phoxite::stubs`): the extension folders' `.php` files of
-[JetBrains/phpstorm-stubs](https://github.com/JetBrains/phpstorm-stubs) `v2026.2`
-(commit `709e512210784a7c0a677b3a89d35def844a59b9`), unmodified, plus the release's
+[JetBrains/phpstorm-stubs](https://github.com/JetBrains/phpstorm-stubs) `v2026.3`
+(commit `912ae721089fc48534d3a5795997ee8a2802b8cd`), unmodified, plus the release's
 `LICENSE` (Apache-2.0) and `README.md`. The documentation comments contain material by the
 PHP Documentation Group under CC-BY 3.0. See `THIRD_PARTY_LICENSES.md`.
 

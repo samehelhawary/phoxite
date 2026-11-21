@@ -25,6 +25,9 @@
 //!   - 8.4: property hooks, asymmetric visibility, `new Foo()->m()`
 //!     without parentheses
 //!   - 8.5: the pipe operator `|>`
+//!   - 8.6: partial function application (`f(?, 1)`, `f(a: ?, ...)`),
+//!     default values of readonly properties, `#[\Override]` on class
+//!     constants and enum cases, `__debugInfo()` on enums
 //!
 //!   A type declaration reports only its newest feature, once.
 //! - [`Deprecation`] (`PhpDeprecation`): uses of class-likes, functions,
@@ -42,9 +45,10 @@ use crate::base::Severity;
 use mago_span::{HasSpan, Span};
 use mago_syntax::cst::{
     AnonymousClass, AssignmentOperator, AttributeList, BinaryOperator, Call, Class, ClassLikeConstant,
-    ClassLikeConstantSelector, Enum, Expression, ExpressionStatement, ForeachKeyValueTarget, ForeachValueTarget,
-    FunctionLikeParameter, FunctionLikeReturnTypeHint, Hint, HookedProperty, Literal, Modifier, NamedArgument,
-    PartialApplication, PartialArgument, PlainProperty, Trait, TryCatchClause, VariadicArrayElement,
+    ClassLikeConstantSelector, ClassLikeMember, Enum, EnumCase, Expression, ExpressionStatement, ForeachKeyValueTarget,
+    ForeachValueTarget, FunctionLikeParameter, FunctionLikeReturnTypeHint, Hint, HookedProperty, Literal, Modifier,
+    NamedArgument, PartialApplication, PartialArgument, PlainProperty, PropertyItem, Trait, TryCatchClause,
+    VariadicArrayElement,
 };
 use mago_syntax::walker::Walker;
 
@@ -185,6 +189,9 @@ struct Scan {
     throw_statements: HashSet<u32>,
     /// Nesting of traits around the walk.
     traits: u32,
+    /// Whether each class-like around the walk is a `readonly class`: its
+    /// properties are readonly without the modifier.
+    readonly_classes: Vec<bool>,
 }
 
 impl Scan {
@@ -302,6 +309,15 @@ impl Scan {
                 let mut all = arguments.arguments.iter();
                 if let (Some(PartialArgument::VariadicPlaceholder(_)), None) = (all.next(), all.next()) {
                     self.add(v(8, 1), is("First-class callable syntax"), arguments.span());
+                } else if arguments.arguments.iter().any(|argument| {
+                    matches!(
+                        argument,
+                        PartialArgument::Placeholder(_)
+                            | PartialArgument::NamedPlaceholder(_)
+                            | PartialArgument::VariadicPlaceholder(_)
+                    )
+                }) {
+                    self.add(v(8, 6), is("Partial function application"), arguments.span());
                 }
             }
             _ => {}
@@ -343,7 +359,20 @@ impl Scan {
         self.modifiers(modifiers, Some((8, 1)));
     }
 
+    /// `#[Override]` on a class constant or an enum case.
+    fn override_attribute<'l>(&mut self, lists: impl IntoIterator<Item = &'l AttributeList<'l>>, feature: Feature) {
+        for list in lists {
+            for attribute in list.attributes.iter() {
+                let name = attribute.name.value();
+                if name.strip_prefix(b"\\").unwrap_or(name).eq_ignore_ascii_case(b"override") {
+                    self.add(v(8, 6), feature, attribute.span());
+                }
+            }
+        }
+    }
+
     fn class_constant(&mut self, node: &ClassLikeConstant<'_>) {
+        self.override_attribute(node.attribute_lists.iter(), is(r"'#[\Override]' on class constants"));
         if let Some(hint) = &node.hint {
             self.hint(hint, HintAt::Constant, Some((v(8, 3), are("Typed class constants"))));
         }
@@ -436,6 +465,19 @@ impl<'a> Walker<'a, 'a, Scan> for FeatureWalker {
 
     fn walk_in_plain_property(&self, node: &'a PlainProperty<'a>, cx: &mut Scan) {
         cx.property(node.modifiers.iter(), node.hint.as_ref());
+        let readonly = cx.readonly_classes.last().copied().unwrap_or(false)
+            || node.modifiers.iter().any(|modifier| matches!(modifier, Modifier::Readonly(_)));
+        if readonly {
+            for item in node.items.iter() {
+                if let PropertyItem::Concrete(item) = item {
+                    cx.add(v(8, 6), are("Default values of readonly properties"), item.equals.join(item.value.span()));
+                }
+            }
+        }
+    }
+
+    fn walk_in_enum_case(&self, node: &'a EnumCase<'a>, cx: &mut Scan) {
+        cx.override_attribute(node.attribute_lists.iter(), is(r"'#[\Override]' on enum cases"));
     }
 
     fn walk_in_hooked_property(&self, node: &'a HookedProperty<'a>, cx: &mut Scan) {
@@ -449,23 +491,42 @@ impl<'a> Walker<'a, 'a, Scan> for FeatureWalker {
 
     fn walk_in_class(&self, node: &'a Class<'a>, cx: &mut Scan) {
         cx.modifiers(node.modifiers.iter(), Some((8, 2)));
+        cx.readonly_classes.push(node.modifiers.iter().any(|modifier| matches!(modifier, Modifier::Readonly(_))));
+    }
+
+    fn walk_out_class(&self, _: &'a Class<'a>, cx: &mut Scan) {
+        cx.readonly_classes.pop();
     }
 
     fn walk_in_anonymous_class(&self, node: &'a AnonymousClass<'a>, cx: &mut Scan) {
         cx.add(v(7, 0), are("Anonymous classes"), node.new.span.join(node.class.span));
         cx.modifiers(node.modifiers.iter(), Some((8, 3)));
+        cx.readonly_classes.push(node.modifiers.iter().any(|modifier| matches!(modifier, Modifier::Readonly(_))));
+    }
+
+    fn walk_out_anonymous_class(&self, _: &'a AnonymousClass<'a>, cx: &mut Scan) {
+        cx.readonly_classes.pop();
     }
 
     fn walk_in_enum(&self, node: &'a Enum<'a>, cx: &mut Scan) {
         cx.add(v(8, 1), are("Enums"), node.r#enum.span);
+        for member in node.members.iter() {
+            if let ClassLikeMember::Method(method) = member
+                && method.name.value.eq_ignore_ascii_case(b"__debuginfo")
+            {
+                cx.add(v(8, 6), is("'__debugInfo()' on enums"), method.name.span);
+            }
+        }
     }
 
     fn walk_in_trait(&self, _: &'a Trait<'a>, cx: &mut Scan) {
         cx.traits += 1;
+        cx.readonly_classes.push(false);
     }
 
     fn walk_out_trait(&self, _: &'a Trait<'a>, cx: &mut Scan) {
         cx.traits -= 1;
+        cx.readonly_classes.pop();
     }
 
     fn walk_in_try_catch_clause(&self, node: &'a TryCatchClause<'a>, cx: &mut Scan) {

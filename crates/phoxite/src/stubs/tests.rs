@@ -33,7 +33,7 @@ fn versions_parse_and_order() {
     assert_eq!(v(" 8.3.*"), PhpVersion::new(8, 3));
     assert_eq!(PhpVersion::parse("next"), None);
     assert!(v("7.4") < v("8.0") && v("8.0") < v("8.10"));
-    assert_eq!(PhpVersion::LATEST.to_string(), "8.5");
+    assert_eq!(PhpVersion::LATEST.to_string(), "8.6");
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn core_functions_and_classes_are_present() {
     assert!(stubs.paths().count() > 400);
     assert!(stubs.extensions().contains(&"standard"));
 
-    for version in ["7.4", "8.1", "8.5"] {
+    for version in ["7.4", "8.1", "8.5", "8.6"] {
         let set = defaults(version);
         let (file, strlen) = set.function("strlen").unwrap_or_else(|| panic!("strlen at {version}"));
         assert_eq!(file.path, "Core/Core.php");
@@ -69,11 +69,28 @@ fn newer_functions_are_hidden_at_older_versions() {
         assert!(defaults("8.1").function(function).is_none(), "{function} at 8.1");
         assert!(defaults("8.3").function(function).is_some(), "{function} at 8.3");
     }
+    // `@since 8.6`: a function, and a class in a namespace.
+    assert!(defaults("8.5").function("clamp").is_none());
+    assert!(defaults("8.6").function("clamp").is_some());
+    assert!(defaults("8.5").class_like(r"Time\Duration").is_none());
+    assert!(defaults("8.6").class_like(r"Time\Duration").is_some());
     // `@removed 5.5`, `@removed 8.0`.
     assert!(defaults("5.4").function("php_logo_guid").is_some());
     assert!(defaults("8.1").function("php_logo_guid").is_none());
     assert!(defaults("7.4").function("money_format").is_some());
     assert!(defaults("8.0").function("money_format").is_none());
+}
+
+/// `#[Deprecated(since: '8.6')]`: deprecated from that version on, not before.
+#[test]
+fn deprecation_follows_the_version() {
+    let deprecated = |version: &str| {
+        let set = BundledStubs::get().summaries(&StubFilter::new(v(version), ["mysqli"]));
+        let function = set.function("mysqli_get_charset").unwrap().1.clone();
+        function.attributes.iter().any(|attribute| attribute.ends_with("Deprecated"))
+    };
+    assert!(!deprecated("8.5"));
+    assert!(deprecated("8.6"));
 }
 
 #[test]

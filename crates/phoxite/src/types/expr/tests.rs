@@ -37,10 +37,11 @@ function make_book(): Book { return new Book(); }
 function untyped() { return new Author(); }
 /** @param list<Book> $books */
 function first(array $books, int ...$rest): Book { return $books[0]; }
+function shelve(Book $book, string $where = 'A', int $row = 0, Author ...$authors): Shelf { return new Shelf(); }
 const VERSION = '1.0';
 "#;
 
-const HEADER: &str = "<?php\nnamespace App;\nuse Lib\\{Book, Novel, Author, Shelf, Suit};\nuse function Lib\\{make_book, untyped, first};\nuse const Lib\\VERSION;\n";
+const HEADER: &str = "<?php\nnamespace App;\nuse Lib\\{Book, Novel, Author, Shelf, Suit};\nuse function Lib\\{make_book, untyped, first, shelve};\nuse const Lib\\VERSION;\n";
 
 /// The type at the caret of `body` (after [`HEADER`]), displayed.
 pub(super) fn type_at_caret(body: &str) -> Option<String> {
@@ -271,6 +272,44 @@ fn closures_and_callables() {
         ("unknown_function(...)/*|*/;", "Closure"),
         // The pipe operator.
         ("((new Book) |> fn(Book $b) => $b->title)/*|*/;", "string"),
+    ]);
+}
+
+/// PHP 8.6: a parameter for each placeholder, required for `?` and as
+/// declared for what `...` adds; the callee's return type.
+#[test]
+fn partial_applications_are_closures_of_their_placeholders() {
+    check(&[
+        // `?` by position: required, whatever the default.
+        ("shelve(?, 'B')/*|*/;", r"Closure(Lib\Book $book): Lib\Shelf"),
+        ("shelve(?, ?)/*|*/;", r"Closure(Lib\Book $book, string $where): Lib\Shelf"),
+        ("shelve(new Book, ?, 2)/*|*/;", r"Closure(string $where): Lib\Shelf"),
+        // `...`: what is left, as declared.
+        ("shelve(new Book, ...)/*|*/;", r"Closure(string =$where, int =$row, Lib\Author ...$authors): Lib\Shelf"),
+        ("shelve(?, row: 1, ...)/*|*/;", r"Closure(Lib\Book $book, string =$where, Lib\Author ...$authors): Lib\Shelf"),
+        ("shelve(new Book, 'B', 1, ...)/*|*/;", r"Closure(Lib\Author ...$authors): Lib\Shelf"),
+        ("shelve(new Book, 'B', 1, new Author, ...)/*|*/;", r"Closure(Lib\Author ...$authors): Lib\Shelf"),
+        // Named placeholders come in the order written.
+        ("shelve(row: ?, book: ?)/*|*/;", r"Closure(int $row, Lib\Book $book): Lib\Shelf"),
+        ("shelve(?, row: ?, where: ?)/*|*/;", r"Closure(Lib\Book $book, int $row, string $where): Lib\Shelf"),
+        (
+            "shelve(where: ?, book: ?, ...)/*|*/;",
+            r"Closure(string $where, Lib\Book $book, int =$row, Lib\Author ...$authors): Lib\Shelf",
+        ),
+        // Past the parameters of a variadic callee: one more of its variadic parameter each.
+        (
+            "shelve(?, 'B', 1, ?, ?)/*|*/;",
+            r"Closure(Lib\Book $book, Lib\Author $authors0, Lib\Author $authors1): Lib\Shelf",
+        ),
+        // Methods.
+        ("(new Book)->withTitle(?)/*|*/;", r"Closure(string $title): Lib\Book"),
+        // Called, and through a pipe.
+        ("$f = shelve(?, 'B');\n$f(new Book)/*|*/;", r"Lib\Shelf"),
+        ("((new Book) |> shelve(?, 'B'))/*|*/;", r"Lib\Shelf"),
+        // What can't be matched to the parameters is a plain closure.
+        ("shelve(nothing: ?)/*|*/;", "Closure"),
+        ("make_book(?)/*|*/;", "Closure"),
+        ("unknown_function(?, 1)/*|*/;", "Closure"),
     ]);
 }
 

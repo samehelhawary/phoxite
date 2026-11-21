@@ -111,6 +111,54 @@ fn argument_counts_and_named_arguments() {
     );
 }
 
+/// PHP 8.6: what a partial application binds is checked as a call's
+/// arguments, and without `...` every required parameter needs an argument
+/// or a placeholder.
+#[test]
+fn partial_applications_are_checked_like_calls() {
+    let text = r#"<?php
+namespace App;
+
+function two(int $a, string $b) {}
+function opt(int $a, int $b = 0) {}
+function rest(int $a, int ...$more) {}
+
+function g()
+{
+    two(?, 'b');
+    two(1, ?);
+    two(?, ...);
+    two(...);
+    opt(?);
+    rest(?, ?, ?);
+    two(b: ?, a: ?);
+    two(?);
+    two(?, ?, ?);
+    two(c: ?, ...);
+    two(1, a: ?);
+    two(b: ?);
+    two('x', ?);
+    two(?, b: []);
+}
+"#;
+    let mut p = project(TypeCheckMode::Lenient);
+    let found = found(&p.inspect(text), text);
+    assert_eq!(
+        found,
+        [
+            e(COUNT, "(?)", "Expected 2 arguments, found 1"),
+            e(COUNT, "?", "Expected 2 arguments, found 3"),
+            e(NAMED, "c", "Unknown named argument '$c'"),
+            e(COUNT, "(1, a: ?)", "Missing argument for parameter '$b'"),
+            e(NAMED, "a", "Named argument '$a' overwrites a positional argument"),
+            e(COUNT, "(b: ?)", "Missing argument for parameter '$a'"),
+            e(PARAMS, "'x'", "Expected parameter of type 'int', 'string' provided"),
+            e(PARAMS, "[]", "Expected parameter of type 'string', 'array' provided"),
+        ],
+        "{found:#?}"
+    );
+}
+
 #[test]
 fn strict_mode_also_reports_extra_arguments_to_user_functions() {
     let mut p = project(TypeCheckMode::Strict);

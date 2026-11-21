@@ -53,9 +53,9 @@ use crate::syntax::ParsedFile;
 use rules::Rules;
 
 /// The phpstorm-stubs release in `stubs/phpstorm-stubs.zip`.
-pub const STUBS_TAG: &str = "v2026.2";
+pub const STUBS_TAG: &str = "v2026.3";
 /// The commit [`STUBS_TAG`] points at.
-pub const STUBS_COMMIT: &str = "709e512210784a7c0a677b3a89d35def844a59b9";
+pub const STUBS_COMMIT: &str = "912ae721089fc48534d3a5795997ee8a2802b8cd";
 /// The logical folder stub files are parsed under.
 pub const STUB_ROOT: &str = "phpstorm-stubs";
 
@@ -71,7 +71,7 @@ pub struct PhpVersion {
 impl PhpVersion {
     /// The newest version the bundled stubs describe; the level when a
     /// project names none.
-    pub const LATEST: Self = Self::new(8, 5);
+    pub const LATEST: Self = Self::new(8, 6);
 
     pub const fn new(major: u8, minor: u8) -> Self {
         Self { major, minor }
@@ -388,9 +388,20 @@ fn apply(summary: &FileSummary, rules: &Rules, version: PhpVersion) -> FileSumma
         }
     };
 
+    // Deprecated from a later version on: not yet.
+    let undeprecate = |loc: &Loc, attributes: &mut Vec<String>| {
+        let later = rules.get(&loc.start).and_then(|rule| rule.deprecated_since).is_some_and(|since| version < since);
+        if later {
+            attributes.retain(|attribute| {
+                !attribute.rsplit('\\').next().is_some_and(|name| name.eq_ignore_ascii_case("Deprecated"))
+            });
+        }
+    };
+
     let mut out = summary.clone();
     out.functions.retain(|function| keep(&function.name_loc));
     for function in &mut out.functions {
+        undeprecate(&function.name_loc, &mut function.attributes);
         retype(&function.name_loc, &mut function.return_type);
         params(&mut function.params);
         doc_types(&function.name_loc, &mut function.doc, &function.return_type, &function.params);
@@ -398,8 +409,10 @@ fn apply(summary: &FileSummary, rules: &Rules, version: PhpVersion) -> FileSumma
     out.constants.retain(|constant| keep(&constant.name_loc));
     out.class_likes.retain(|class| keep(&class.name_loc));
     for class in &mut out.class_likes {
+        undeprecate(&class.name_loc, &mut class.attributes);
         class.methods.retain(|method| keep(&method.name_loc));
         for method in &mut class.methods {
+            undeprecate(&method.name_loc, &mut method.attributes);
             retype(&method.name_loc, &mut method.return_type);
             params(&mut method.params);
             doc_types(&method.name_loc, &mut method.doc, &method.return_type, &method.params);

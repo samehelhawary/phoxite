@@ -1601,7 +1601,10 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
                 (&partial.argument_list, self.method_signature(&class, &partial.method, frames))
             }
         };
-        if is_first_class_callable(arguments) { Type::Closure(signature.map(Box::new)) } else { Type::Closure(None) }
+        if is_first_class_callable(arguments) {
+            return Type::Closure(signature.map(Box::new));
+        }
+        Type::Closure(signature.and_then(|callee| partial_signature(&callee, arguments)).map(Box::new))
     }
 
     fn function_signature(&self, fqn: &str) -> Option<Signature> {
@@ -1909,6 +1912,71 @@ fn is_closure_value(expr: &Expression<'_>) -> bool {
 fn is_first_class_callable(arguments: &PartialArgumentList<'_>) -> bool {
     let mut arguments = arguments.arguments.iter();
     matches!((arguments.next(), arguments.next()), (Some(PartialArgument::VariadicPlaceholder(_)), None))
+}
+
+/// The signature of the closure a partial application of `callee` makes
+/// (PHP 8.6): a parameter for each placeholder, and the callee's return type.
+///
+/// - `?` is the parameter at its position, `name: ?` the one of that name;
+///   both are required whatever the callee's default. A `?` past the
+///   parameters of a variadic callee is one more of its variadic parameter
+///   (`$rest0`, `$rest1`).
+/// - `...` is every parameter left, as the callee declares it.
+/// - The order is the one the placeholders are written in (so a named one
+///   moves its parameter), then what `...` adds in the callee's order.
+///
+/// `None` when the arguments can't be matched to the parameters (a spread
+/// argument, a name the callee doesn't have).
+fn partial_signature(callee: &Signature, arguments: &PartialArgumentList<'_>) -> Option<Signature> {
+    let named =
+        |name: &[u8]| callee.params.iter().position(|param| param.name.as_deref().map(str::as_bytes) == Some(name));
+    let mut taken = vec![false; callee.params.len()];
+    let mut params = Vec::new();
+    let mut position = 0usize;
+    let mut extra = 0usize;
+    let mut rest = false;
+    let required =
+        |param: &SignatureParam| SignatureParam { optional: false, variadic: false, default: None, ..param.clone() };
+    for argument in arguments.arguments.iter() {
+        match argument {
+            PartialArgument::Positional(argument) => {
+                if argument.ellipsis.is_some() {
+                    return None;
+                }
+                // A variadic parameter takes this argument and stays open.
+                if callee.params.get(position).is_some_and(|param| !param.variadic) {
+                    taken[position] = true;
+                }
+                position += 1;
+            }
+            PartialArgument::Named(argument) => taken[named(argument.name.value)?] = true,
+            PartialArgument::Placeholder(_) => {
+                match callee.params.get(position) {
+                    Some(param) if !param.variadic => {
+                        taken[position] = true;
+                        params.push(required(param));
+                    }
+                    _ => {
+                        let variadic = callee.params.last().filter(|param| param.variadic)?;
+                        let name = variadic.name.as_ref().map(|name| format!("{name}{extra}"));
+                        extra += 1;
+                        params.push(SignatureParam { name, ..required(variadic) });
+                    }
+                }
+                position += 1;
+            }
+            PartialArgument::NamedPlaceholder(argument) => {
+                let index = named(argument.name.value)?;
+                taken[index] = true;
+                params.push(required(&callee.params[index]));
+            }
+            PartialArgument::VariadicPlaceholder(_) => rest = true,
+        }
+    }
+    if rest {
+        params.extend(callee.params.iter().zip(&taken).filter(|(_, taken)| !**taken).map(|(param, _)| param.clone()));
+    }
+    Some(Signature { params, return_type: callee.return_type.clone() })
 }
 
 /// The shape key a literal key type stands for (PHP casts numeric strings

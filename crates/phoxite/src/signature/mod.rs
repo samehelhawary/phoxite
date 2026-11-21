@@ -22,7 +22,10 @@ pub use inlay::{InlayHintInfo, InlayHintKind};
 
 use crate::base::{DocId, Pos};
 use mago_span::HasSpan;
-use mago_syntax::cst::{Argument, ArgumentList, Call, ClassLikeMemberSelector, Expression};
+use mago_syntax::cst::{
+    Argument, ArgumentList, Call, ClassLikeMemberSelector, Expression, PartialApplication, PartialArgument,
+    PartialArgumentList,
+};
 use mago_syntax::walker::Walker;
 
 use crate::engine::PhpEngine;
@@ -56,6 +59,88 @@ pub(crate) fn argument_list<'a>(call: &'a Expression<'a>) -> Option<&'a Argument
     }
 }
 
+/// The arguments of a call, `new`, or partial application (`f(?, 1)`).
+#[derive(Clone, Copy)]
+pub(crate) enum Arguments<'a> {
+    Call(&'a ArgumentList<'a>),
+    Partial(&'a PartialArgumentList<'a>),
+}
+
+impl<'a> Arguments<'a> {
+    /// Of `call`, whichever of the three it is.
+    pub(crate) fn of(call: &'a Expression<'a>) -> Option<Self> {
+        match call {
+            Expression::PartialApplication(PartialApplication::Function(partial)) => {
+                Some(Self::Partial(&partial.argument_list))
+            }
+            Expression::PartialApplication(PartialApplication::Method(partial)) => {
+                Some(Self::Partial(&partial.argument_list))
+            }
+            Expression::PartialApplication(PartialApplication::StaticMethod(partial)) => {
+                Some(Self::Partial(&partial.argument_list))
+            }
+            _ => argument_list(call).map(Self::Call),
+        }
+    }
+
+    /// Where the `(` is.
+    pub(crate) fn open(&self) -> u32 {
+        match self {
+            Self::Call(list) => list.left_parenthesis.start.offset,
+            Self::Partial(list) => list.left_parenthesis.start.offset,
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Self::Call(list) => list.arguments.len(),
+            Self::Partial(list) => list.arguments.len(),
+        }
+    }
+
+    /// The name argument `index` is passed by (`name: 1`, `name: ?`).
+    pub(crate) fn name_at(&self, index: usize) -> Option<&'a [u8]> {
+        match self {
+            Self::Call(list) => match list.arguments.get(index)? {
+                Argument::Named(named) => Some(named.name.value),
+                Argument::Positional(_) => None,
+            },
+            Self::Partial(list) => match list.arguments.get(index)? {
+                PartialArgument::Named(named) => Some(named.name.value),
+                PartialArgument::NamedPlaceholder(named) => Some(named.name.value),
+                _ => None,
+            },
+        }
+    }
+
+    /// The leading arguments passed by position: their values, `None` for
+    /// a `?` (it takes a parameter and passes nothing yet). Ends at the first
+    /// spread, named argument or `...`.
+    pub(crate) fn positional(&self) -> Vec<Option<&'a Expression<'a>>> {
+        match self {
+            Self::Call(list) => list
+                .arguments
+                .iter()
+                .map_while(|argument| match argument {
+                    Argument::Positional(positional) if positional.ellipsis.is_none() => Some(Some(positional.value)),
+                    _ => None,
+                })
+                .collect(),
+            Self::Partial(list) => list
+                .arguments
+                .iter()
+                .map_while(|argument| match argument {
+                    PartialArgument::Positional(positional) if positional.ellipsis.is_none() => {
+                        Some(Some(positional.value))
+                    }
+                    PartialArgument::Placeholder(_) => Some(None),
+                    _ => None,
+                })
+                .collect(),
+        }
+    }
+}
+
 pub(crate) fn method_name(selector: &ClassLikeMemberSelector<'_>) -> Option<String> {
     match selector {
         ClassLikeMemberSelector::Identifier(name) => Some(String::from_utf8_lossy(name.value).into_owned()),
@@ -73,21 +158,27 @@ pub(crate) fn callee<'a>(
     call: &'a Expression<'a>,
     frames: &[Frame<'a>],
 ) -> Option<Callee> {
+    let function = |function: &'a Expression<'a>| match function {
+        Expression::Identifier(identifier) => {
+            let name = String::from_utf8_lossy(identifier.value()).into_owned();
+            let resolved = names.scope_at(identifier.span().start.offset).resolve(NameKind::Function, &name);
+            let candidates: Vec<String> = resolved.resolution.candidates().map(str::to_owned).collect();
+            let fqn = candidates
+                .iter()
+                .find(|fqn| resolver.declarations().function(fqn).is_some())
+                .or(candidates.first())
+                .cloned();
+            fqn.map(Callee::Function)
+        }
+        _ => None,
+    };
     match call {
-        Expression::Call(Call::Function(call)) => match call.function {
-            Expression::Identifier(identifier) => {
-                let name = String::from_utf8_lossy(identifier.value()).into_owned();
-                let resolved = names.scope_at(identifier.span().start.offset).resolve(NameKind::Function, &name);
-                let candidates: Vec<String> = resolved.resolution.candidates().map(str::to_owned).collect();
-                let fqn = candidates
-                    .iter()
-                    .find(|fqn| resolver.declarations().function(fqn).is_some())
-                    .or(candidates.first())
-                    .cloned();
-                fqn.map(Callee::Function)
-            }
-            _ => None,
-        },
+        Expression::Call(Call::Function(call)) => function(call.function),
+        Expression::PartialApplication(PartialApplication::Function(partial)) => function(partial.function),
+        Expression::PartialApplication(PartialApplication::Method(partial)) => method_name(&partial.method)
+            .map(|name| Callee::Method { receiver: types.type_of(partial.object, frames), name }),
+        Expression::PartialApplication(PartialApplication::StaticMethod(partial)) => method_name(&partial.method)
+            .map(|name| Callee::Method { receiver: types.class_ref(partial.class, frames), name }),
         Expression::Call(Call::Method(call)) => {
             method_name(&call.method).map(|name| Callee::Method { receiver: types.type_of(call.object, frames), name })
         }
@@ -131,8 +222,13 @@ pub(crate) fn callee_params(
 /// argument names, else the one at its position (the variadic parameter
 /// for the rest). `None` when there is none.
 pub(crate) fn parameter_index(params: &[SignatureParam], list: &ArgumentList<'_>, index: usize) -> Option<usize> {
-    if let Some(Argument::Named(named)) = list.arguments.get(index) {
-        let name = String::from_utf8_lossy(named.name.value);
+    parameter_index_of(params, Arguments::Call(list), index)
+}
+
+/// [`parameter_index`] for the arguments of a partial application too.
+pub(crate) fn parameter_index_of(params: &[SignatureParam], list: Arguments<'_>, index: usize) -> Option<usize> {
+    if let Some(name) = list.name_at(index) {
+        let name = String::from_utf8_lossy(name);
         return params.iter().position(|param| param.name.as_deref() == Some(&*name));
     }
     if index < params.len() {
@@ -178,7 +274,7 @@ impl PhpEngine {
         let mut finder = CallFinder { paren: open.paren as u32, call: None };
         CallWalker.walk_program(probe.program(), &mut finder);
         let call = finder.call?;
-        let list = argument_list(call)?;
+        let list = Arguments::of(call)?;
         let frames = types.locate(call.span().start.offset).expression.map(|(_, f)| f).unwrap_or_default();
         let context = types.context(&frames);
         let callee = callee(&types, &names, &resolver, call, &frames)?;
@@ -216,7 +312,7 @@ impl PhpEngine {
                 (signature(&label, &params, &defaults, returns, documentation), params)
             }
         };
-        let active = parameter_index(&params, list, open.commas).unwrap_or(params.len());
+        let active = parameter_index_of(&params, list, open.commas).unwrap_or(params.len());
         Some(SignatureHelpInfo { signatures: vec![signature], active_parameter: active as u32 })
     }
 }
@@ -261,7 +357,7 @@ struct CallWalker;
 
 impl<'a> Walker<'a, 'a, CallFinder<'a>> for CallWalker {
     fn walk_in_expression(&self, expr: &'a Expression<'a>, cx: &mut CallFinder<'a>) {
-        if cx.call.is_none() && argument_list(expr).is_some_and(|list| list.left_parenthesis.start.offset == cx.paren) {
+        if cx.call.is_none() && Arguments::of(expr).is_some_and(|list| list.open() == cx.paren) {
             cx.call = Some(expr);
         }
     }

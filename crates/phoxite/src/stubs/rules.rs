@@ -37,6 +37,8 @@ pub(super) struct Rule {
     pub to: Option<PhpVersion>,
     /// The first version that no longer has it (`@removed`).
     pub removed: Option<PhpVersion>,
+    /// The first version that deprecates it (`#[Deprecated(since: '8.6')]`).
+    pub deprecated_since: Option<PhpVersion>,
     pub ty: Option<TypeAware>,
 }
 
@@ -191,6 +193,13 @@ impl Collector<'_> {
                     };
                     rule.from = version(argument("from", 0)).or(rule.from);
                     rule.to = version(argument("to", 1)).or(rule.to);
+                }
+                // Only by name: the second argument of PHP's own attribute is its `since`,
+                // the third of PhpStorm's.
+                "deprecated" => {
+                    rule.deprecated_since = argument("since", usize::MAX)
+                        .and_then(|expression| PhpVersion::parse(&self.text(expression)))
+                        .or(rule.deprecated_since);
                 }
                 "languageleveltypeaware" => {
                     let map = argument("languageLevelTypeMap", 0);

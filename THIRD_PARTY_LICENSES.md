@@ -8,8 +8,8 @@ list to each release.
 
 `crates/phoxite/stubs/phpstorm-stubs.zip` (embedded in the engine for built-in
 functions, classes and constants) contains the extension folders' `.php` files of
-[phpstorm-stubs](https://github.com/JetBrains/phpstorm-stubs) release `v2026.2` (commit
-`709e512210784a7c0a677b3a89d35def844a59b9`), copied unmodified, together with that release's
+[phpstorm-stubs](https://github.com/JetBrains/phpstorm-stubs) release `v2026.3` (commit
+`912ae721089fc48534d3a5795997ee8a2802b8cd`), copied unmodified, together with that release's
 `LICENSE` and `README.md`. Copyright JetBrains s.r.o. and contributors, licensed under the
 Apache License 2.0 (full text in the archive's `LICENSE` and at
 <https://www.apache.org/licenses/LICENSE-2.0>). The stubs' documentation comments contain
