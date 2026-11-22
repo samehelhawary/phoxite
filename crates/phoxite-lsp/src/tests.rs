@@ -212,7 +212,8 @@ fn php_requests_on_the_library_fixture() {
 
     // Members after `$this->books->`.
     let (mline, mcol) = find(&file, "$this->books->save", 14);
-    let completion = c.request::<r::Completion>(at(&uri, mline, mcol));
+    let listed = |v: &Value| v["items"].as_array().is_some_and(|items| !items.is_empty());
+    let completion = c.request_until::<r::Completion>(at(&uri, mline, mcol), listed);
     let labels: Vec<&str> =
         completion["items"].as_array().unwrap().iter().filter_map(|item| item["label"].as_str()).collect();
     assert!(labels.contains(&"save") && labels.contains(&"find"), "{labels:?}");
@@ -753,7 +754,7 @@ fn a_magento_module_names_what_its_xml_declares() {
     assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("etc/acl.xml")), "{found}");
     // What a generated factory makes has the class's methods.
     let (line, col) = find(&checkout, "$cart->save()", 9);
-    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
     assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Model/Cart.php")), "{found}");
 
     // The template's block is the class the layout gives it.
@@ -836,7 +837,7 @@ fn a_joomla_site_names_what_its_files_declare() {
     );
     // What the MVC factory makes has the model's methods.
     let (line, col) = find(&helper, "createModel('Items')->total()", 24);
-    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
     assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Model/ItemsModel.php")), "{found}");
 
     // A view's template: `$this` is the view.
