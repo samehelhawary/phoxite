@@ -2,7 +2,7 @@
   "name": "phoxite",
   "displayName": "Phoxite — PHP & Laravel IntelliSense",
   "description": "PHP code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections, Laravel support (routes, views, config, translations, validation, Eloquent, Blade, generators, Artisan), Symfony, WordPress, Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento and Joomla names and types, and Twig templates.",
-  "version": "0.10.0",
+  "version": "0.12.0",
   "publisher": "phoxite",
   "license": "Apache-2.0",
   "icon": "icon.png",

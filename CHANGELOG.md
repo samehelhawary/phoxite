@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.0 — 2026-11-23
 
 - **Joomla.** In a Joomla site (`libraries/src/Version.php`) or an extension opened on
   its own (a manifest at its top), the manifests, the language files, `access.xml`,
