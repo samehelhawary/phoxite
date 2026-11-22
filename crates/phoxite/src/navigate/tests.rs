@@ -14,6 +14,7 @@ mod callables;
 mod codeigniter;
 mod drupal;
 mod hierarchy;
+mod laminas;
 mod laravel;
 mod moves;
 mod references;

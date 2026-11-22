@@ -57,6 +57,12 @@ servers. What it does:
   entities and queries, of an entity's fields (from the migrations), of association
   properties, of a controller's components and a view's helpers, and of the variables an
   action sets for its template. Translations (`__()`) by name; templates found in themes.
+- **Laminas MVC and Mezzio:** routes, templates, services, controller plugins, view
+  helpers, actions and configuration keys by name, from the modules' and providers'
+  configuration, with a warning for a route, a template, a service or an action that
+  names nothing; the types of `$container->get()` (through aliases, factories and
+  invokables), of controller plugins and view helpers, and of the variables an action
+  or a handler gives its `.phtml` template.
 - **Drupal:** services, routes, permissions, libraries, configuration, entity types,
   plugins, theme hooks and hooks, from the module's YAML files, attributes and
   annotations; the types of `\Drupal::service()`, of an entity storage and of a hook

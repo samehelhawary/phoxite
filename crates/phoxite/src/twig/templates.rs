@@ -91,6 +91,10 @@ impl TemplatePaths {
             let extensions = crate::frameworks::drupal::project::template_dirs(root);
             dirs.extend(extensions.into_iter().map(|(name, dir)| (Some(name), dir)));
         }
+        // Mezzio: `app::home-page` is `@app/home-page.html.twig`, in the namespace's folder.
+        if crate::frameworks::Frameworks::detect(root, &settings).contains(crate::frameworks::Framework::Laminas) {
+            dirs.extend(crate::frameworks::laminas::project::template_dirs(root));
+        }
         let mut seen = Vec::new();
         dirs.retain(|entry| {
             entry.1.is_dir() && !seen.contains(entry) && {

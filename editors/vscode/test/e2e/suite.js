@@ -1215,6 +1215,88 @@ const cakeChecks = [
   }],
 ];
 
+/** The checks of the Laminas fixture (run.js opens it): an MVC application on a stand-in API. */
+const LAMINAS_BOOKS = "module/Application/src/Controller/BookController.php";
+const LAMINAS_MODULE = "module/Application/config/module.config.php";
+const LAMINAS_INDEX = "module/Application/view/application/book/index.phtml";
+const laminasChecks = [
+  ["Laminas: the project is named", async () => {
+    await open(LAMINAS_BOOKS);
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["Laminas"]);
+    return names.join(", ");
+  }],
+  ["Laminas: names go to what they name", async () => {
+    const factory = "module/Application/src/Service/CatalogFactory.php";
+    const found = {
+      route: await goes(LAMINAS_BOOKS, "toRoute('home')", 10),
+      "child route": await goes(LAMINAS_BOOKS, "toRoute('book/view'", 14),
+      "action of a route": await goes(LAMINAS_BOOKS, "['action' => 'view', 'id' => 1]", 14),
+      template: await goes(LAMINAS_BOOKS, "setTemplate('application/book/view')", 30),
+      partial: await goes(LAMINAS_INDEX, "partial('partial/book-row'", 18),
+      service: await goes(factory, "get('clock')", 6),
+      configuration: await goes(factory, "['library']['name']", 14),
+      "route in a template": await goes(LAMINAS_INDEX, "url('book/view'", 10),
+      "action in the configuration": await goes(LAMINAS_MODULE, "'action' => 'view',", 13),
+      "configuration in a variable": await goes(factory, "$config['library']", 12),
+      "route parameter": await goes(LAMINAS_BOOKS, "'id' => 1]", 2),
+    };
+    assert.deepEqual(found, {
+      route: [`${LAMINAS_MODULE}:10`],
+      "child route": [`${LAMINAS_MODULE}:30`],
+      "action of a route": [`${LAMINAS_BOOKS}:24`],
+      template: ["module/Application/view/application/book/view.phtml:1"],
+      partial: ["module/Application/view/partial/book-row.phtml:1"],
+      service: [`${LAMINAS_MODULE}:57`],
+      configuration: ["config/autoload/global.php:5"],
+      "route in a template": [`${LAMINAS_MODULE}:30`],
+      "action in the configuration": [`${LAMINAS_BOOKS}:24`],
+      "configuration in a variable": ["config/autoload/global.php:4"],
+      "route parameter": [`${LAMINAS_MODULE}:30`],
+    });
+    const hover = await hoverAt(LAMINAS_BOOKS, "toRoute('home')", 10);
+    assert.ok(hover.includes("route") && hover.includes("BookController::indexAction()"), hover);
+    return `${Object.keys(found).length} kinds`;
+  }],
+  ["Laminas: names complete", async () => {
+    const routes = await completes(LAMINAS_BOOKS, "toRoute('home')", 9, "home");
+    assert.ok(routes.includes("book") && routes.includes("book/view"), routes.join(", "));
+    const templates = await completes(LAMINAS_BOOKS, "setTemplate('application/book/view')", 13, "application/book/view");
+    assert.ok(templates.includes("layout/layout") && templates.includes("partial/book-row"), templates.join(", "));
+    return `${routes.length} routes, ${templates.length} templates`;
+  }],
+  ["Laminas: a name that names nothing is reported", async () => {
+    const document = await open(LAMINAS_BOOKS);
+    const edit = new vscode.WorkspaceEdit();
+    const at = document.getText().indexOf("toRoute('home')");
+    edit.replace(document.uri, new vscode.Range(document.positionAt(at), document.positionAt(at + 15)), "toRoute('nope')");
+    await vscode.workspace.applyEdit(edit);
+    const problems = await until(
+      "the missing route",
+      async () => vscode.languages.getDiagnostics(document.uri).map((problem) => problem.message),
+      (found) => found.some((message) => message.includes("nope")),
+    );
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    assert.deepEqual(problems, ["Unknown route 'nope'"]);
+    return problems.join("; ");
+  }],
+  ["Laminas: services, plugins and a template's variables are typed", async () => {
+    // A controller plugin and a view helper, by the method they are called by.
+    assert.deepEqual(await goes(LAMINAS_BOOKS, "$this->shelf()", 9), ["module/Application/src/Controller/Plugin/Shelf.php:7"]);
+    const view = "module/Application/view/application/book/view.phtml";
+    assert.deepEqual(await goes(view, "$this->stars(", 9), ["module/Application/src/View/Helper/Stars.php:7"]);
+    // What the action gives the template: what calling a plugin returns, a model.
+    const capacity = await hoverAt(LAMINAS_INDEX, "<?= $capacity ?>", 5);
+    assert.ok(capacity.includes("int"), capacity);
+    const members = await completes(view, "$book->title", 7, "title");
+    assert.ok(members.includes("rating"), members.join(", "));
+    const problems = vscode.languages.getDiagnostics(file(view)).map((problem) => problem.message);
+    assert.deepEqual(problems, [], "a template's variables aren't undefined");
+    return `${members.filter((name) => ["id", "rating", "title"].includes(name)).join(", ")}; no problems in the template`;
+  }],
+];
+
 /** The checks of the Symfony fixture (run.js opens it): an application on a stand-in API. */
 const BLOG = "src/Controller/BlogController.php";
 const SHOW = "templates/blog/show.html.twig";
@@ -1290,6 +1372,7 @@ exports.run = async function run() {
     codeigniter: codeigniterChecks,
     yii: yiiChecks,
     cakephp: cakeChecks,
+    laminas: laminasChecks,
     symfony: symfonyChecks,
   };
   const chosen = byMode[process.env.PHOXITE_E2E_MODE] ?? checks;

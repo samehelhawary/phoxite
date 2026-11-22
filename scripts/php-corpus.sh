@@ -25,6 +25,25 @@ CORPORA=(
     "cakephp https://github.com/cakephp/app.git 5.4.0"
     "cakephp-framework https://github.com/cakephp/cakephp.git 5.4.4"
     "cakephp4-framework https://github.com/cakephp/cakephp.git 4.6.6"
+    "laminas https://github.com/laminas/laminas-mvc-skeleton.git 2.4.0"
+    "mezzio https://github.com/mezzio/mezzio-skeleton.git 3.19.0"
+    "laminas-mvc https://github.com/laminas/laminas-mvc.git 3.8.0"
+    "laminas-view https://github.com/laminas/laminas-view.git 3.2.0"
+    "laminas-view2 https://github.com/laminas/laminas-view.git 2.44.0"
+    "laminas-servicemanager https://github.com/laminas/laminas-servicemanager.git 4.6.0"
+    "laminas-router https://github.com/laminas/laminas-router.git 3.19.0"
+    "mezzio-framework https://github.com/mezzio/mezzio.git 3.29.0"
+    "mezzio-router https://github.com/mezzio/mezzio-router.git 4.3.0"
+    "mezzio-template https://github.com/mezzio/mezzio-template.git 3.1.0"
+    "mezzio-helpers https://github.com/mezzio/mezzio-helpers.git 5.21.0"
+    "mezzio-laminasviewrenderer https://github.com/mezzio/mezzio-laminasviewrenderer.git 3.1.0"
+    "psr-container https://github.com/php-fig/container.git 2.0.2"
+    "laminas-form https://github.com/laminas/laminas-form.git 3.25.0"
+    "laminas-validator https://github.com/laminas/laminas-validator.git 3.21.0"
+    "laminas-filter https://github.com/laminas/laminas-filter.git 3.5.0"
+    "laminas-hydrator https://github.com/laminas/laminas-hydrator.git 5.1.0"
+    "laminas-inputfilter https://github.com/laminas/laminas-inputfilter.git 2.36.0"
+    "laminas-navigation https://github.com/laminas/laminas-navigation.git 2.24.0"
 )
 
 check=0
@@ -39,7 +58,7 @@ for name in "${wanted[@]}"; do
         [[ "${entry%% *}" == "$name" ]] && known=1
     done
     if ((!known)); then
-        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7|codeigniter|codeigniter3|yii|yii-framework|yii-advanced|cakephp|cakephp-framework|cakephp4-framework]..." >&2
+        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7|codeigniter|codeigniter3|yii|yii-framework|yii-advanced|cakephp|cakephp-framework|cakephp4-framework|laminas|mezzio|laminas-mvc|laminas-view|laminas-view2|laminas-servicemanager|laminas-router|mezzio-framework|mezzio-router|mezzio-template|mezzio-helpers|mezzio-laminasviewrenderer|psr-container|laminas-form|laminas-validator|laminas-filter|laminas-hydrator|laminas-inputfilter|laminas-navigation]..." >&2
         exit 2
     fi
 done

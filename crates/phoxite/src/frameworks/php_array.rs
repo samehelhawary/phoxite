@@ -42,6 +42,8 @@ use crate::base::Range;
 use crate::names::{FileNames, NameKind, Resolution};
 use crate::syntax::ParsedFile;
 
+const BACKSLASH: char = '\\';
+
 /// How deep `require`s and variables are followed.
 const MAX_DEPTH: usize = 8;
 
@@ -65,6 +67,11 @@ pub enum Node {
     Array(Vec<Entry>),
     /// Anything else, as written.
     Other(String),
+    /// A closure or an arrow function, with the class it returns when its
+    /// return type or a `new` it returns says: a factory written in place.
+    Closure {
+        returns: Option<String>,
+    },
 }
 
 /// A key of the array.
@@ -181,6 +188,15 @@ pub fn parse(path: &Path, text: &str) -> Option<Node> {
     files.parse(path, text)
 }
 
+/// The array the method `method` of a class of the file `path` returns (a
+/// `ConfigProvider::__invoke()`), a value that is another method of the
+/// class called on `$this` read as the array that one returns.
+pub fn read_method(path: &Path, method: &str, text_of: &dyn Fn(&Path) -> Option<String>) -> Option<Node> {
+    let mut files = Files { text_of: Some(text_of), open: Vec::new() };
+    let text = text_of(path)?;
+    files.parse_from(path, &text, Some(method))
+}
+
 /// The array literal a file's top-level `return` returns, for a reader that
 /// walks the tree itself.
 pub fn returned_array<'a>(parsed: &'a ParsedFile) -> Option<&'a Expression<'a>> {
@@ -237,6 +253,11 @@ impl Files<'_> {
     }
 
     fn parse(&mut self, path: &Path, text: &str) -> Option<Node> {
+        self.parse_from(path, text, None)
+    }
+
+    /// What the file returns, or what its method `method` does.
+    fn parse_from(&mut self, path: &Path, text: &str, method: Option<&str>) -> Option<Node> {
         let path = tidy(path);
         if self.open.len() >= MAX_DEPTH || self.open.contains(&path) {
             return None;
@@ -244,7 +265,17 @@ impl Files<'_> {
         let parsed = ParsedFile::parse("array.php", text.to_owned());
         let mut assignments = Assignments::default();
         AssignmentWalker.walk_program(parsed.program(), &mut assignments);
-        let returned = returned(&parsed)?;
+        let mut methods = Methods::default();
+        if text.contains("function ") {
+            MethodWalker.walk_program(parsed.program(), &mut methods);
+        }
+        let returned = match method {
+            Some(method) => {
+                let found = methods.returned.iter().find(|(name, _)| name.eq_ignore_ascii_case(method));
+                found.map(|(_, value)| *value)?
+            }
+            None => returned(&parsed)?,
+        };
         self.open.push(path.clone());
         let mut reader = Reader {
             files: self,
@@ -252,6 +283,7 @@ impl Files<'_> {
             names: FileNames::resolve(&parsed),
             file: Arc::from(path.as_path()),
             assignments: assignments.found,
+            methods: methods.returned,
         };
         let node = reader.node(returned, 0);
         self.open.pop();
@@ -275,12 +307,52 @@ impl<'a> Walker<'a, 'a, Assignments<'a>> for AssignmentWalker {
     }
 }
 
+/// What each method of the file's classes returns: its first `return`
+/// that isn't a closure's.
+#[derive(Default)]
+struct Methods<'a> {
+    current: Option<String>,
+    /// Closures and functions the walker is in, inside the method.
+    nested: usize,
+    returned: Vec<(String, &'a Expression<'a>)>,
+}
+
+struct MethodWalker;
+
+impl<'a> Walker<'a, 'a, Methods<'a>> for MethodWalker {
+    fn walk_in_method(&self, method: &'a mago_syntax::cst::Method<'a>, cx: &mut Methods<'a>) {
+        cx.current = Some(lossy(method.name.value));
+        cx.nested = 0;
+    }
+
+    fn walk_out_method(&self, _: &'a mago_syntax::cst::Method<'a>, cx: &mut Methods<'a>) {
+        cx.current = None;
+    }
+
+    fn walk_in_closure(&self, _: &'a mago_syntax::cst::Closure<'a>, cx: &mut Methods<'a>) {
+        cx.nested += 1;
+    }
+
+    fn walk_out_closure(&self, _: &'a mago_syntax::cst::Closure<'a>, cx: &mut Methods<'a>) {
+        cx.nested = cx.nested.saturating_sub(1);
+    }
+
+    fn walk_in_return(&self, r#return: &'a mago_syntax::cst::Return<'a>, cx: &mut Methods<'a>) {
+        let (Some(name), Some(value), 0) = (cx.current.clone(), r#return.value, cx.nested) else { return };
+        if !cx.returned.iter().any(|(known, _)| *known == name) {
+            cx.returned.push((name, value));
+        }
+    }
+}
+
 struct Reader<'r, 'f, 'a> {
     files: &'r mut Files<'f>,
     parsed: &'a ParsedFile,
     names: FileNames,
     file: Arc<Path>,
     assignments: Vec<&'a Assignment<'a>>,
+    /// What the methods of the file's classes return.
+    methods: Vec<(String, &'a Expression<'a>)>,
 }
 
 fn lossy(bytes: &[u8]) -> String {
@@ -395,14 +467,70 @@ impl<'a> Reader<'_, '_, 'a> {
                     return node;
                 }
             }
+            Expression::Closure(_) | Expression::ArrowFunction(_) => {
+                return Node::Closure { returns: self.closure_class(expr) };
+            }
             Expression::Call(call) => {
                 if let Some(merged) = self.merged(call, depth) {
                     return merged;
                 }
+                // `$this->getDependencies()`: what that method of the class returns.
+                if let Call::Method(method) = call
+                    && direct(method.object) == Some(b"$this".as_slice())
+                    && let ClassLikeMemberSelector::Identifier(name) = &method.method
+                    && method.argument_list.arguments.is_empty()
+                {
+                    let name = lossy(name.value);
+                    let found = self.methods.iter().find(|(known, _)| known.eq_ignore_ascii_case(&name));
+                    if let Some(value) = found.map(|(_, value)| *value) {
+                        return self.node(value, depth + 1);
+                    }
+                }
             }
             _ => {}
         }
+        // `__DIR__ . '/../view'`: a path.
+        if matches!(expr, Expression::MagicConstant(_) | Expression::Binary(_))
+            && let Some(path) = path_of(&self.file, expr)
+        {
+            return Node::String(path);
+        }
         Node::Other(self.source(expr))
+    }
+
+    /// The class a closure returns: its declared return type, else the
+    /// class of the `new` it returns.
+    fn closure_class(&self, expr: &Expression<'_>) -> Option<String> {
+        let text = self.source(expr);
+        let body = text.find('{').into_iter().chain(text.find("=>")).min()?;
+        let (head, rest) = text.split_at(body);
+        let class_like = |name: &str| {
+            let scalar = [
+                "array", "string", "int", "float", "bool", "mixed", "object", "callable", "iterable", "self", "static",
+                "void", "null", "never", "false", "true",
+            ];
+            let named =
+                !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == BACKSLASH);
+            (named && !scalar.contains(&name.to_ascii_lowercase().as_str())).then(|| name.to_owned())
+        };
+        let declared = head.rsplit_once(')').and_then(|(_, after)| {
+            let hint = after.trim().strip_prefix(':')?.trim().trim_start_matches('?');
+            class_like(hint)
+        });
+        let made = || {
+            let at = rest.find("return new ").map(|at| at + 11).or_else(|| rest.find("=> new ").map(|at| at + 7))?;
+            let name: String =
+                rest[at..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == BACKSLASH).collect();
+            class_like(&name)
+        };
+        let name = declared.or_else(made)?;
+        let scope = self.names.scope_at(expr.span().start.offset);
+        match scope.resolve(NameKind::ClassLike, &name).resolution {
+            Resolution::Fqn(fqn) | Resolution::Fallback { namespaced: fqn, .. } => {
+                Some(fqn.trim_start_matches(BACKSLASH).to_owned())
+            }
+            Resolution::Relative(_) => None,
+        }
     }
 
     /// What the file assigns the variable `expr`: its first plain
@@ -647,6 +775,36 @@ pub fn tidy(path: &Path) -> PathBuf {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod method_tests {
+    use super::*;
+
+    #[test]
+    fn a_method_returns_what_the_methods_it_calls_return() {
+        let text = "<?php\nnamespace App;\n\nclass ConfigProvider\n{\n    public function __invoke(): array\n    {\n        return [\n            'dependencies' => $this->getDependencies(),\n            'templates' => $this->getTemplates(),\n        ];\n    }\n\n    public function getDependencies(): array\n    {\n        return [\n            'invokables' => [Handler\\PingHandler::class => Handler\\PingHandler::class],\n            'factories' => ['mailer' => fn () => new Mailer()],\n        ];\n    }\n\n    public function getTemplates(): array\n    {\n        return ['paths' => ['app' => [__DIR__ . '/../templates/app']]];\n    }\n}\n";
+        let read = |_: &Path| Some(text.to_owned());
+        let node = read_method(Path::new("/app/src/ConfigProvider.php"), "__invoke", &read).unwrap();
+        let invokables = node.at(&["dependencies", "invokables"]).unwrap().entries();
+        assert_eq!(invokables[0].name(), Some("App\\Handler\\PingHandler"));
+        assert_eq!(invokables[0].range.start.line, 16);
+        let factories = node.at(&["dependencies", "factories"]).unwrap().entries();
+        assert_eq!(factories[0].name(), Some("mailer"));
+        let paths = node.at(&["templates", "paths", "app"]).unwrap().entries();
+        assert_eq!(
+            paths[0].value.as_str().map(|path| path.replace('\\', "/")).as_deref(),
+            Some("/app/src/../templates/app")
+        );
+        assert!(read_method(Path::new("/app/src/ConfigProvider.php"), "missing", &read).is_none());
+        // A factory written in place: what it is declared to return, or what it makes.
+        assert_eq!(factories[0].value, Node::Closure { returns: Some("App\\Mailer".to_owned()) });
+        let text = "<?php\nnamespace App;\nreturn ['a' => function ($c): Service\\Clock { return $c->get('x'); }, 'b' => static function () use ($x) { return new \\Lib\\Thing($x); }, 'c' => fn () => 1];\n";
+        let node = parse(Path::new("config.php"), text).unwrap();
+        assert_eq!(node.get("a"), Some(&Node::Closure { returns: Some("App\\Service\\Clock".to_owned()) }));
+        assert_eq!(node.get("b"), Some(&Node::Closure { returns: Some("Lib\\Thing".to_owned()) }));
+        assert_eq!(node.get("c"), Some(&Node::Closure { returns: None }));
+    }
 }
 
 #[cfg(test)]

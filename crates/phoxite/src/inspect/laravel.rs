@@ -36,7 +36,7 @@
 //! - `PhpUndefinedTemplate` (Symfony) and `PhpUndefinedHook` (WordPress,
 //!   off by default) are of the other frameworks' kinds, as are
 //!   CodeIgniter's eight ([`CODEIGNITER`]), Yii's four ([`YII`]), CakePHP's seven
-//!   ([`CAKEPHP`]).
+//!   ([`CAKEPHP`]), Laminas's four ([`LAMINAS`]).
 //!
 //! They run only while the indexes are ready, each in projects of its
 //! framework.
@@ -63,7 +63,16 @@ type Inspections = &'static [(&'static str, &'static dyn ReferenceKind)];
 /// …" inspections of its own adds its list here. A kind is only asked in a
 /// project of its framework ([`crate::frameworks::refs::kinds_for`]), so an
 /// inspection reports nothing elsewhere.
-const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER, YII, CAKEPHP];
+const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER, YII, CAKEPHP, LAMINAS];
+
+/// Laminas's and Mezzio's: a route, a template and a service no
+/// configuration has, an action its controller doesn't have.
+const LAMINAS: Inspections = &[
+    ("PhpUndefinedLaminasRoute", &crate::frameworks::laminas::refs::ROUTE),
+    ("PhpUndefinedLaminasTemplate", &crate::frameworks::laminas::refs::TEMPLATE),
+    ("PhpUndefinedLaminasService", &crate::frameworks::laminas::refs::SERVICE),
+    ("PhpUndefinedLaminasAction", &crate::frameworks::laminas::refs::ACTION),
+];
 
 /// CakePHP's: a template, a layout or an element whose file isn't there, a
 /// component, a helper or a behaviour no class is of, an action its

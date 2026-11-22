@@ -251,6 +251,10 @@ struct Shared {
     symfony_config: Mutex<Option<Arc<SymfonyConfig>>>,
     /// What a CodeIgniter project's files declare, for an edit count.
     codeigniter: Mutex<Option<(u64, Arc<crate::frameworks::codeigniter::CodeIgniterProject>)>>,
+    /// What a Laminas project's configuration says, for an edit count.
+    laminas: Mutex<Option<(u64, Arc<crate::frameworks::laminas::LaminasProject>)>>,
+    /// What each template of a Laminas project is given, for an edit count.
+    laminas_views: TypedViewVariables,
     /// What a CakePHP project's files say, for an edit count.
     cake: Mutex<Option<(u64, Arc<crate::frameworks::cakephp::CakeProject>)>>,
     /// What the code of each class of a CakePHP project says it loads, for
@@ -524,6 +528,8 @@ impl PhpEngine {
             symfony_config: Mutex::new(None),
             drupal: Mutex::new(None),
             codeigniter: Mutex::new(None),
+            laminas: Mutex::new(None),
+            laminas_views: Mutex::new(HashMap::new()),
             cake: Mutex::new(None),
             cake_facts: Mutex::new(HashMap::new()),
             cake_views: Mutex::new(HashMap::new()),
@@ -1010,6 +1016,33 @@ impl PhpEngine {
         let project = Arc::new(crate::frameworks::codeigniter::CodeIgniterProject::load(&root, text_of));
         *self.shared.codeigniter.lock() = Some((count, project.clone()));
         project
+    }
+
+    /// What the configuration of a Laminas MVC or a Mezzio project says
+    /// ([`LaminasProject`](crate::frameworks::laminas::LaminasProject)): its
+    /// services, routes, templates and keys.
+    pub fn laminas(&self) -> Arc<crate::frameworks::laminas::LaminasProject> {
+        let count = self.edit_count();
+        if let Some((at, project)) = self.shared.laminas.lock().clone()
+            && at == count
+        {
+            return project;
+        }
+        let root = self.shared.layout_config.lock().root.clone();
+        let text_of = |path: &Path| match self.open_document(path) {
+            Some(document) => Some(document.text.to_string()),
+            None => std::fs::read_to_string(path).ok(),
+        };
+        // The modules and providers Composer installed are found by their class.
+        let class_file = |class: &str| self.class_targets(class).into_iter().next().map(|target| target.path);
+        let project = Arc::new(crate::frameworks::laminas::LaminasProject::load(&root, &text_of, &class_file));
+        *self.shared.laminas.lock() = Some((count, project.clone()));
+        project
+    }
+
+    /// The cache of [`PhpEngine::laminas_view_variables`].
+    pub(crate) fn laminas_views_cache(&self) -> &TypedViewVariables {
+        &self.shared.laminas_views
     }
 
     /// What the files of a CakePHP project say
@@ -2099,6 +2132,10 @@ impl Declarations for PhpEngine {
         })
     }
 
+    fn laminas(&self) -> Option<Arc<crate::frameworks::laminas::LaminasProject>> {
+        self.detected_frameworks().contains(crate::frameworks::Framework::Laminas).then(|| PhpEngine::laminas(self))
+    }
+
     fn cake(&self) -> Option<Arc<crate::frameworks::cakephp::CakeProject>> {
         self.detected_frameworks().contains(crate::frameworks::Framework::CakePhp).then(|| PhpEngine::cake(self))
     }
@@ -2146,6 +2183,15 @@ impl Declarations for PhpEngine {
     }
 
     fn view_variable(&self, path: &Path, name: &str) -> Option<Type> {
+        // Laminas: a template of a map, a template path or a Mezzio namespace; `$this` is
+        // the renderer.
+        if self.frameworks().contains(crate::frameworks::Framework::Laminas) && self.is_laminas_template(path) {
+            if name == "this" {
+                return self.laminas_view_class().map(|class| Type::named(&class));
+            }
+            let variables = self.laminas_view_variables(path);
+            return variables.iter().find(|(known, _)| known == name).map(|(_, ty)| ty.clone());
+        }
         // CakePHP: a file of a `templates` folder; `$this` is the view object.
         if self.frameworks().contains(crate::frameworks::Framework::CakePhp) && self.is_cake_template(path) {
             if name == "this" {

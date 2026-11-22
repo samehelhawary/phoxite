@@ -1,0 +1,13 @@
+{
+    "name": "phoxite/mezzio-app",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "mezzio/mezzio": "^3.29"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/App/src/"
+        }
+    }
+}

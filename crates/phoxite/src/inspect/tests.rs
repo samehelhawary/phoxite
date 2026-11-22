@@ -437,6 +437,10 @@ fn replacing_the_inspections_runs_them_again() {
             "PhpUndefinedCakeHelper",
             "PhpUndefinedCakeBehavior",
             "PhpUndefinedCakeAction",
+            "PhpUndefinedLaminasRoute",
+            "PhpUndefinedLaminasTemplate",
+            "PhpUndefinedLaminasService",
+            "PhpUndefinedLaminasAction",
         ]
     );
 }

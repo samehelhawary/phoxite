@@ -121,6 +121,13 @@ pub enum CalleePattern {
     /// `Yii::$app->params['mail']['from']` (the keys before it are the
     /// target's, [`CallTarget::Read`]). The key is the argument at index 0.
     Read { classes: &'static [&'static str], names: &'static [&'static str] },
+    /// The key read from what one of the methods `names` of one of
+    /// `classes` returns: `'db'` and `'host'` in
+    /// `$container->get('config')['db']['host']` (the keys before it are
+    /// the target's, [`CallTarget::Result`]; the call's first argument is
+    /// the site's [`StringSite::first_argument`]). The key is the argument
+    /// at index 0.
+    ResultKey { classes: &'static [&'static str], names: &'static [&'static str] },
 }
 
 /// Where in the argument the string sits.
@@ -178,6 +185,7 @@ impl PlacePattern {
             CalleePattern::Entry(key) => vec![key],
             CalleePattern::Method { names, .. }
             | CalleePattern::Read { names, .. }
+            | CalleePattern::ResultKey { names, .. }
             | CalleePattern::Return { names, .. }
             | CalleePattern::Rules { names, .. }
             | CalleePattern::Property { names, .. } => names.to_vec(),
@@ -245,6 +253,15 @@ impl PlacePattern {
                         }))
             }
             (CalleePattern::Entry(wanted), CallTarget::Entry { key }) => key == wanted,
+            (CalleePattern::ResultKey { classes, names }, CallTarget::Result { classes: receivers, name, .. }) => {
+                names.iter().any(|wanted| wanted.eq_ignore_ascii_case(name))
+                    && receivers.iter().any(|receiver| {
+                        classes.iter().any(|class| fqn_eq(NameKind::ClassLike, receiver, class))
+                            || resolver
+                                .class_model(receiver)
+                                .is_some_and(|model| classes.iter().any(|class| model.is_subclass_of(class)))
+                    })
+            }
             (CalleePattern::Read { classes, names }, CallTarget::Read { classes: receivers, name, .. }) => {
                 names.contains(&name.as_str())
                     && receivers.iter().any(|receiver| {
@@ -297,6 +314,10 @@ pub enum CallTarget {
     /// ([`CalleePattern::Read`]); `keys` are the keys read before it
     /// (`mail` for `'from'` in `->params['mail']['from']`).
     Read { classes: Vec<String>, name: String, keys: Vec<String> },
+    /// A key read from what the method `name` of an object of `classes`
+    /// returns ([`CalleePattern::ResultKey`]); `keys` are the keys read
+    /// before it.
+    Result { classes: Vec<String>, name: String, keys: Vec<String> },
 }
 
 /// One step from an argument into the arrays around the string.
@@ -380,6 +401,12 @@ enum SiteCall<'a> {
         key: String,
         at: u32,
     },
+    /// A key read from what the call `call` returns, after `keys`.
+    Result {
+        call: &'a Expression<'a>,
+        keys: Vec<String>,
+        at: u32,
+    },
     /// A key read from the property `name` of `object`, after `keys`.
     Read {
         object: &'a Expression<'a>,
@@ -397,7 +424,8 @@ impl SiteCall<'_> {
             | SiteCall::Property { at, .. }
             | SiteCall::Attribute { at, .. }
             | SiteCall::Entry { at, .. }
-            | SiteCall::Read { at, .. } => *at,
+            | SiteCall::Read { at, .. }
+            | SiteCall::Result { at, .. } => *at,
         }
     }
 }
@@ -440,6 +468,10 @@ struct Collect<'a, 'n> {
     out: Vec<RawSite<'a>>,
     /// The class-likes, functions and methods around the walker.
     frames: Vec<Frame>,
+    /// The variables of the function being walked that hold what a method
+    /// asked about returned (`$config = $container->get('config')`): a key
+    /// read from one is read from that call.
+    assigned: Vec<(Vec<u8>, &'a Expression<'a>)>,
 }
 
 struct SiteWalker;
@@ -559,6 +591,19 @@ impl<'a> Collect<'a, '_> {
             let call = SiteCall::Entry { key, at: element.key.span().start.offset };
             self.strings(&call, element.value, (Some(0), None), &mut Vec::new(), None);
         }
+        // `$config = $container->get('config');`: the variable holds what the call returned,
+        // until it is assigned again.
+        if let Expression::Assignment(assignment) = expr
+            && let Expression::Variable(mago_syntax::cst::Variable::Direct(variable)) = assignment.lhs
+        {
+            self.assigned.retain(|(known, _)| known.as_slice() != variable.name);
+            if let Expression::Call(Call::Method(method)) = assignment.rhs
+                && let ClassLikeMemberSelector::Identifier(name) = &method.method
+                && self.names.contains(&lossy(name.value).to_ascii_lowercase())
+            {
+                self.assigned.push((variable.name.to_vec(), assignment.rhs));
+            }
+        }
         // `Yii::$app->params['mail']['from']`: a key read from the property asked about
         // ([`CalleePattern::Read`]), after the keys read before it.
         if let Expression::ArrayAccess(access) = expr {
@@ -570,6 +615,31 @@ impl<'a> Collect<'a, '_> {
             {
                 keys.push(lossy(key));
                 below = inner.array;
+            }
+            // `$container->get('config')['db']['host']`: a key read from what a method asked
+            // about returns ([`CalleePattern::ResultKey`]).
+            // (Or from a variable holding it.)
+            let held = match below {
+                Expression::Variable(mago_syntax::cst::Variable::Direct(variable)) => {
+                    self.assigned.iter().find(|(known, _)| known.as_slice() == variable.name).map(|(_, call)| *call)
+                }
+                other => Some(other),
+            };
+            if let Some(held) = held
+                && let Expression::Call(Call::Method(method)) = held
+                && let ClassLikeMemberSelector::Identifier(name) = &method.method
+                && self.names.contains(&lossy(name.value).to_ascii_lowercase())
+            {
+                let mut keys = keys.clone();
+                keys.reverse();
+                let first = method.argument_list.arguments.iter().find_map(|argument| match argument {
+                    Argument::Positional(argument) => Some(argument.value),
+                    Argument::Named(_) => None,
+                });
+                let call = SiteCall::Result { call: held, keys, at: below.span().start.offset };
+                let before = std::mem::replace(&mut self.first, first);
+                self.strings(&call, access.index, (Some(0), None), &mut Vec::new(), None);
+                self.first = before;
             }
             if let Expression::Access(Access::Property(property)) = below
                 && let ClassLikeMemberSelector::Identifier(name) = &property.property
@@ -665,6 +735,7 @@ impl<'a> Walker<'a, 'a, Collect<'a, '_>> for SiteWalker {
 
     fn walk_in_method(&self, method: &'a mago_syntax::cst::Method<'a>, cx: &mut Collect<'a, '_>) {
         cx.frames.push(Frame::Method(lossy(method.name.value)));
+        cx.assigned.clear();
     }
 
     fn walk_out_method(&self, _: &'a mago_syntax::cst::Method<'a>, cx: &mut Collect<'a, '_>) {
@@ -673,6 +744,7 @@ impl<'a> Walker<'a, 'a, Collect<'a, '_>> for SiteWalker {
 
     fn walk_in_function(&self, _: &'a mago_syntax::cst::Function<'a>, cx: &mut Collect<'a, '_>) {
         cx.frames.push(Frame::Function);
+        cx.assigned.clear();
     }
 
     fn walk_out_function(&self, _: &'a mago_syntax::cst::Function<'a>, cx: &mut Collect<'a, '_>) {
@@ -844,6 +916,7 @@ pub fn sites_at(
         first: None,
         out: Vec::new(),
         frames: Vec::new(),
+        assigned: Vec::new(),
     };
     SiteWalker.walk_program(parsed.program(), &mut collect);
     if collect.out.is_empty() {
@@ -875,6 +948,10 @@ pub fn sites_at(
                     CallTarget::Property { class: class.trim_start_matches('\\').to_owned(), name }
                 }
                 SiteCall::Entry { key, .. } => CallTarget::Entry { key },
+                SiteCall::Result { call, keys, .. } => match call_target(&types, &file_names, resolver, call)? {
+                    CallTarget::Method { classes, name, .. } => CallTarget::Result { classes, name, keys },
+                    _ => return None,
+                },
                 SiteCall::Read { object, name, keys, .. } => {
                     let frames = types
                         .locate(object.span().start.offset)
@@ -1405,6 +1482,7 @@ pub fn framework_kinds(framework: super::Framework) -> &'static [&'static dyn Re
         super::Framework::CodeIgniter => super::codeigniter::refs::kinds(),
         super::Framework::Yii => super::yii::refs::kinds(),
         super::Framework::CakePhp => super::cakephp::refs::kinds(),
+        super::Framework::Laminas => super::laminas::refs::kinds(),
         _ => &[],
     }
 }

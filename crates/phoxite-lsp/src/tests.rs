@@ -694,6 +694,42 @@ fn a_cakephp_application_names_its_templates_and_types_them() {
 }
 
 #[test]
+fn a_laminas_application_names_its_routes_and_types_its_services() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("laminas-app"), &root);
+    let controller = root.join("module/Application/src/Controller/BookController.php");
+    let template = root.join("module/Application/view/application/book/index.phtml");
+    let mut c = Client::start(&root);
+    let uri = c.open(&controller, "php");
+    let filled = |v: &Value| v.as_array().is_some_and(|a| !a.is_empty());
+
+    // A route's name goes to the configuration, a template's to its file, an action to its method.
+    let (line, col) = find(&controller, "toRoute('book/view'", 14);
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("config/module.config.php")), "{found}");
+    let items = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(items.contains("\"book/view\""), "{items}");
+    let (line, col) = find(&controller, "setTemplate('application/book/view')", 30);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("view/application/book/view.phtml")), "{found}");
+    // A controller plugin goes to its class.
+    let (line, col) = find(&controller, "$this->shelf()", 9);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Controller/Plugin/Shelf.php")), "{found}");
+
+    // The template has what the action gives it, with its type.
+    let page = c.open(&template, "php");
+    let (line, col) = find(&template, "<?= $capacity ?>", 5);
+    let hover = c.request_until::<r::HoverRequest>(at(&page, line, col), |v| v.to_string().contains("$capacity"));
+    assert!(hover.to_string().contains("int"), "{hover}");
+
+    let status = c.call(crate::laravel::STATUS, json!({})).expect("answered");
+    assert_eq!(status["frameworks"], json!(["Laminas"]), "{status}");
+    c.shutdown();
+}
+
+#[test]
 fn a_twig_template_names_routes_and_templates_of_a_symfony_project() {
     let (_dir, root) = symfony_project();
     let layout = root.join("templates/base.html.twig");

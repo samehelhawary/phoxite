@@ -23,7 +23,7 @@ Last updated: 2026-11-22.
 | 5 | CodeIgniter (4, and 3) | Done |
 | 6 | Yii 2 | Done |
 | 7 | CakePHP 4 and 5 | Done |
-| 8 | Laminas (MVC and Mezzio) | Not started |
+| 8 | Laminas (MVC and Mezzio) | Done |
 | 9 | Magento 2 | Not started |
 | 10 | Joomla 6 | Not started |
 
@@ -662,11 +662,75 @@ the end of `cakephp.md`.
 
 ## Phase 8 — Laminas (MVC and Mezzio)
 
-Needs the PHP-array reader (phase 6; build it here if this phase comes first).
+On branch `laminas`. See `laminas.md`.
 
-- [ ] Types: `$container->get()` through `aliases`, `factories` and `invokables`; controller
-      plugins; view helpers in `.phtml` templates.
-- [ ] Names: route names, template names, service names, config keys.
+- [x] The reader reads a class's configuration (`php_array::read_method`): the array a
+      `ConfigProvider::__invoke()` returns, a `$this->getDependencies()` value read as
+      the array that method returns; and a path written with `__DIR__` as a value.
+- [x] The project model (`frameworks/laminas/project.rs`, `PhpEngine::laminas()`): an MVC
+      application's modules and autoload files, a Mezzio application's aggregated
+      providers, autoload files and `config/routes.php`; services, controllers,
+      controller plugins and view helpers (after those of Laminas's own plugin managers,
+      read from their files), routes with children, template maps, paths and
+      namespaces, and every key of the configuration. Detection by
+      `config/modules.config.php` too.
+- [x] Types (`types/provider/laminas.rs`): `$container->get()` through aliases,
+      factories (what `__invoke()` returns) and invokables; controller plugins and view
+      helpers called as methods and fetched with `plugin()`; `$this` in a template.
+- [x] Names (`frameworks/laminas/refs.rs`, 7 kinds at first, 12 with those below): routes, templates, services,
+      controller plugins, view helpers, actions, configuration keys. A key of the
+      configuration is read from a call's result (`CalleePattern::ResultKey`).
+- [x] A template's variables (`frameworks/laminas/views.rs`): what an MVC action gives
+      its view model, what Mezzio's `render()` and a `partial()` pass.
+- [x] Four "unknown name" inspections: `PhpUndefinedLaminasRoute`,
+      `PhpUndefinedLaminasTemplate`, `PhpUndefinedLaminasService`,
+      `PhpUndefinedLaminasAction`.
+- [x] Engine tests (`navigate/tests/laminas.rs`), `fixtures/laminas-app` and
+      `fixtures/mezzio-app` with `tests/laminas_fixture.rs`, the server's test, a Laminas
+      part of the VS Code end-to-end suite (`laminasChecks`, 5 checks;
+      `PHOXITE_E2E_ONLY=laminas`).
+- [x] The corpus: the MVC skeleton 2.4.0, laminas-mvc 3.8.0, laminas-view 2.44.0 and
+      3.2.0, laminas-servicemanager 4.6.0, laminas-router 3.19.0, mezzio 3.29.0 with its
+      router, templates, helpers and laminas-view renderer, and PSR's container
+      (`scripts/php-corpus.sh`), and `tests/laminas_corpus.rs`: both fixtures without
+      their stand-ins on the real packages, and the MVC skeleton. It found that a
+      module's configuration was read twice (by its file and through its `Module`), that
+      a helper's name was offered in its lower-case spelling, and that Mezzio's `url`
+      helper comes from a provider the fixture didn't aggregate.
+- [x] No summary schema change: the provider answers where an expression is typed and
+      keeps nothing in a summary.
+- [x] Budgets on laravel/framework, the phase 7 commit (measured the same day) and this
+      branch: hover 2.27 and 2.27 ms, completion 6.89 and 6.78 ms, diagnostics after an
+      edit 215 and 206 ms, index from an empty cache 1459 and 1387 ms, warm start 56 and
+      57 ms. The provider says it applies in a Laminas project only, and asks the
+      resolver's cached answer.
+- [x] `docs/engine/laminas.md`, README, `editors/vscode/README.md`, both changelogs.
+
+- [x] A configuration held in a variable: the string references remember the variables
+      of a function assigned a call asked about (`refs::Collect::assigned`).
+- [x] The other plugin managers (form elements, validators, filters, hydrators, input
+      filters), read like the first four, with Laminas's own from their classes;
+      `laminasValidator`, `laminasFilter`, `laminasFormElement`, `laminasNavigation`.
+- [x] Delegators (the last one's `__invoke()`), factories written as closures
+      (`php_array::Node::Closure`), a `Module`'s `getServiceConfig()` and its kin.
+- [x] The layout's variables and a child view model's: each view model of a method is
+      followed by its variable.
+- [x] A route's parameters (`laminasRouteParam`), a child's with its parents'.
+- [x] Twig templates of a Mezzio application get their handler's variables
+      (`twig_template_variables`), an extension of several parts, Plates's `$this`.
+- [x] Zend Framework's names for every class asked about; detection by
+      `zendframework/zend-mvc` and `zendframework/zend-expressive`.
+- [x] The corpus gained laminas-form 3.25.0, laminas-validator 3.21.0, laminas-filter
+      3.5.0, laminas-hydrator 5.1.0, laminas-inputfilter 2.36.0 and laminas-navigation
+      2.24.0: the plugin managers' own services are read from the real classes.
+
+- [x] Budgets after these, on laravel/framework: hover 2.31 ms, completion 7.03 ms,
+      diagnostics after an edit 216 ms, index from an empty cache 1456 ms, warm start 56
+      ms: as before them, within what two runs differ by.
+
+Nothing of the phase is open. What cannot be read without running the application (what
+an abstract factory makes, a configuration passed around as a value, configuration built
+at run time) is at the end of `laminas.md`.
 
 ## Phase 9 — Magento 2
 

@@ -361,7 +361,7 @@ fn document(file: &Path, text: &str) -> Node {
 pub(crate) fn from_php(node: &crate::frameworks::php_array::Node) -> Node {
     use crate::frameworks::php_array::{Key, Node as Php};
     match node {
-        Php::Null | Php::Other(_) | Php::Constant { .. } => Node::Null,
+        Php::Null | Php::Other(_) | Php::Closure { .. } | Php::Constant { .. } => Node::Null,
         Php::Bool(value) => Node::Scalar(value.to_string()),
         Php::Int(value) => Node::Scalar(value.to_string()),
         Php::Float(text) | Php::String(text) | Php::Class(text) => Node::Scalar(text.clone()),

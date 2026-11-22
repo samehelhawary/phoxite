@@ -188,6 +188,11 @@ pub trait Declarations {
     fn yii_tables(&self) -> Option<std::sync::Arc<Vec<crate::frameworks::yii::migrations::Table>>> {
         None
     }
+    /// What the configuration of a Laminas MVC or a Mezzio application
+    /// says: services, routes, templates. `None` outside one.
+    fn laminas(&self) -> Option<std::sync::Arc<crate::frameworks::laminas::LaminasProject>> {
+        None
+    }
     /// What the files of a CakePHP application say: its namespace, its
     /// plugins, its configuration. `None` outside a CakePHP project.
     fn cake(&self) -> Option<std::sync::Arc<crate::frameworks::cakephp::CakeProject>> {
@@ -608,6 +613,8 @@ pub struct Resolver<'a> {
     /// The lowest index in `building` a cycle has led back to since the
     /// current model build started (`usize::MAX` for none).
     model_cycle: Cell<usize>,
+    /// [`Declarations::laminas`], asked once.
+    laminas: std::cell::OnceCell<Option<std::sync::Arc<crate::frameworks::laminas::LaminasProject>>>,
     /// [`Declarations::cake`], asked once: providers ask it for every call
     /// and property.
     cake: std::cell::OnceCell<Option<std::sync::Arc<crate::frameworks::cakephp::CakeProject>>>,
@@ -627,6 +634,7 @@ impl<'a> Resolver<'a> {
             building: RefCell::new(Vec::new()),
             model_cycle: Cell::new(usize::MAX),
             cake: std::cell::OnceCell::new(),
+            laminas: std::cell::OnceCell::new(),
         }
     }
 
@@ -941,6 +949,16 @@ impl<'a> Resolver<'a> {
     /// [`Declarations::yii`].
     pub fn yii(&self) -> Option<std::sync::Arc<crate::frameworks::yii::YiiProject>> {
         self.decls.yii()
+    }
+
+    /// [`Declarations::laminas`].
+    pub fn laminas(&self) -> Option<std::sync::Arc<crate::frameworks::laminas::LaminasProject>> {
+        self.laminas.get_or_init(|| self.decls.laminas()).clone()
+    }
+
+    /// Whether the project is a Laminas or a Mezzio one.
+    pub fn is_laminas(&self) -> bool {
+        self.laminas.get_or_init(|| self.decls.laminas()).is_some()
     }
 
     /// [`Declarations::cake`].

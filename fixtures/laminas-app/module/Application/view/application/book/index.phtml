@@ -1,0 +1,5 @@
+<h1><?= $heading ?> (<?= $capacity ?>)</h1>
+<?php foreach ($books as $book): ?>
+    <?= $this->partial('partial/book-row', ['book' => $book]) ?>
+<?php endforeach; ?>
+<a href="<?= $this->url('book/view', ['action' => 'view', 'id' => 1]) ?>">The first book</a>

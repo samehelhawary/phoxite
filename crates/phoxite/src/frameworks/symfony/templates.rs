@@ -75,6 +75,11 @@ impl PhpEngine {
         if self.frameworks().contains(crate::frameworks::Framework::Drupal) {
             return self.drupal_template_variables(name);
         }
+        // Mezzio: what the handler rendering the template passes it.
+        if self.frameworks().contains(crate::frameworks::Framework::Laminas) {
+            let file = self.twig_paths().resolve(name);
+            return file.map_or(Vec::new(), |file| self.laminas_view_variables(&file).as_ref().clone());
+        }
         if self.ref_context().is_none() || !self.frameworks().contains(crate::frameworks::Framework::Symfony) {
             return Vec::new();
         }

@@ -1,0 +1,13 @@
+{
+    "name": "phoxite/laminas-app",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "laminas/laminas-mvc": "^3.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "Application\\": "module/Application/src/"
+        }
+    }
+}

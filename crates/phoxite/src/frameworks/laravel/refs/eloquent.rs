@@ -253,7 +253,9 @@ fn site_model(cx: &RefContext<'_>) -> Option<String> {
         CallTarget::Property { class, .. } | CallTarget::Return { class, .. } => {
             is_model(class).map(|model| model.fqn().to_owned())
         }
-        CallTarget::Function(_) | CallTarget::Entry { .. } | CallTarget::Read { .. } => None,
+        CallTarget::Function(_) | CallTarget::Entry { .. } | CallTarget::Read { .. } | CallTarget::Result { .. } => {
+            None
+        }
     }
 }
 

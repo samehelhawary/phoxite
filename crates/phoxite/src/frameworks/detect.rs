@@ -92,7 +92,10 @@ impl Framework {
             Framework::CodeIgniter => &["codeigniter4/framework", "codeigniter/framework"],
             Framework::Yii => &["yiisoft/yii2"],
             Framework::CakePhp => &["cakephp/cakephp"],
-            Framework::Laminas => &["laminas/laminas-mvc", "mezzio/mezzio"],
+            // (Zend Framework 2 and 3 and Expressive: the same under their old names.)
+            Framework::Laminas => {
+                &["laminas/laminas-mvc", "mezzio/mezzio", "zendframework/zend-mvc", "zendframework/zend-expressive"]
+            }
             Framework::Magento => {
                 &["magento/framework", "magento/product-community-edition", "magento/product-enterprise-edition"]
             }
@@ -119,7 +122,9 @@ impl Framework {
             Framework::Yii => &["yii", "vendor/yiisoft/yii2/Yii.php"],
             // The console entry script of the application skeleton.
             Framework::CakePhp => &["bin/cake", "vendor/cakephp/cakephp/VERSION.txt"],
-            Framework::Laminas => &[],
+            // An MVC application's module list, the file Mezzio's skeleton aggregates its
+            // configuration in.
+            Framework::Laminas => &["config/modules.config.php", "vendor/laminas/laminas-mvc/composer.json"],
             Framework::Magento => &["app/etc/di.xml"],
         }
     }
@@ -398,6 +403,7 @@ mod tests {
         assert_eq!(detected(&[("spark", "")]), [Framework::CodeIgniter]);
         assert_eq!(detected(&[("yii", "")]), [Framework::Yii]);
         assert_eq!(detected(&[("bin/cake", "")]), [Framework::CakePhp]);
+        assert_eq!(detected(&[("config/modules.config.php", "")]), [Framework::Laminas]);
         assert_eq!(detected(&[("app/etc/di.xml", "<config/>")]), [Framework::Magento]);
         assert_eq!(detected(&[("index.php", "<?php")]), []);
     }

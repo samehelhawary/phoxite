@@ -14,7 +14,8 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | CodeIgniter (4, and 3) | yes | `types::provider::CodeIgniterProvider` (helper functions, a model's finders, a builder's table, what CodeIgniter 3's loader gives a controller); a view's variables by the engine itself | views, helpers, language lines, routes, filters, route handlers, configurations, models, services, view cells, events, validation rules and groups, tables and columns; 3's libraries, configuration items and controller paths (`frameworks::codeigniter::refs`; see [`codeigniter.md`](codeigniter.md)) |
 | Yii 2 | yes | `types::provider::YiiProvider` (components, the identity, `createObject()`, properties read through a getter, Active Record queries and relations, a record's columns from the migrations); a view's variables by the engine itself | views, layouts, mail views, routes, components, modules, parameters, aliases, message categories and messages, model attributes (`frameworks::yii::refs`; see [`yii.md`](yii.md)) |
 | CakePHP 4 and 5 | yes | `types::provider::CakePhpProvider` (tables, a table's entities and queries, association properties, a controller's components, a view's helpers, behaviours); a template's variables by the engine itself | tables, components, helpers, behaviours, associations, templates, layouts, elements, cells, configuration keys, controllers, actions, plugins, named routes (`frameworks::cakephp::refs`; see [`cakephp.md`](cakephp.md)) |
-| Laminas, Magento | yes | none yet | none yet |
+| Laminas (MVC and Mezzio) | yes | `types::provider::LaminasProvider` (services, controller plugins, view helpers); a template's variables by the engine itself | routes, templates, services, controller plugins, view helpers, actions, configuration keys (`frameworks::laminas::refs`; see [`laminas.md`](laminas.md)) |
+| Magento | yes | none yet | none yet |
 
 Twig templates are not a framework in this sense: `phoxite::twig` reads a template's text
 and the project's template folders, needs no engine, and is served for every `*.twig` file.
@@ -37,6 +38,7 @@ Whether Symfony's Twig extensions are known there depends on Composer installing
 | CodeIgniter | `codeigniter4/framework`, `codeigniter/framework` | `spark`, `system/core/CodeIgniter.php` |
 | Yii | `yiisoft/yii2` | `yii`, `vendor/yiisoft/yii2/Yii.php` |
 | CakePHP | `cakephp/cakephp` | `bin/cake`, `vendor/cakephp/cakephp/VERSION.txt` |
+| Laminas | `laminas/laminas-mvc`, `mezzio/mezzio` | `config/modules.config.php`, `vendor/laminas/laminas-mvc/composer.json` |
 | CakePHP | `cakephp/cakephp` | |
 | Laminas | `laminas/laminas-mvc`, `mezzio/mezzio` | |
 | Magento | `magento/framework`, `magento/product-community-edition`, `magento/product-enterprise-edition` | `app/etc/di.xml`; `registration.php` with `etc/module.xml` |

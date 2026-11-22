@@ -330,6 +330,52 @@ Not read, as they need the application to run: tables no migration of the projec
 (keep the `@property` tags `bake` writes), and names built at run time. In a CakePHP 3
 project names find the `.ctp` templates, but nothing is offered inside a `.ctp` file.
 
+## Laminas
+
+In a Laminas MVC or a Mezzio application (`laminas/laminas-mvc` or `mezzio/mezzio` in
+Composer):
+
+- Names with completion, Go to Definition, hover and Find All References:
+  - routes (`$this->url('home')` in a template, `$this->redirect()->toRoute('blog/post')`
+    and `$this->url()->fromRoute()` in a controller, Mezzio's
+    `$urlHelper->generate('api.ping')`): where the configuration or `config/routes.php`
+    names them; a child route is `parent/child`
+  - templates (`setTemplate('application/index/list')`, `$this->partial('partial/row')`,
+    Mezzio's `render('app::home-page')`, the keys of `template_map`)
+  - services (`$container->get('mailer')`), controller plugins and view helpers
+    (`$this->plugin('greet')`)
+  - actions (`'action' => 'show'` in a route's defaults or a URL's parameters): the
+    `showAction()` of the controller beside it, or of its route
+  - configuration keys (`$container->get('config')['db']['host']`, and
+    `$config['db']['host']` after `$config = $container->get('config')`)
+  - validators and filters of an input filter specification
+    (`'validators' => [['name' => 'StringLength']]`), form elements
+    (`$form->add(['type' => 'text'])`), navigation containers, and a route's parameters
+    (`url('post', ['id' => 1])`)
+- Types: `$container->get('mailer')` is what the configuration makes (aliases followed,
+  an invokable's class, what a factory's `__invoke()` or a closure returns, what a
+  delegator wraps it in); `get()` on the form, validator and filter managers too; `$this->greet()` in a
+  controller and `$this->price()` in a template are your plugin and helper, and Laminas's
+  own (`redirect()`, `url()`, `escapeHtml()`) are there too; `$this` in a `.phtml`
+  template is the renderer
+- A template knows the variables its action gives it
+  (`new ViewModel(['post' => $post])`, `setVariable()`), a Mezzio template what
+  `render()` passes (in a `.phtml` or a Twig template), a partial what `partial()`
+  passes; a child view model has its own, and the layout what
+  `$this->layout()->setVariable()` gives it
+- Warnings for a name that names nothing: `PhpUndefinedLaminasRoute`,
+  `PhpUndefinedLaminasTemplate`, `PhpUndefinedLaminasService` and
+  `PhpUndefinedLaminasAction`
+- The configuration is read from each module's `module.config.php`, `config/autoload/`,
+  the `ConfigProvider` classes `config/config.php` aggregates, a `Module`'s
+  `getConfig()`, `getServiceConfig()` and the like, and the modules Composer installed
+- Zend Framework 2 and 3 and Zend Expressive projects work the same, under their old
+  class names
+
+Not read, as they need the application to run: what an abstract factory makes,
+configuration built at run time, and a configuration passed around as a value rather
+than read from the container.
+
 ## Drupal
 
 In a Drupal site, or a module or theme opened on its own (Drupal 8 and later; for Drupal

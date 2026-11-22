@@ -13,6 +13,7 @@ pub mod cakephp;
 pub mod codeigniter;
 pub mod detect;
 pub mod drupal;
+pub mod laminas;
 pub mod laravel;
 pub mod names;
 pub mod php_array;

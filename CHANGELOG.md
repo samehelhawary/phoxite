@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+- **Laminas MVC and Mezzio.** In a Laminas or a Mezzio application (Composer installs
+  `laminas/laminas-mvc` or `mezzio/mezzio`) the configuration is read where it is
+  written: each module's `module.config.php`, `config/autoload/`, the `ConfigProvider`
+  classes `config/config.php` aggregates, and Mezzio's `config/routes.php`. The names its
+  strings write are references: routes (`$this->url('home')`,
+  `redirect()->toRoute('blog/post')`, `UrlHelper::generate('api.ping')`; a child route is
+  `parent/child`), templates (`setTemplate('application/index/list')`,
+  `partial('partial/row')`, `render('app::home-page')`, the keys of `template_map`),
+  services (`$container->get('mailer')`), controller plugins and view helpers
+  (`plugin('greet')`), actions (`'action' => 'show'` ↔ `showAction()` of the controller
+  beside it or of its route) and configuration keys
+  (`$container->get('config')['db']['host']`). Each completes, goes to what it names and
+  has a hover and Find References.
+  - Types: `$container->get('mailer')` is what the configuration makes: an alias is
+    followed, an invokable is its class, a factory is what its `__invoke()` returns;
+    `$this->greet()` in a controller and `$this->price()` in a template are the
+    configured plugin and helper (what calling them returns), Laminas's own among them;
+    `$this` in a `.phtml` template is the renderer. Plugins and helpers complete as
+    methods.
+  - A template has the variables its action gives its view model
+    (`new ViewModel(['post' => $post])`, `setVariable()`), a Mezzio template what
+    `render()` passes, a partial what `partial()` passes, with their types.
+  - Inspections for a name that names nothing: `PhpUndefinedLaminasRoute`,
+    `PhpUndefinedLaminasTemplate`, `PhpUndefinedLaminasService` and
+    `PhpUndefinedLaminasAction`.
+  - More of an application is followed: the form element, validator, filter, hydrator
+    and input filter plugin managers (`'validators' => [['name' => 'StringLength']]`,
+    `$form->add(['type' => 'text'])`, `$validators->get('Isbn')`), delegators and
+    factories written as closures, a `Module`'s `getServiceConfig()` and its kin, a
+    configuration held in a variable (`$config['db']['host']`), a route's parameters
+    (`url('post', ['id' => 1])`), navigation containers, the layout's variables
+    (`$this->layout()->setVariable()`) and a child view model's, and the variables of
+    a Twig template in Mezzio. Zend Framework 2 and 3 and Zend Expressive projects are
+    read the same under their old class names.
 - **CakePHP 4 and 5.** In a CakePHP application (Composer installs `cakephp/cakephp`, or
   the project has `bin/cake`) the names its strings write are references: tables
   (`fetchTable('Articles')`, `belongsTo('Authors')`, `'className' => 'Blog.Tags'` ↔
