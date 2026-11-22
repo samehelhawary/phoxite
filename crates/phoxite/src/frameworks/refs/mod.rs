@@ -108,7 +108,9 @@ pub enum CalleePattern {
     Rules { form_request: &'static str, names: &'static [&'static str] },
     /// The default value of one of the properties `names` (without `$`) of
     /// one of `classes` or of a subclass (a model's `$fillable`). The value
-    /// is the argument at index 0.
+    /// is the argument at index 0. A name written `::NAME` is about the
+    /// value of the class constant `NAME` instead (Magento's
+    /// `const ADMIN_RESOURCE = 'Vendor_Module::resource'`).
     Property { classes: &'static [&'static str], names: &'static [&'static str] },
     /// The value under this key of any array, wherever the array is
     /// written: `'#theme' => 'item_list'` of a Drupal render array, and
@@ -789,6 +791,21 @@ impl<'a> Walker<'a, 'a, Collect<'a, '_>> for SiteWalker {
             return;
         }
         let call = SiteCall::Property { class: class.clone(), name, at: item.variable.span.start.offset };
+        cx.strings(&call, item.value, (Some(0), None), &mut Vec::new(), None);
+    }
+
+    /// A class constant's value, for the patterns about `::NAME`.
+    fn walk_in_class_like_constant_item(
+        &self,
+        item: &'a mago_syntax::cst::ClassLikeConstantItem<'a>,
+        cx: &mut Collect<'a, '_>,
+    ) {
+        let [.., Frame::Class(Some(class))] = cx.frames.as_slice() else { return };
+        let name = format!("::{}", lossy(item.name.value));
+        if !cx.names.contains(&name.to_ascii_lowercase()) {
+            return;
+        }
+        let call = SiteCall::Property { class: class.clone(), name, at: item.name.span.start.offset };
         cx.strings(&call, item.value, (Some(0), None), &mut Vec::new(), None);
     }
 
@@ -1483,7 +1500,8 @@ pub fn framework_kinds(framework: super::Framework) -> &'static [&'static dyn Re
         super::Framework::Yii => super::yii::refs::kinds(),
         super::Framework::CakePhp => super::cakephp::refs::kinds(),
         super::Framework::Laminas => super::laminas::refs::kinds(),
-        _ => &[],
+        super::Framework::Magento => super::magento::refs::kinds(),
+        super::Framework::Joomla => super::joomla::refs::kinds(),
     }
 }
 

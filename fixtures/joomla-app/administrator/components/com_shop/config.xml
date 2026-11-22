@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+	<fieldset name="shop" label="COM_SHOP">
+		<field name="show_prices" type="radio" label="COM_SHOP_SHOW_PRICES" default="1"/>
+	</fieldset>
+</config>

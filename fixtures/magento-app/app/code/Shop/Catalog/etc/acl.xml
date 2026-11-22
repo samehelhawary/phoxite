@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <acl>
+        <resources>
+            <resource id="Magento_Backend::admin">
+                <resource id="Shop_Catalog::cart" title="Carts" sortOrder="10"/>
+                <resource id="Shop_Catalog::cart_edit" title="Edit carts" sortOrder="20"/>
+            </resource>
+        </resources>
+    </acl>
+</config>

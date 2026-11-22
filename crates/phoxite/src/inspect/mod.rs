@@ -57,6 +57,7 @@ pub(crate) mod fixes;
 pub(crate) mod intentions;
 pub mod laravel;
 pub mod level;
+pub mod magento;
 pub mod members;
 pub mod routes;
 pub(crate) mod runner;
@@ -169,6 +170,7 @@ impl Inspections {
             Arc::new(deprecated_syntax::DeprecatedSyntax),
             Arc::new(routes::UndefinedRoute),
             Arc::new(views::UndefinedView),
+            Arc::new(magento::UndefinedPluginMethod),
         ];
         for inspection in laravel::UndefinedReference::all() {
             list.push(Arc::new(inspection));

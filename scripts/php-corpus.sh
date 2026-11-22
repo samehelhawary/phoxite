@@ -44,6 +44,13 @@ CORPORA=(
     "laminas-hydrator https://github.com/laminas/laminas-hydrator.git 5.1.0"
     "laminas-inputfilter https://github.com/laminas/laminas-inputfilter.git 2.36.0"
     "laminas-navigation https://github.com/laminas/laminas-navigation.git 2.24.0"
+    "magento https://github.com/magento/magento2.git 2.4.9"
+    "joomla https://github.com/joomla/joomla-cms.git 6.2.0"
+    "joomla-registry https://github.com/joomla-framework/registry.git 4.0.1"
+    "joomla-di https://github.com/joomla-framework/di.git 4.0.0"
+    "joomla-event https://github.com/joomla-framework/event.git 4.0.0"
+    "joomla-database https://github.com/joomla-framework/database.git 4.0.0"
+    "joomla-input https://github.com/joomla-framework/input.git 4.0.0"
 )
 
 check=0
@@ -58,7 +65,7 @@ for name in "${wanted[@]}"; do
         [[ "${entry%% *}" == "$name" ]] && known=1
     done
     if ((!known)); then
-        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7|codeigniter|codeigniter3|yii|yii-framework|yii-advanced|cakephp|cakephp-framework|cakephp4-framework|laminas|mezzio|laminas-mvc|laminas-view|laminas-view2|laminas-servicemanager|laminas-router|mezzio-framework|mezzio-router|mezzio-template|mezzio-helpers|mezzio-laminasviewrenderer|psr-container|laminas-form|laminas-validator|laminas-filter|laminas-hydrator|laminas-inputfilter|laminas-navigation]..." >&2
+        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7|codeigniter|codeigniter3|yii|yii-framework|yii-advanced|cakephp|cakephp-framework|cakephp4-framework|laminas|mezzio|laminas-mvc|laminas-view|laminas-view2|laminas-servicemanager|laminas-router|mezzio-framework|mezzio-router|mezzio-template|mezzio-helpers|mezzio-laminasviewrenderer|psr-container|laminas-form|laminas-validator|laminas-filter|laminas-hydrator|laminas-inputfilter|laminas-navigation|magento|joomla|joomla-registry|joomla-di|joomla-event|joomla-database|joomla-input]..." >&2
         exit 2
     fi
 done

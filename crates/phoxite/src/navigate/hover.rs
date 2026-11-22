@@ -421,7 +421,15 @@ impl PhpEngine {
             Decl::Member(member) => {
                 let info = member.info()?;
                 let code = self.member_signature(member, resolver)?;
-                let docs = self.member_doc(member, resolver, here, summary).map(|doc| doc.markdown());
+                let mut docs = self.member_doc(member, resolver, here, summary).map(|doc| doc.markdown());
+                // Magento: the plugins a `di.xml` puts on the method.
+                if member.kind == MemberKind::Method {
+                    let plugins = self.magento_plugins_of(&info.declaring.fqn, &member.name);
+                    if !plugins.is_empty() {
+                        let note = format!("Intercepted by `{}`", plugins.join("`, `"));
+                        docs = Some(docs.map_or(note.clone(), |docs| format!("{docs}\n\n{note}")));
+                    }
+                }
                 Some(render(Some(info.declaring.fqn.as_str()), &code, docs))
             }
             Decl::Parameter { owner, name } => {

@@ -15,7 +15,8 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | Yii 2 | yes | `types::provider::YiiProvider` (components, the identity, `createObject()`, properties read through a getter, Active Record queries and relations, a record's columns from the migrations); a view's variables by the engine itself | views, layouts, mail views, routes, components, modules, parameters, aliases, message categories and messages, model attributes (`frameworks::yii::refs`; see [`yii.md`](yii.md)) |
 | CakePHP 4 and 5 | yes | `types::provider::CakePhpProvider` (tables, a table's entities and queries, association properties, a controller's components, a view's helpers, behaviours); a template's variables by the engine itself | tables, components, helpers, behaviours, associations, templates, layouts, elements, cells, configuration keys, controllers, actions, plugins, named routes (`frameworks::cakephp::refs`; see [`cakephp.md`](cakephp.md)) |
 | Laminas (MVC and Mezzio) | yes | `types::provider::LaminasProvider` (services, controller plugins, view helpers); a template's variables by the engine itself | routes, templates, services, controller plugins, view helpers, actions, configuration keys (`frameworks::laminas::refs`; see [`laminas.md`](laminas.md)) |
-| Magento | yes | none yet | none yet |
+| Magento 2 | yes | `types::provider::MagentoProvider` (the object manager, data objects, view models); the generated classes and a template's variables by the engine itself | events, configuration paths, ACL resources, templates, layout handles, blocks, modules, URL paths, tables and columns (`frameworks::magento::refs`); the XML files are documents (`frameworks::magento::documents`; see [`magento.md`](magento.md)) |
+| Joomla | yes | `types::provider::JoomlaProvider` (the application, a component, the MVC factory, a container, an event handler's parameter); a template's variables by the engine itself | language constants, layouts, HTML helpers, web assets, extensions, events and their handlers, ACL actions, forms and fields, parameters, tables, sub-templates, URLs (`frameworks::joomla::refs`); the XML, language and asset files are documents (`frameworks::joomla::documents`; see [`joomla.md`](joomla.md)) |
 
 Twig templates are not a framework in this sense: `phoxite::twig` reads a template's text
 and the project's template folders, needs no engine, and is served for every `*.twig` file.
@@ -42,6 +43,7 @@ Whether Symfony's Twig extensions are known there depends on Composer installing
 | CakePHP | `cakephp/cakephp` | |
 | Laminas | `laminas/laminas-mvc`, `mezzio/mezzio` | |
 | Magento | `magento/framework`, `magento/product-community-edition`, `magento/product-enterprise-edition` | `app/etc/di.xml`; `registration.php` with `etc/module.xml` |
+| Joomla | none | `libraries/src/Version.php`; a root XML file that is a manifest (`<extension type=…>`) |
 
 The `frameworks` setting forces each one `enabled` or `disabled` (`auto` by default).
 `frameworks.laravel` wins over the older `laravel.detection` unless it is `auto`.

@@ -30,10 +30,11 @@ pub enum Framework {
     CakePhp,
     Laminas,
     Magento,
+    Joomla,
 }
 
 impl Framework {
-    pub const ALL: [Framework; 9] = [
+    pub const ALL: [Framework; 10] = [
         Framework::Laravel,
         Framework::Symfony,
         Framework::WordPress,
@@ -43,6 +44,7 @@ impl Framework {
         Framework::CakePhp,
         Framework::Laminas,
         Framework::Magento,
+        Framework::Joomla,
     ];
 
     /// Its key in the `frameworks` settings.
@@ -57,6 +59,7 @@ impl Framework {
             Framework::CakePhp => "cakephp",
             Framework::Laminas => "laminas",
             Framework::Magento => "magento",
+            Framework::Joomla => "joomla",
         }
     }
 
@@ -72,6 +75,7 @@ impl Framework {
             Framework::CakePhp => "CakePHP",
             Framework::Laminas => "Laminas",
             Framework::Magento => "Magento",
+            Framework::Joomla => "Joomla",
         }
     }
 
@@ -99,6 +103,8 @@ impl Framework {
             Framework::Magento => {
                 &["magento/framework", "magento/product-community-edition", "magento/product-enterprise-edition"]
             }
+            // No package names a Joomla site: its files do.
+            Framework::Joomla => &[],
         }
     }
 
@@ -126,6 +132,8 @@ impl Framework {
             // configuration in.
             Framework::Laminas => &["config/modules.config.php", "vendor/laminas/laminas-mvc/composer.json"],
             Framework::Magento => &["app/etc/di.xml"],
+            // The version class of the CMS library.
+            Framework::Joomla => &["libraries/src/Version.php"],
         }
     }
 
@@ -140,6 +148,7 @@ impl Framework {
             Framework::CakePhp => settings.cakephp,
             Framework::Laminas => settings.laminas,
             Framework::Magento => settings.magento,
+            Framework::Joomla => settings.joomla,
         }
     }
 }
@@ -201,6 +210,7 @@ fn looks_like(framework: Framework, root: &Path, composer: &ComposerPackages) ->
             Framework::WordPress => wordpress_extension(root),
             Framework::Drupal => drupal_extension(root),
             Framework::Magento => root.join("registration.php").is_file() && root.join("etc/module.xml").is_file(),
+            Framework::Joomla => joomla_extension(root),
             _ => false,
         }
 }
@@ -215,6 +225,22 @@ const MAX_ROOT_FILES: usize = 64;
 /// at its root has a `Plugin Name:` header, or its `style.css` a
 /// `Theme Name:` one (the file headers WordPress's plugin and theme
 /// handbooks describe).
+/// Whether the folder is a Joomla extension on its own: one of its XML
+/// files is a manifest (`<extension type="component">`).
+fn joomla_extension(root: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(root) else { return false };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("xml")))
+        .take(MAX_ROOT_FILES)
+        .any(|path| {
+            let Ok(text) = std::fs::read_to_string(&path) else { return false };
+            let head: String = text.chars().take(600).collect();
+            head.find("<extension").is_some_and(|at| head[at..].contains("type="))
+        })
+}
+
 fn wordpress_extension(root: &Path) -> bool {
     if header_has(&root.join("style.css"), "Theme Name:") {
         return true;
@@ -418,6 +444,11 @@ mod tests {
             [Framework::Drupal]
         );
         assert_eq!(detected(&[("registration.php", "<?php"), ("etc/module.xml", "<config/>")]), [Framework::Magento]);
+        // Joomla: the CMS library's version class, or an extension's manifest.
+        assert_eq!(detected(&[("libraries/src/Version.php", "<?php")]), [Framework::Joomla]);
+        let manifest = "<?xml version=\"1.0\"?>\n<extension type=\"component\" method=\"upgrade\">\n</extension>\n";
+        assert_eq!(detected(&[("shop.xml", manifest)]), [Framework::Joomla]);
+        assert_eq!(detected(&[("phpunit.xml", "<phpunit/>")]), []);
     }
 
     #[test]

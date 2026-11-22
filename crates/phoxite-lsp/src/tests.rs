@@ -730,6 +730,158 @@ fn a_laminas_application_names_its_routes_and_types_its_services() {
 }
 
 #[test]
+fn a_magento_module_names_what_its_xml_declares() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("magento-app"), &root);
+    let module = root.join("app/code/Shop/Catalog");
+    let checkout = module.join("Model/Checkout.php");
+    let template = module.join("view/frontend/templates/cart.phtml");
+    let mut c = Client::start(&root);
+    let uri = c.open(&checkout, "php");
+    let filled = |v: &Value| v.as_array().is_some_and(|a| !a.is_empty());
+
+    // An event goes to the XML observing it, an ACL resource to its declaration.
+    let (line, col) = find(&checkout, "dispatch('shop_cart_saved'", 14);
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("etc/events.xml")), "{found}");
+    assert_eq!(found[0]["range"]["start"]["line"], 2, "{found}");
+    let items = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(items.contains("\"shop_cart_emptied\""), "{items}");
+    let (line, col) = find(&checkout, "isAllowed('Shop_Catalog::cart_edit')", 20);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("etc/acl.xml")), "{found}");
+    // What a generated factory makes has the class's methods.
+    let (line, col) = find(&checkout, "$cart->save()", 9);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Model/Cart.php")), "{found}");
+
+    // The template's block is the class the layout gives it.
+    let page = c.open(&template, "php");
+    let (line, col) = find(&template, "$block->title()", 9);
+    let found = c.request_until::<r::GotoDefinition>(at(&page, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Block/Cart.php")), "{found}");
+
+    // An observer written outside the editor: the client reports the XML file, the event is known.
+    let events = module.join("etc/frontend/events.xml");
+    std::fs::create_dir_all(events.parent().unwrap()).unwrap();
+    std::fs::write(&events, "<config>\n    <event name=\"shop_cart_shared\"/>\n</config>\n").unwrap();
+    c.notify::<n::DidChangeWatchedFiles>(
+        json!({ "changes": [{ "uri": Url::from_file_path(&events).unwrap(), "type": 1 }] }),
+    );
+    let (line, col) = find(&checkout, "dispatch('shop_cart_saved'", 14);
+    c.request_until::<r::Completion>(at(&uri, line, col), |v| v.to_string().contains("\"shop_cart_shared\""));
+
+    // An XML file is a document: a class goes to its declaration, a place completes, and a
+    // class that isn't there is reported.
+    let di = module.join("etc/di.xml");
+    let xml = c.open(&di, "xml");
+    let (line, col) = find(&di, "Plugin\\CartLimit", 9);
+    let found = c.request_until::<r::GotoDefinition>(at(&xml, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Plugin/CartLimit.php")), "{found}");
+    let items = c.request::<r::Completion>(at(&xml, line, col)).to_string();
+    assert!(items.contains("CartLimit"), "{items}");
+    let hover = c.request::<r::HoverRequest>(at(&xml, line, col)).to_string();
+    assert!(hover.contains("CartLimit"), "{hover}");
+    let broken = module.join("etc/frontend/di.xml");
+    std::fs::write(&broken, "<config>\n    <type name=\"Shop\\Catalog\\Model\\Gone\"/>\n</config>\n").unwrap();
+    let uri = c.open(&broken, "xml");
+    let problems = c.diagnostics(&uri, |d| !d.is_empty());
+    assert!(
+        problems.iter().all(|d| d["source"] == "magento" && d["code"] == "MagentoXmlUndefinedClass"),
+        "{problems:?}"
+    );
+    assert_eq!(problems[0]["message"], "Undefined class 'Shop\\Catalog\\Model\\Gone'");
+
+    // The client was asked for the XML files, as this is a Magento project.
+    let asked: Vec<String> = c
+        .requests
+        .iter()
+        .filter(|r| r.method == "client/registerCapability")
+        .flat_map(|r| r.params["registrations"].as_array().cloned().unwrap_or_default())
+        .filter_map(|registration| registration["id"].as_str().map(str::to_owned))
+        .collect();
+    assert_eq!(asked.iter().filter(|id| id.starts_with("phoxite/xml/")).count(), 8, "{asked:?}");
+    assert!(!asked.iter().any(|id| id.starts_with("phoxite/yaml/")), "{asked:?}");
+
+    let status = c.call(crate::laravel::STATUS, json!({})).expect("answered");
+    assert_eq!(status["frameworks"], json!(["Magento"]), "{status}");
+    c.shutdown();
+}
+
+#[test]
+fn a_joomla_site_names_what_its_files_declare() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("joomla-app"), &root);
+    let helper = root.join("components/com_shop/src/Helper/ShopHelper.php");
+    let view = root.join("components/com_shop/tmpl/items/default.php");
+    let mut c = Client::start(&root);
+    let uri = c.open(&helper, "php");
+    let filled = |v: &Value| v.as_array().is_some_and(|a| !a.is_empty());
+
+    // A language constant goes to its language file, a layout to a template's override first.
+    let (line, col) = find(&helper, "Text::_('COM_SHOP')", 12);
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("language/en-GB/com_shop.ini")), "{found}");
+    let items = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(items.contains("\"COM_SHOP_HITS\""), "{items}");
+    let (line, col) = find(&helper, "render('joomla.content.tags'", 20);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(
+        found[0]["uri"]
+            .as_str()
+            .is_some_and(|uri| uri.ends_with("templates/blue/html/layouts/joomla/content/tags.php")),
+        "{found}"
+    );
+    // What the MVC factory makes has the model's methods.
+    let (line, col) = find(&helper, "createModel('Items')->total()", 24);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Model/ItemsModel.php")), "{found}");
+
+    // A view's template: `$this` is the view.
+    let page = c.open(&view, "php");
+    let (line, col) = find(&view, "$this->heading()", 9);
+    let found = c.request_until::<r::GotoDefinition>(at(&page, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("View/Items/HtmlView.php")), "{found}");
+
+    // A form is a document: a field's type is its class, a label its language constant.
+    let form = root.join("administrator/components/com_shop/forms/item.xml");
+    let xml = c.open(&form, "xml");
+    let (line, col) = find(&form, "type=\"money\"", 8);
+    let found = c.request_until::<r::GotoDefinition>(at(&xml, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Field/MoneyField.php")), "{found}");
+    let (line, col) = find(&form, "COM_SHOP_FIELD_TITLE", 10);
+    let found = c.request::<r::GotoDefinition>(at(&xml, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("com_shop.ini")), "{found}");
+    let hover = c.request::<r::HoverRequest>(at(&xml, line, col)).to_string();
+    assert!(hover.contains("Title"), "{hover}");
+    // A language file too: its key's usages.
+    let ini = root.join("language/en-GB/com_shop.ini");
+    let lines = c.open(&ini, "ini");
+    let (line, col) = find(&ini, "COM_SHOP_FIELD_TITLE=", 10);
+    let mut references = at(&lines, line, col);
+    references["context"] = json!({ "includeDeclaration": false });
+    let found = c.request::<r::References>(references).to_string();
+    assert!(found.contains("forms/item.xml"), "{found}");
+
+    // The client was asked for the XML, language and asset files, as this is a Joomla site.
+    let asked: Vec<String> = c
+        .requests
+        .iter()
+        .filter(|r| r.method == "client/registerCapability")
+        .flat_map(|r| r.params["registrations"].as_array().cloned().unwrap_or_default())
+        .filter_map(|registration| registration["id"].as_str().map(str::to_owned))
+        .collect();
+    assert_eq!(asked.iter().filter(|id| id.starts_with("phoxite/joomla/")).count(), 8, "{asked:?}");
+    assert!(!asked.iter().any(|id| id.starts_with("phoxite/xml/")), "{asked:?}");
+
+    let status = c.call(crate::laravel::STATUS, json!({})).expect("answered");
+    assert_eq!(status["frameworks"], json!(["Joomla"]), "{status}");
+    c.shutdown();
+}
+
+#[test]
 fn a_twig_template_names_routes_and_templates_of_a_symfony_project() {
     let (_dir, root) = symfony_project();
     let layout = root.join("templates/base.html.twig");

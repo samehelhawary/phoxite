@@ -188,6 +188,20 @@ pub trait Declarations {
     fn yii_tables(&self) -> Option<std::sync::Arc<Vec<crate::frameworks::yii::migrations::Table>>> {
         None
     }
+    /// What the files of a Joomla site or extension declare. `None`
+    /// outside one.
+    fn joomla(&self) -> Option<std::sync::Arc<crate::frameworks::joomla::JoomlaProject>> {
+        None
+    }
+    /// Joomla: the event class of what the method `method` of `class`
+    /// handles, by what the class subscribes it to.
+    fn joomla_handler_event(&self, _class: &str, _method: &str) -> Option<String> {
+        None
+    }
+    /// What the XML files of a Magento project declare. `None` outside one.
+    fn magento(&self) -> Option<std::sync::Arc<crate::frameworks::magento::MagentoProject>> {
+        None
+    }
     /// What the configuration of a Laminas MVC or a Mezzio application
     /// says: services, routes, templates. `None` outside one.
     fn laminas(&self) -> Option<std::sync::Arc<crate::frameworks::laminas::LaminasProject>> {
@@ -613,6 +627,10 @@ pub struct Resolver<'a> {
     /// The lowest index in `building` a cycle has led back to since the
     /// current model build started (`usize::MAX` for none).
     model_cycle: Cell<usize>,
+    /// [`Declarations::joomla`], asked once.
+    joomla: std::cell::OnceCell<Option<std::sync::Arc<crate::frameworks::joomla::JoomlaProject>>>,
+    /// [`Declarations::magento`], asked once.
+    magento: std::cell::OnceCell<Option<std::sync::Arc<crate::frameworks::magento::MagentoProject>>>,
     /// [`Declarations::laminas`], asked once.
     laminas: std::cell::OnceCell<Option<std::sync::Arc<crate::frameworks::laminas::LaminasProject>>>,
     /// [`Declarations::cake`], asked once: providers ask it for every call
@@ -635,6 +653,8 @@ impl<'a> Resolver<'a> {
             model_cycle: Cell::new(usize::MAX),
             cake: std::cell::OnceCell::new(),
             laminas: std::cell::OnceCell::new(),
+            magento: std::cell::OnceCell::new(),
+            joomla: std::cell::OnceCell::new(),
         }
     }
 
@@ -949,6 +969,31 @@ impl<'a> Resolver<'a> {
     /// [`Declarations::yii`].
     pub fn yii(&self) -> Option<std::sync::Arc<crate::frameworks::yii::YiiProject>> {
         self.decls.yii()
+    }
+
+    /// [`Declarations::joomla`].
+    pub fn joomla(&self) -> Option<std::sync::Arc<crate::frameworks::joomla::JoomlaProject>> {
+        self.joomla.get_or_init(|| self.decls.joomla()).clone()
+    }
+
+    /// Whether the project is a Joomla one.
+    pub fn is_joomla(&self) -> bool {
+        self.joomla.get_or_init(|| self.decls.joomla()).is_some()
+    }
+
+    /// [`Declarations::joomla_handler_event`].
+    pub fn joomla_handler_event(&self, class: &str, method: &str) -> Option<String> {
+        self.decls.joomla_handler_event(class, method)
+    }
+
+    /// [`Declarations::magento`].
+    pub fn magento(&self) -> Option<std::sync::Arc<crate::frameworks::magento::MagentoProject>> {
+        self.magento.get_or_init(|| self.decls.magento()).clone()
+    }
+
+    /// Whether the project is a Magento one.
+    pub fn is_magento(&self) -> bool {
+        self.magento.get_or_init(|| self.decls.magento()).is_some()
     }
 
     /// [`Declarations::laminas`].

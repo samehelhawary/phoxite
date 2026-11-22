@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <router id="standard">
+        <route id="shop" frontName="shop">
+            <module name="Shop_Catalog"/>
+        </route>
+    </router>
+</config>

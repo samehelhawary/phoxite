@@ -92,7 +92,7 @@
       }
     },
     "frameworks": {
-      "description": "Whether each framework's support is on: `auto` (when Composer installs the framework or one of its own files exists), `enabled` or `disabled`. `laravel` wins over `laravel.detection` unless it is `auto`. Laravel, Symfony, WordPress, Drupal, CodeIgniter, Yii, CakePHP and Laminas have support today; the other names (`cakephp`, `laminas`, `magento`) are read now and take effect as each framework's support is released.",
+      "description": "Whether each framework's support is on: `auto` (when Composer installs the framework or one of its own files exists), `enabled` or `disabled`. `laravel` wins over `laravel.detection` unless it is `auto`. Laravel, Symfony, WordPress, Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento and Joomla have support.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -104,7 +104,8 @@
         "yii": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
         "cakephp": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
         "laminas": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
-        "magento": { "enum": ["auto", "enabled", "disabled"], "default": "auto" }
+        "magento": { "enum": ["auto", "enabled", "disabled"], "default": "auto" },
+        "joomla": { "enum": ["auto", "enabled", "disabled"], "default": "auto" }
       }
     },
     "format": {

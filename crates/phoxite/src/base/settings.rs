@@ -274,6 +274,7 @@ pub struct FrameworkSettings {
     pub cakephp: Detection,
     pub laminas: Detection,
     pub magento: Detection,
+    pub joomla: Detection,
 }
 
 impl FrameworkSettings {

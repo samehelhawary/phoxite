@@ -249,7 +249,20 @@ fn registry_order_and_resolve_step() {
     let builtin = TypeProviders::default();
     assert_eq!(
         builtin.keys(),
-        ["laravel", "symfony", "drupal", "codeigniter", "yii", "cakephp", "laminas", "meta", "phpunit", "core"]
+        [
+            "laravel",
+            "symfony",
+            "drupal",
+            "codeigniter",
+            "yii",
+            "cakephp",
+            "laminas",
+            "magento",
+            "joomla",
+            "meta",
+            "phpunit",
+            "core"
+        ]
     );
     assert_eq!(run(&builtin, "magic(Foo::class)/*|*/;"), "object");
 
@@ -267,6 +280,8 @@ fn registry_order_and_resolve_step() {
             "yii",
             "cakephp",
             "laminas",
+            "magento",
+            "joomla",
             "meta",
             "phpunit",
             "magic",
@@ -291,6 +306,8 @@ fn registry_order_and_resolve_step() {
             "yii",
             "cakephp",
             "laminas",
+            "magento",
+            "joomla",
             "meta",
             "phpunit",
             "core",

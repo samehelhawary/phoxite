@@ -175,10 +175,16 @@ impl PhpEngine {
                 match sought {
                     Sought::Member { kind: MemberKind::Method, name, declaring, .. } => {
                         usages.extend(self.route_action_usages(declaring, name));
+                        // Magento: the plugins intercepting it, the XML naming it.
+                        usages.extend(self.magento_method_usages(declaring, name));
                     }
                     Sought::Name { kind: NameKind::ClassLike, fqn } => {
                         usages.extend(self.livewire_class_usages(fqn, cancel)?);
                         usages.extend(self.component_class_usages(fqn));
+                        // Magento: the XML naming the class.
+                        usages.extend(self.magento_class_usages(fqn));
+                        // Joomla: the form fields of that type.
+                        usages.extend(self.joomla_class_usages(fqn));
                     }
                     _ => {}
                 }

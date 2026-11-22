@@ -11,6 +11,7 @@ pub mod error;
 pub mod event;
 pub mod inspection_settings;
 pub mod settings;
+pub mod xml;
 pub mod yaml;
 
 use std::path::PathBuf;

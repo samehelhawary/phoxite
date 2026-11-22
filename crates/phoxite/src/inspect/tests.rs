@@ -400,6 +400,7 @@ fn replacing_the_inspections_runs_them_again() {
             "PhpDeprecatedSyntax",
             "PhpUndefinedRoute",
             "PhpUndefinedView",
+            "PhpUndefinedMagentoPluginMethod",
             "PhpUndefinedConfigKey",
             "PhpUndefinedEnvKey",
             "PhpUndefinedTranslation",
@@ -441,6 +442,11 @@ fn replacing_the_inspections_runs_them_again() {
             "PhpUndefinedLaminasTemplate",
             "PhpUndefinedLaminasService",
             "PhpUndefinedLaminasAction",
+            "PhpUndefinedMagentoTemplate",
+            "PhpUndefinedMagentoAcl",
+            "PhpUndefinedMagentoModule",
+            "PhpUndefinedJoomlaLanguage",
+            "PhpUndefinedJoomlaLayout",
         ]
     );
 }

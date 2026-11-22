@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <route url="/V1/carts/total" method="GET">
+        <service class="Shop\Catalog\Api\CartInterface" method="total"/>
+        <resources>
+            <resource ref="Shop_Catalog::cart"/>
+        </resources>
+    </route>
+</routes>

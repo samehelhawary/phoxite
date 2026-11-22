@@ -2,6 +2,77 @@
 
 ## Unreleased
 
+- **Joomla.** In a Joomla site (`libraries/src/Version.php`) or an extension opened on
+  its own (a manifest at its top), the manifests, the language files, `access.xml`,
+  `config.xml`, the forms, `joomla.asset.json` and the SQL scripts are read, once and
+  again only when one changes. Joomla 6 is the target; 4 and 5 share its layout.
+  - The names PHP strings write are references, each with completion, Go to
+    Definition, hover and Find References: language constants (`Text::_('COM_X_Y')`),
+    layouts (`LayoutHelper::render('joomla.content.tags')`, a template's override
+    first), HTML helpers (`HTMLHelper::_('behavior.core')`), web assets
+    (`useScript('com_x.cart')`), extensions (`bootComponent('com_content')`), events
+    and the methods handling them (`getSubscribedEvents()`), ACL actions
+    (`authorise('core.edit')`), forms and their fields (`loadForm()`,
+    `$form->getValue('title')`), parameters (`$params->get('show_title')`), tables
+    (`'#__content'`), a view's sub-templates (`loadTemplate('links')`) and the parts of
+    a URL (`Route::_('index.php?option=com_content&view=article')`).
+  - A language constant is renamed in PHP, in the language files and in the XML.
+  - Types: `Factory::getApplication()`, `bootComponent('com_x')`, what the MVC factory
+    and a controller's `getModel()` make, a view's `get('Items')`, a container's
+    `get(Foo::class)`; `$this` in a view's template (its protected properties too), in
+    a layout and in a site template; a module template's variables; and an event
+    handler's parameter, from the event it subscribes to.
+  - The XML files, the language files and `joomla.asset.json` are documents: a label's
+    constant, a field's type (its class, by `addfieldprefix`), a layout, an ACL action
+    and an asset have Go to Definition, hover, Find References and completion.
+  - Inspections: `PhpUndefinedJoomlaLanguage` (a constant of the file's own extension
+    that no language file has) and `PhpUndefinedJoomlaLayout`.
+  - A class file moved inside an extension gets the namespace its manifest gives the
+    folder.
+- **Magento 2.** In a Magento project (`app/etc/di.xml`, Composer installing
+  `magento/framework`, or a module opened alone) the modules' XML is read: `di.xml`,
+  `events.xml`, `acl.xml`, `system.xml`, `config.xml`, `extension_attributes.xml` and
+  the layout files, of the modules under `app/code` and `vendor` and of the themes. It
+  is read once and again only when an XML file changes.
+  - The names PHP strings write are references, each with completion, Go to Definition
+    into the XML, hover and Find References (the XML declarations are listed): events
+    (`dispatch('checkout_cart_add_product_complete')`), configuration paths
+    (`getValue('wishlist/general/active')`), ACL resources
+    (`isAllowed('Magento_Wishlist::config_wishlist')`, `const ADMIN_RESOURCE`),
+    templates (`setTemplate('Vendor_Module::cart.phtml')`, a block's `$_template`; a
+    theme's version first), layout handles (`addHandle()`), blocks by name or alias
+    (`getBlock('customer.wishlist')`, `getChildHtml('items')`) and modules
+    (`isEnabled('Vendor_Module')`).
+  - The classes Magento generates are known without a `generated/` folder:
+    `FooFactory` (`create()` returns `Foo`), `Foo\Proxy`, `Foo\Interceptor`, and the
+    `FooExtensionInterface` of `extension_attributes.xml`, with a typed getter and
+    setter per attribute. They are no longer reported as undefined classes.
+  - Types: `$objectManager->get(Foo::class)` and `create()`, a virtual type's name
+    among them; a data object's `setFoo()` returns the object and `hasFoo()` a `bool`;
+    in a `.phtml` template `$block` is the block class the layout XML gives the
+    template, with `$escaper`, `$secureRenderer`, `$this` and the block's view model
+    (`$block->getViewModel()`, `getData('view_model')`).
+  - A plugin's `beforeSave()`, `afterSave()` and `aroundSave()` go to the `save()` they
+    intercept.
+  - Inspections: `PhpUndefinedMagentoTemplate`, `PhpUndefinedMagentoAcl`,
+    `PhpUndefinedMagentoModule` and `PhpUndefinedMagentoPluginMethod`. Events and
+    configuration paths are never reported: both are used without being declared.
+  - The XML files are documents too: in `di.xml`, `events.xml`, a layout file,
+    `system.xml`, `webapi.xml` and the others, a class, a method, a virtual type, an
+    event, an ACL resource, a template, a block or a handle has Go to Definition, hover
+    (a class with its preference for the file's area and its plugins), Find References,
+    completion and rename. A class that doesn't exist and a template whose file isn't
+    there are reported (`MagentoXmlUndefinedClass`, `MagentoXmlUndefinedTemplate`).
+  - Find References on a class lists the XML naming it; renaming the class or moving
+    its file updates the XML and the GraphQL schemas. Find References on a method lists
+    the plugin methods intercepting it, and its hover names them.
+  - Renames across PHP and XML: an event, a block's name, an ACL resource, a template
+    (its file moves, in the module and in the themes).
+  - Three more names: URL paths (`getUrl('wishlist/index/add')` goes to the action's
+    class, by `routes.xml`), tables and columns of `db_schema.xml`
+    (`getTableName('wishlist')`, `_init('wishlist', 'wishlist_id')`).
+  - An area's `di.xml` wins over the global one where the area is known, and a
+    template is looked for in a theme before the themes it inherits from.
 - **Laminas MVC and Mezzio.** In a Laminas or a Mezzio application (Composer installs
   `laminas/laminas-mvc` or `mezzio/mezzio`) the configuration is read where it is
   written: each module's `module.config.php`, `config/autoload/`, the `ConfigProvider`

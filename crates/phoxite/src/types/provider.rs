@@ -45,8 +45,10 @@ use mago_syntax::cst::{
 pub use self::cakephp::CakePhpProvider;
 pub use self::codeigniter::CodeIgniterProvider;
 pub use self::drupal::DrupalProvider;
+pub use self::joomla::JoomlaProvider;
 pub use self::laminas::LaminasProvider;
 pub use self::laravel::LaravelProvider;
+pub use self::magento::MagentoProvider;
 pub use self::symfony::SymfonyProvider;
 pub use self::yii::YiiProvider;
 use super::ops::literal_type;
@@ -445,6 +447,8 @@ impl Default for TypeProviders {
         providers.register(CORE_ORDER - 22, Arc::new(YiiProvider));
         providers.register(CORE_ORDER - 21, Arc::new(CakePhpProvider));
         providers.register(CORE_ORDER - 21, Arc::new(LaminasProvider));
+        providers.register(CORE_ORDER - 21, Arc::new(MagentoProvider));
+        providers.register(CORE_ORDER - 21, Arc::new(JoomlaProvider));
         providers.register(CORE_ORDER - 10, Arc::new(PhpUnitProvider));
         providers.register(CORE_ORDER - 20, Arc::new(MetaProvider));
         providers
@@ -933,8 +937,10 @@ impl TypeProvider for PhpUnitProvider {
 pub(crate) mod cakephp;
 pub(crate) mod codeigniter;
 pub(crate) mod drupal;
+pub(crate) mod joomla;
 pub(crate) mod laminas;
 pub(crate) mod laravel;
+pub(crate) mod magento;
 pub(crate) mod symfony;
 pub(crate) mod yii;
 

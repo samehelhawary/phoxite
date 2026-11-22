@@ -63,6 +63,24 @@ servers. What it does:
   names nothing; the types of `$container->get()` (through aliases, factories and
   invokables), of controller plugins and view helpers, and of the variables an action
   or a handler gives its `.phtml` template.
+- **Magento 2:** events, configuration paths, ACL resources, templates, layout handles,
+  block names and modules by name, going to the XML that declares them (`events.xml`,
+  `system.xml`, `config.xml`, `acl.xml`, layout XML), with a warning for a template, an
+  ACL resource or a module that isn't there and for a plugin method that intercepts
+  nothing; the classes Magento generates (`FooFactory`, `Foo\Proxy`,
+  `Foo\Interceptor`, extension-attribute interfaces) without a `generated/` folder; the
+  types of the object manager, of a data object's setters, and of `$block` in a
+  `.phtml` template, from the layout XML. The XML files are served too: goto, hover,
+  usages, completion and rename on the classes and names in `di.xml`, layout files and
+  the rest, with a warning for a class that doesn't exist; a class's usages and rename
+  reach the XML, and a method's usages include its plugins.
+- **Joomla:** language constants, layouts, web assets, extensions, events and their
+  handlers, ACL actions, forms and their fields, parameters, tables and the parts of a
+  URL by name, from the manifests, the language files, `access.xml`, the forms and
+  `joomla.asset.json`, with a warning for a language constant or a layout that isn't
+  there; the types of the application, of what a component's MVC factory makes, of a
+  view's template (`$this`) and of an event handler's parameter. The XML, language and
+  asset files are served too.
 - **Drupal:** services, routes, permissions, libraries, configuration, entity types,
   plugins, theme hooks and hooks, from the module's YAML files, attributes and
   annotations; the types of `\Drupal::service()`, of an entity storage and of a hook

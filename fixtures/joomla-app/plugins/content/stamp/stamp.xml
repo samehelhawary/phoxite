@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="plugin" group="content" method="upgrade">
+	<name>plg_content_stamp</name>
+	<version>1.0.0</version>
+	<description>PLG_CONTENT_STAMP</description>
+	<namespace path="src">Acme\Plugin\Content\Stamp</namespace>
+</extension>

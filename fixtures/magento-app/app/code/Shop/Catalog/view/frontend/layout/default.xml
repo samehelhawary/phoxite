@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <update handle="shop_cart_index"/>
+    <body>
+        <referenceBlock name="shop.cart">
+            <block name="shop.cart.badge" after="shop.cart.items" template="Shop_Catalog::cart/summary.phtml"/>
+        </referenceBlock>
+    </body>
+</page>

@@ -220,6 +220,8 @@ pub fn run(connection: Connection) -> Result<(), String> {
         laravel: None,
         scripts: false,
         yaml: false,
+        xml: false,
+        joomla: false,
         failure: None,
     };
     server.watch_files();
@@ -242,6 +244,11 @@ struct Server {
     scripts: bool,
     /// The client was asked to send the YAML files of a Drupal project.
     yaml: bool,
+    /// The client was asked to send the XML files of a Magento project.
+    xml: bool,
+    /// The client was asked to send the XML, language and asset files of a
+    /// Joomla project.
+    joomla: bool,
     /// Why indexing last failed, once the client was told; none after it worked again.
     failure: Option<String>,
 }
@@ -323,6 +330,8 @@ impl Server {
     /// Tells the client which workspace folders are Laravel projects, when that changed
     /// since it was last told: a client shows its Laravel tools on it without asking again.
     fn laravel_status(&mut self) {
+        // What an open XML file of a Magento project names is known once the index is.
+        self.state.magento_documents_changed();
         let folders = crate::laravel::folders(&self.state);
         let frameworks = crate::laravel::frameworks(&self.state);
         if self.laravel.as_ref() == Some(&(folders.clone(), frameworks.clone())) {
@@ -347,6 +356,27 @@ impl Server {
         let wanted = frameworks.contains(&"Drupal");
         if wanted != self.yaml && self.register_documents("yaml", wanted, yaml) {
             self.yaml = wanted;
+        }
+        // The declarations of its modules and themes.
+        let xml = serde_json::json!([
+            { "scheme": "file", "pattern": "**/etc/**/*.xml" },
+            { "scheme": "file", "pattern": "**/layout/*.xml" },
+            { "scheme": "file", "pattern": "**/ui_component/*.xml" },
+            { "scheme": "file", "pattern": "**/etc/**/schema.graphqls" },
+        ]);
+        let wanted = frameworks.contains(&"Magento");
+        if wanted != self.xml && self.register_documents("xml", wanted, xml) {
+            self.xml = wanted;
+        }
+        // Its manifests, forms and access files, its language files, its asset lists.
+        let joomla = serde_json::json!([
+            { "scheme": "file", "pattern": "**/*.xml" },
+            { "scheme": "file", "pattern": "**/language/**/*.ini" },
+            { "scheme": "file", "pattern": "**/joomla.asset.json" },
+        ]);
+        let wanted = frameworks.contains(&"Joomla");
+        if wanted != self.joomla && self.register_documents("joomla", wanted, joomla) {
+            self.joomla = wanted;
         }
         let params =
             serde_json::json!({ "laravel": !folders.is_empty(), "folders": folders, "frameworks": frameworks });
@@ -569,7 +599,7 @@ impl Server {
 
 /// The files on disk the index is built from, as glob patterns: what a client watches
 /// for the server.
-pub const WATCHED_FILES: [&str; 17] = [
+pub const WATCHED_FILES: [&str; 27] = [
     "**/*.php",
     // Drupal's PHP files, and the YAML files that declare its names.
     "**/*.{module,install,theme,profile,inc,engine}",
@@ -593,6 +623,18 @@ pub const WATCHED_FILES: [&str; 17] = [
     "**/.phpstorm.meta.php",
     // The blocks of a WordPress plugin or theme.
     "**/block.json",
+    // Magento's declarations: a module's `etc` and its layout files.
+    "**/etc/**/*.xml",
+    "**/layout/*.xml",
+    "**/ui_component/*.xml",
+    "**/etc/**/schema.graphqls",
+    "**/theme.xml",
+    // Joomla's declarations: manifests and forms, language files, asset lists, SQL scripts.
+    "**/{components,modules,plugins,templates}/**/*.xml",
+    "**/forms/*.xml",
+    "**/language/**/*.ini",
+    "**/joomla.asset.json",
+    "**/sql/**/*.sql",
 ];
 
 /// What the server is sent and asked in the documents it registers for.

@@ -251,6 +251,14 @@ struct Shared {
     symfony_config: Mutex<Option<Arc<SymfonyConfig>>>,
     /// What a CodeIgniter project's files declare, for an edit count.
     codeigniter: Mutex<Option<(u64, Arc<crate::frameworks::codeigniter::CodeIgniterProject>)>>,
+    /// What a Joomla project's files declare, until one changes.
+    joomla: Mutex<crate::frameworks::joomla::project::JoomlaCache>,
+    /// What a Magento project's XML files declare, until one changes.
+    magento: Mutex<crate::frameworks::magento::project::MagentoCache>,
+    /// The classes Magento would generate, for an edit count.
+    magento_generated: Mutex<HashMap<String, (u64, Option<ClassLike>)>>,
+    /// What each template of a Magento project is given, for an edit count.
+    magento_views: TypedViewVariables,
     /// What a Laminas project's configuration says, for an edit count.
     laminas: Mutex<Option<(u64, Arc<crate::frameworks::laminas::LaminasProject>)>>,
     /// What each template of a Laminas project is given, for an edit count.
@@ -528,6 +536,10 @@ impl PhpEngine {
             symfony_config: Mutex::new(None),
             drupal: Mutex::new(None),
             codeigniter: Mutex::new(None),
+            joomla: Mutex::default(),
+            magento: Mutex::default(),
+            magento_generated: Mutex::new(HashMap::new()),
+            magento_views: Mutex::new(HashMap::new()),
             laminas: Mutex::new(None),
             laminas_views: Mutex::new(HashMap::new()),
             cake: Mutex::new(None),
@@ -808,6 +820,32 @@ impl PhpEngine {
         if changed.iter().any(twig) || removed.iter().any(|p| !is_php_path(p)) {
             *self.shared.twig_paths.lock() = None;
         }
+        // Joomla's declarations: manifests, forms, language files, asset lists, SQL scripts.
+        let joomla = |p: &PathBuf| crate::frameworks::joomla::project::is_read(p) || p.is_dir();
+        if changed.iter().any(joomla) || removed.iter().any(|p| !is_php_path(p)) {
+            self.shared.joomla.lock().forget();
+            let named = |p: &PathBuf| p.extension().is_some_and(|ext| ext == "ini" || ext == "sql" || ext == "json");
+            if self.detected_frameworks().contains(crate::frameworks::Framework::Joomla)
+                && changed.iter().chain(removed).any(named)
+            {
+                self.shared.modification.fetch_add(1, Ordering::SeqCst);
+                self.shared.inspect_open_documents();
+            }
+        }
+        // Magento's declarations are XML: the project is put together again on next use.
+        let magento = |p: &PathBuf| {
+            p.extension().is_some_and(|ext| ext == "xml" || ext == "graphqls")
+                || p.ends_with("registration.php")
+                || p.is_dir()
+        };
+        if changed.iter().any(magento) || removed.iter().any(|p| !is_php_path(p) || p.ends_with("registration.php")) {
+            self.shared.magento.lock().forget();
+            if changed.iter().chain(removed).any(|p| p.extension().is_some_and(|ext| ext == "xml" || ext == "graphqls"))
+            {
+                self.shared.modification.fetch_add(1, Ordering::SeqCst);
+                self.shared.inspect_open_documents();
+            }
+        }
         let block = |p: &PathBuf| crate::frameworks::wordpress::assets::is_block_json(p) || p.is_dir();
         if changed.iter().any(block) || removed.iter().any(|p| !is_php_path(p)) {
             *self.shared.wordpress_blocks.lock() = None;
@@ -1016,6 +1054,51 @@ impl PhpEngine {
         let project = Arc::new(crate::frameworks::codeigniter::CodeIgniterProject::load(&root, text_of));
         *self.shared.codeigniter.lock() = Some((count, project.clone()));
         project
+    }
+
+    /// What the files of a Joomla site or extension declare
+    /// ([`JoomlaProject`](crate::frameworks::joomla::JoomlaProject)), kept
+    /// until one of them is written.
+    pub fn joomla(&self) -> Arc<crate::frameworks::joomla::JoomlaProject> {
+        let root = self.shared.layout_config.lock().root.clone();
+        self.shared.joomla.lock().project(&root)
+    }
+
+    /// What the XML files of a Magento project declare
+    /// ([`MagentoProject`](crate::frameworks::magento::MagentoProject)), kept
+    /// until an XML file or a registration is written.
+    pub fn magento(&self) -> Arc<crate::frameworks::magento::MagentoProject> {
+        let root = self.shared.layout_config.lock().root.clone();
+        self.shared.magento.lock().project(&root)
+    }
+
+    /// The class Magento's code generator would write as `fqn`
+    /// ([`crate::frameworks::magento::generated`]): a factory, a proxy, an
+    /// interceptor, an extension-attributes interface. Only in a Magento
+    /// project, and only where the project has no such class.
+    pub(crate) fn magento_generated(&self, fqn: &str) -> Option<ClassLike> {
+        use crate::frameworks::magento::generated;
+        if !generated::is_candidate(fqn) || !self.detected_frameworks().contains(crate::frameworks::Framework::Magento)
+        {
+            return None;
+        }
+        let count = self.edit_count();
+        let key = fqn.trim_start_matches('\\').to_ascii_lowercase();
+        if let Some((at, known)) = self.shared.magento_generated.lock().get(&key)
+            && *at == count
+        {
+            return known.clone();
+        }
+        let project = self.magento();
+        let kind_of = |class: &str| Declarations::class_like(self, class).map(|class| class.kind);
+        let found = generated::class_like(fqn, &project, &kind_of);
+        self.shared.magento_generated.lock().insert(key, (count, found.clone()));
+        found
+    }
+
+    /// The cache of [`PhpEngine::magento_view_variables`].
+    pub(crate) fn magento_views_cache(&self) -> &TypedViewVariables {
+        &self.shared.magento_views
     }
 
     /// What the configuration of a Laminas MVC or a Mezzio project says
@@ -1781,6 +1864,7 @@ impl PhpEngine {
             NameKind::Namespace => false,
         };
         in_stubs
+            || (kind == NameKind::ClassLike && self.magento_generated(fqn).is_some())
             || self
                 .project_declaration(kind, fqn, |summary| {
                     crate::navigate::find_declaration(summary, kind, fqn).map(|_| ())
@@ -1855,6 +1939,7 @@ impl Declarations for PhpEngine {
                 let class = self.laravel_class_alias(fqn).filter(|class| class.contains('\\'))?;
                 self.class_like(&class)
             })
+            .or_else(|| self.magento_generated(fqn))
     }
 
     /// When the project declares a function more than once (conditionally,
@@ -2132,6 +2217,18 @@ impl Declarations for PhpEngine {
         })
     }
 
+    fn joomla(&self) -> Option<Arc<crate::frameworks::joomla::JoomlaProject>> {
+        self.detected_frameworks().contains(crate::frameworks::Framework::Joomla).then(|| PhpEngine::joomla(self))
+    }
+
+    fn joomla_handler_event(&self, class: &str, method: &str) -> Option<String> {
+        PhpEngine::joomla_handler_event(self, class, method)
+    }
+
+    fn magento(&self) -> Option<Arc<crate::frameworks::magento::MagentoProject>> {
+        self.detected_frameworks().contains(crate::frameworks::Framework::Magento).then(|| PhpEngine::magento(self))
+    }
+
     fn laminas(&self) -> Option<Arc<crate::frameworks::laminas::LaminasProject>> {
         self.detected_frameworks().contains(crate::frameworks::Framework::Laminas).then(|| PhpEngine::laminas(self))
     }
@@ -2183,6 +2280,18 @@ impl Declarations for PhpEngine {
     }
 
     fn view_variable(&self, path: &Path, name: &str) -> Option<Type> {
+        // Joomla: a view's or a module's template, a layout, a site template's file.
+        if self.detected_frameworks().contains(crate::frameworks::Framework::Joomla)
+            && let Some(found) = self.joomla_view_variable(path, name)
+        {
+            return found;
+        }
+        // Magento: a `.phtml` file of a `templates` folder; `$block` is the block rendering it.
+        if self.detected_frameworks().contains(crate::frameworks::Framework::Magento) && self.is_magento_template(path)
+        {
+            let variables = self.magento_view_variables(path);
+            return variables.iter().find(|(known, _)| known == name).map(|(_, ty)| ty.clone());
+        }
         // Laminas: a template of a map, a template path or a Mezzio namespace; `$this` is
         // the renderer.
         if self.frameworks().contains(crate::frameworks::Framework::Laminas) && self.is_laminas_template(path) {

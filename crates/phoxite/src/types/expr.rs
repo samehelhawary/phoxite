@@ -198,6 +198,9 @@ pub struct ExprTypes<'a, 'r> {
     pest: std::cell::OnceCell<PestClosures>,
     /// The property of each hook of the file; found on first use.
     hook_owners: std::cell::OnceCell<HashMap<u32, HookOwner>>,
+    /// Joomla: the class of the view whose template the file is, which the
+    /// template's code runs in; found on first use.
+    view_class: std::cell::OnceCell<Option<String>>,
     /// The properties a Pest file's `beforeEach()` closures assign to
     /// `$this`, by name; `None` while one is being typed.
     pest_properties: RefCell<HashMap<String, Option<Type>>>,
@@ -242,6 +245,7 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
             path: None,
             pest: std::cell::OnceCell::new(),
             hook_owners: std::cell::OnceCell::new(),
+            view_class: std::cell::OnceCell::new(),
             pest_properties: RefCell::new(HashMap::new()),
             trait_hosts: RefCell::new(HashMap::new()),
             call_sites: None,
@@ -473,8 +477,27 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
         }) {
             Some(Some(fqn)) => Context::in_class(fqn),
             Some(None) => Context::default(),
-            None => self.pest_class(frames).map_or_else(Context::default, Context::in_class),
+            None => match self.pest_class(frames) {
+                Some(class) => Context::in_class(class),
+                // A Joomla template is included by a method of its view (or of the
+                // layout, or the document): it reaches what that class keeps to itself.
+                None => self.view_class().map_or_else(Context::default, |class| Context::in_class(&class)),
+            },
         }
+    }
+
+    /// The class a Joomla template's code runs in: what its `$this` is.
+    fn view_class(&self) -> Option<String> {
+        let found = self.view_class.get_or_init(|| {
+            if !self.resolver.is_joomla() {
+                return None;
+            }
+            match self.resolver.view_variable(self.path.as_deref()?, "this")? {
+                Type::Named { fqn, .. } => Some(fqn),
+                _ => None,
+            }
+        });
+        found.clone()
     }
 
     /// The property `hook` belongs to.

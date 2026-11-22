@@ -24,8 +24,8 @@ Last updated: 2026-11-22.
 | 6 | Yii 2 | Done |
 | 7 | CakePHP 4 and 5 | Done |
 | 8 | Laminas (MVC and Mezzio) | Done |
-| 9 | Magento 2 | Not started |
-| 10 | Joomla 6 | Not started |
+| 9 | Magento 2 | Done |
+| 10 | Joomla 6 | Done |
 
 Order: 0, then 1 → 2 → 4. Phase 2.5 comes before phase 3. Phases 3 and 5–8 need only phase
 0 and can be reordered. Phases 9 and 10 come last: they share the XML reader, which is
@@ -734,12 +734,80 @@ at run time) is at the end of `laminas.md`.
 
 ## Phase 9 — Magento 2
 
-- [ ] An XML reader (`base/xml.rs`); choose between `quick-xml` and a small in-house one.
-- [ ] Synthesised classes for generated code: `FooFactory`, `Foo\Proxy`, `Foo\Interceptor`,
-      extension-attribute interfaces.
-- [ ] Types: `di.xml` preferences and virtual types; `DataObject` magic accessors.
-- [ ] Names: events, template ids, layout handles and block names, config paths, ACL
-      resources, module names, plugin methods.
+On branch `magento`. See `magento.md`. Target: Magento Open Source 2.4.9.
+
+- [x] An XML reader (`base/xml.rs`), written in-house like the YAML one: elements,
+      attributes and text with their ranges, tolerant of a file being edited. No
+      dependency added.
+- [x] The project model (`frameworks/magento/project.rs`, `PhpEngine::magento()`):
+      modules by their `registration.php` under `app/code` and `vendor` (or the project
+      itself), themes, and per module `di.xml` (preferences, virtual types, plugins),
+      `events.xml`, `acl.xml`, `system.xml`, `config.xml`, `extension_attributes.xml`
+      and the layout files (handles, blocks, their class, template and view model).
+      Kept per file by modification time and put together again only when an XML file
+      or a registration changes; the server watches `**/etc/**/*.xml` and
+      `**/layout/*.xml`.
+- [x] Generated classes (`frameworks/magento/generated.rs`): `FooFactory`, `Foo\Proxy`,
+      `Foo\Interceptor`, `FooExtensionInterface` and `FooExtension`, written as PHP and
+      read like a file, answered last by `PhpEngine::class_like`; `PhpUndefinedClass`
+      accepts them.
+- [x] Types (`types/provider/magento.rs`): the object manager's `get()` and `create()`
+      (a class, a virtual type), a data object's `set`/`uns`/`has` accessors, a
+      block's view model. A template's `$block`, `$this`, `$escaper`,
+      `$secureRenderer` and `$viewModel` (`frameworks/magento/views.rs`).
+- [x] Names (`frameworks/magento/refs.rs`, 7 kinds): events, configuration paths, ACL
+      resources, templates, layout handles, blocks, modules, with the XML declarations
+      as usages. A class constant's value is a place a name can be (`::NAME` of
+      `CalleePattern::Property`), for `ADMIN_RESOURCE`.
+- [x] Plugin methods (`frameworks/magento/plugins.rs`): goto from `beforeSave()`,
+      `afterSave()` and `aroundSave()` to the method they intercept.
+- [x] Four inspections: `PhpUndefinedMagentoTemplate`, `PhpUndefinedMagentoAcl`,
+      `PhpUndefinedMagentoModule`, `PhpUndefinedMagentoPluginMethod`.
+- [x] Engine tests (`navigate/tests/magento.rs` and the modules' own),
+      `fixtures/magento-app` with `tests/magento_fixture.rs`, the server's test, a
+      Magento part of the VS Code end-to-end suite (`magentoChecks`, 6 checks;
+      `PHOXITE_E2E_ONLY=magento`).
+- [x] The corpus: `magento/magento2` 2.4.9 (`scripts/php-corpus.sh magento`) and
+      `tests/magento_corpus.rs`: the fixture module on the real framework, and the
+      checkout as a project (222 modules; the model read in 299 ms, in 140 ms after an
+      XML file changed; none of Magento's inspections in 722 core files).
+- [x] No summary schema change.
+- [x] Budgets on laravel/framework, as after phase 8 (hover 2.31 ms, completion 7.03 ms,
+      diagnostics after an edit 216 ms, index from an empty cache 1456 ms, warm start
+      56 ms): hover 2.27 ms, completion 6.78 ms, diagnostics 217.28 ms, index
+      1441.86 ms, warm start 56.15 ms. The provider and the generated classes are
+      asked about in a Magento project only.
+- [x] `docs/engine/magento.md`, README, `editors/vscode/README.md`, both changelogs.
+
+- [x] Every name the files write, with its range (`project::Mention`), and more files:
+      `routes.xml`, `db_schema.xml`, `webapi.xml`, `crontab.xml`, the queue files,
+      `menu.xml`, `module.xml`, UI components, GraphQL schemas, and the other files of
+      `etc` for the classes they name.
+- [x] XML files as documents (`frameworks/magento/documents.rs`, `Kind::MagentoXml` in
+      the server, registered for when the project is Magento): goto, hover, Find
+      References, completion and rename on a class, a method, a virtual type and every
+      name; diagnostics `MagentoXmlUndefinedClass` and `MagentoXmlUndefinedTemplate`.
+- [x] A class's usages include the XML naming it; renaming it and moving its file edit
+      the XML (and a GraphQL schema, with its doubled backslashes). A method's usages
+      include the plugin methods intercepting it and the XML naming it; its hover says
+      what intercepts it.
+- [x] Renames of an event, a block, an ACL resource and a template (whose files move,
+      in the module and the themes), from PHP and from the XML.
+- [x] Three more kinds: `magentoRoute` (a URL path to its action's class),
+      `magentoTable` and `magentoColumn`.
+- [x] Areas (an area's `di.xml` over the global ones) and theme inheritance
+      (`theme.xml`'s parent, themes Composer installed).
+- [x] On Magento itself: the model reads 2,428 files in 390 ms (170 ms after one
+      changed); the XML diagnostics on all of them make 12 reports, each a class
+      Magento's own `di.xml` names and no longer has.
+- [x] Budgets on laravel/framework after these: hover 2.31 ms, completion 6.9 ms,
+      diagnostics after an edit 212 ms, index from an empty cache 1451 ms, warm start
+      58 ms: as before them, within what two runs differ by.
+
+Nothing of the phase is open. What cannot be read without running the application (a
+template or a class set from a variable, layout made at run time, routers without
+`routes.xml`, what a data object holds, which area a class runs in, which theme is
+active) is at the end of `magento.md`.
 
 ## Phase 10 — Joomla 6
 
@@ -772,21 +840,21 @@ What Joomla 6 changed that this phase follows:
   gives no rule, so the map has to be read from the core (believed to be
   `Joomla\CMS\Event\CoreEventAware`; check it in the corpus first).
 
-- [ ] Detection: no Composer package names a Joomla site or an extension opened on its
+- [x] Detection: no Composer package names a Joomla site or an extension opened on its
       own, so by the files too (`libraries/src/Version.php`, an extension's manifest
       XML).
-- [ ] An INI reader for the language files (`language/en-GB/*.ini`).
-- [ ] Types: `Factory::getApplication()` and what it hands out (`getIdentity()`,
+- [x] An INI reader for the language files (`language/en-GB/*.ini`).
+- [x] Types: `Factory::getApplication()` and what it hands out (`getIdentity()`,
       `getInput()`, `getDocument()`); `bootComponent('com_content')` and
       `getMVCFactory()`; `createModel('Article')`, `createTable()` and a controller's
       `getModel()` by the component's namespace; `$container->get()` from the
       `services/provider.php` files; `$this` in a view's `tmpl/*.php` and in a layout;
       `$this->getApplication()` in a plugin; the parameter of a plugin's handler, where
       nothing types it, from the event class of the name it subscribes to.
-- [ ] Classes of an extension opened on its own: the `<namespace path="src">` of its
+- [x] Classes of an extension opened on its own: the `<namespace path="src">` of its
       manifest is a PSR-4 root (no `composer.json` names it), like CodeIgniter's
       `$psr4`.
-- [ ] Names: language constants (`Text::_()`, `Text::sprintf()`, `Text::plural()`, and
+- [x] Names: language constants (`Text::_()`, `Text::sprintf()`, `Text::plural()`, and
       the labels and descriptions in XML), layout ids
       (`LayoutHelper::render('joomla.content.tags')`), view templates and their
       overrides in a site template's `html/` folder, `HTMLHelper::_('behavior.core')`
@@ -799,10 +867,38 @@ What Joomla 6 changed that this phase follows:
       (`$params->get()` from `config.xml` and the manifests), tables written with the
       `#__` prefix and their columns, and `option`, `view` and `task` in a route string
       (`Route::_('index.php?option=com_content&view=article')`).
-- [ ] The XML files as documents (manifests, forms, `access.xml`, `config.xml`), sent to
+- [x] The XML files as documents (manifests, forms, `access.xml`, `config.xml`), sent to
       the server only in a Joomla project like Drupal's YAML: goto, hover, usages and
       completion of the classes, language constants and field types they write.
       `joomla.asset.json` too, for the asset names and their dependencies.
+
+On branch `magento` (uncommitted with phase 9 when written). See `joomla.md`.
+
+- [x] The project model (`frameworks/joomla/project.rs`, `PhpEngine::joomla()`), kept
+      per file by modification time; the INI reader (`frameworks/joomla/ini.rs`).
+- [x] 15 kinds of names (`frameworks/joomla/refs.rs`); a language constant is renamed in
+      PHP, in the language files and in the XML. Two inspections:
+      `PhpUndefinedJoomlaLanguage`, `PhpUndefinedJoomlaLayout`.
+- [x] A template runs in its view's scope (`ExprTypes::view_class`): the view's
+      protected properties are reachable there.
+- [x] Engine tests (`navigate/tests/joomla.rs`), `fixtures/joomla-app` with
+      `tests/joomla_fixture.rs`, the server's test, a Joomla part of the VS Code
+      end-to-end suite (`joomlaChecks`, 6 checks; `PHOXITE_E2E_ONLY=joomla`).
+- [x] The corpus: Joomla 6.2.0 with five of its framework packages
+      (`scripts/php-corpus.sh`) and `tests/joomla_corpus.rs`: the model reads 1,145 files
+      in 395 ms; Joomla's inspections make one report on the sample, a layout Joomla
+      itself renders and doesn't have.
+- [x] No summary schema change.
+- [x] Budgets on laravel/framework, as after phase 9: hover 2.23 ms, completion 6.92 ms,
+      diagnostics after an edit 215 ms, index from an empty cache 1429 ms, warm start
+      56 ms (three runs gave hover 2.54, 2.25 and 2.23 ms).
+- [x] `docs/engine/joomla.md`, README, `editors/vscode/README.md`, both changelogs.
+
+Checked in the corpus first, as the plan asked: the event map is
+`Joomla\CMS\Event\CoreEventAware` (`$eventNameToConcreteClass`).
+
+Nothing of the phase is open. What cannot be read without running the site is at the end
+of `joomla.md`.
 
 Not planned: the JavaScript side that 6.1 and 6.2 added (the `media_source` builders,
 `Joomla.editorFilePickers`), and warnings for the classes Joomla 6 removed (they are

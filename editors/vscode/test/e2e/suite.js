@@ -1297,6 +1297,224 @@ const laminasChecks = [
   }],
 ];
 
+/** The checks of the Magento fixture (run.js opens it): a module on a stand-in API. */
+const MAGENTO_MODULE = "app/code/Shop/Catalog";
+const MAGENTO_CHECKOUT = `${MAGENTO_MODULE}/Model/Checkout.php`;
+const MAGENTO_CART = `${MAGENTO_MODULE}/view/frontend/templates/cart.phtml`;
+const magentoChecks = [
+  ["Magento: the project is named", async () => {
+    await open(MAGENTO_CHECKOUT);
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["Magento"]);
+    return names.join(", ");
+  }],
+  ["Magento: names go to the XML that declares them", async () => {
+    const layout = `${MAGENTO_MODULE}/view/frontend/layout/shop_cart_index.xml`;
+    const found = {
+      event: await goes(MAGENTO_CHECKOUT, "dispatch('shop_cart_saved'", 14),
+      "configuration path": await goes(MAGENTO_CHECKOUT, "getValue('shop/cart/limit')", 16),
+      "ACL resource": await goes(MAGENTO_CHECKOUT, "isAllowed('Shop_Catalog::cart_edit')", 20),
+      module: await goes(MAGENTO_CHECKOUT, "isEnabled('Shop_Catalog')", 14),
+      block: await goes(MAGENTO_CHECKOUT, "getBlock('shop.cart')", 12),
+      template: await goes(`${MAGENTO_MODULE}/Block/Cart.php`, "setTemplate('Shop_Catalog::cart/summary.phtml')", 20),
+      "child block": await goes(MAGENTO_CART, "getChildHtml('cart.items')", 16),
+      "admin resource": await goes(`${MAGENTO_MODULE}/Controller/Adminhtml/Cart/Index.php`, "ADMIN_RESOURCE = 'Shop_Catalog::cart'", 22),
+      "plugin method": await goes(`${MAGENTO_MODULE}/Plugin/CartLimit.php`, "function beforeSave(", 12),
+    };
+    assert.deepEqual(found, {
+      event: [`${MAGENTO_MODULE}/etc/events.xml:3`],
+      "configuration path": [`${MAGENTO_MODULE}/etc/adminhtml/system.xml:8`, `${MAGENTO_MODULE}/etc/config.xml:6`],
+      "ACL resource": [`${MAGENTO_MODULE}/etc/acl.xml:7`],
+      module: [`${MAGENTO_MODULE}/registration.php:5`],
+      block: [`${layout}:5`],
+      template: [
+        `${MAGENTO_MODULE}/view/frontend/templates/cart/summary.phtml:1`,
+        "app/design/frontend/Shop/base/Shop_Catalog/templates/cart/summary.phtml:1",
+        "app/design/frontend/Shop/blue/Shop_Catalog/templates/cart/summary.phtml:1",
+      ],
+      "child block": [`${layout}:9`],
+      "admin resource": [`${MAGENTO_MODULE}/etc/acl.xml:6`],
+      "plugin method": [`${MAGENTO_MODULE}/Model/Cart.php:15`],
+    });
+    const hover = await hoverAt(MAGENTO_CHECKOUT, "isAllowed('Shop_Catalog::cart_edit')", 20);
+    assert.ok(hover.includes("ACL resource") && hover.includes("Edit carts"), hover);
+    return `${Object.keys(found).length} kinds`;
+  }],
+  ["Magento: names complete", async () => {
+    const events = await completes(MAGENTO_CHECKOUT, "dispatch('shop_cart_saved'", 10, "shop_cart_saved");
+    assert.ok(events.includes("shop_cart_emptied"), events.join(", "));
+    const paths = await completes(MAGENTO_CHECKOUT, "getValue('shop/cart/limit')", 10, "shop/cart/limit");
+    assert.ok(paths.includes("shop/cart/enabled"), paths.join(", "));
+    return `${events.length} events, ${paths.length} configuration paths`;
+  }],
+  ["Magento: a name that names nothing is reported", async () => {
+    const document = await open(MAGENTO_CHECKOUT);
+    const edit = new vscode.WorkspaceEdit();
+    const text = "isEnabled('Shop_Catalog')";
+    const at = document.getText().indexOf(text);
+    edit.replace(document.uri, new vscode.Range(document.positionAt(at), document.positionAt(at + text.length)), "isEnabled('Shop_Missing')");
+    await vscode.workspace.applyEdit(edit);
+    const problems = await until(
+      "the missing module",
+      async () => vscode.languages.getDiagnostics(document.uri).map((problem) => problem.message),
+      (found) => found.some((message) => message.includes("Shop_Missing")),
+    );
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    assert.deepEqual(problems, ["Unknown module 'Shop_Missing'"]);
+    return problems.join("; ");
+  }],
+  ["Magento: an XML file is answered in", async () => {
+    // The server asks for the XML files once it knows the project: no selector lists them.
+    const di = `${MAGENTO_MODULE}/etc/di.xml`;
+    const layout = `${MAGENTO_MODULE}/view/frontend/layout/shop_cart_index.xml`;
+    const found = {
+      class: await goes(di, "Plugin\\CartLimit", 9),
+      "service method": await goes(`${MAGENTO_MODULE}/etc/webapi.xml`, 'method="total"', 10),
+      template: await goes(layout, 'template="Shop_Catalog::cart.phtml"', 26),
+      "block placed after": await goes(`${MAGENTO_MODULE}/view/frontend/layout/default.xml`, 'after="shop.cart.items"', 12),
+    };
+    assert.deepEqual(found, {
+      class: [`${MAGENTO_MODULE}/Plugin/CartLimit.php:7`],
+      "service method": [`${MAGENTO_MODULE}/Api/CartInterface.php:7`],
+      template: [`${MAGENTO_MODULE}/view/frontend/templates/cart.phtml:1`],
+      "block placed after": [`${layout}:9`],
+    });
+    const hover = await hoverAt(`${MAGENTO_MODULE}/etc/adminhtml/di.xml`, "Api\\CartInterface", 8);
+    assert.ok(hover.includes("AdminCart"), hover);
+    // A class's usages from the XML: the PHP and the other XML.
+    const usages = await usagesOf(di, '<type name="Shop\\Catalog\\Model\\Cart"', 34, 3);
+    assert.ok(usages.some((usage) => usage.startsWith(`${MAGENTO_MODULE}/Plugin/CartLimit.php`)), usages.join(", "));
+    // And from PHP: the XML naming the class.
+    const fromPhp = await usagesOf(`${MAGENTO_MODULE}/Model/Logger.php`, "class Logger", 8, 2);
+    assert.ok(fromPhp.includes(`${di}:4`), fromPhp.join(", "));
+    const classes = await completes(di, "Plugin\\CartLimit", 7, "Shop\\Catalog\\Plugin\\CartLimit");
+    return `${Object.keys(found).length} names, ${usages.length} usages of a class, ${classes.length} classes offered`;
+  }],
+  ["Magento: generated classes and a template's block are typed", async () => {
+    // What a factory Magento would generate makes; nothing in the file is undefined.
+    assert.deepEqual(await goes(MAGENTO_CHECKOUT, "$cart->save()", 9), [`${MAGENTO_MODULE}/Model/Cart.php:15`]);
+    // (Once the edit of the check before is undone.)
+    const problems = await until(
+      "no problems",
+      async () => vscode.languages.getDiagnostics(file(MAGENTO_CHECKOUT)).map((problem) => problem.message),
+      (found) => !found.some((message) => message.includes("Shop_Missing")),
+    );
+    assert.deepEqual(problems, [], "the generated classes aren't undefined");
+    // The block the layout gives the template, and its view model.
+    assert.deepEqual(await goes(MAGENTO_CART, "$block->title()", 9), [`${MAGENTO_MODULE}/Block/Cart.php:11`]);
+    assert.deepEqual(await goes(MAGENTO_CART, "$totals->grand()", 10), [`${MAGENTO_MODULE}/ViewModel/Totals.php:7`]);
+    const members = await completes(MAGENTO_CART, "$block->title()", 8, "title");
+    assert.ok(members.includes("compact"), members.join(", "));
+    const inTemplate = vscode.languages.getDiagnostics(file(MAGENTO_CART)).map((problem) => problem.message);
+    assert.deepEqual(inTemplate, [], "a template's variables aren't undefined");
+    return `${members.filter((name) => ["compact", "title"].includes(name)).join(", ")}; no problems in the template`;
+  }],
+];
+
+/** The checks of the Joomla fixture (run.js opens it): a site with one component on a stand-in API. */
+const JOOMLA_ADMIN = "administrator/components/com_shop";
+const JOOMLA_SITE = "components/com_shop";
+const JOOMLA_HELPER = `${JOOMLA_SITE}/src/Helper/ShopHelper.php`;
+const JOOMLA_VIEW = `${JOOMLA_SITE}/tmpl/items/default.php`;
+const JOOMLA_INI = "language/en-GB/com_shop.ini";
+const joomlaChecks = [
+  ["Joomla: the project is named", async () => {
+    await open(JOOMLA_HELPER);
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["Joomla"]);
+    return names.join(", ");
+  }],
+  ["Joomla: names go to what they name", async () => {
+    const found = {
+      "language constant": await goes(JOOMLA_HELPER, "Text::_('COM_SHOP')", 12),
+      layout: await goes(JOOMLA_HELPER, "render('joomla.content.tags'", 20),
+      asset: await goes(JOOMLA_HELPER, "useScript('com_shop.cart')", 16),
+      component: await goes(JOOMLA_HELPER, "bootComponent('com_shop')", 18),
+      "ACL action": await goes(JOOMLA_HELPER, "authorise('shop.ship'", 14),
+      "form field": await goes(JOOMLA_HELPER, "getValue('title')", 12),
+      parameter: await goes(JOOMLA_HELPER, "get('show_prices')", 8),
+      table: await goes(JOOMLA_HELPER, "from('#__shop_items AS a')", 10),
+      "view of a URL": await goes(JOOMLA_HELPER, "view=items", 7),
+      "event handler": await goes("plugins/content/stamp/src/Extension/Stamp.php", "=> 'stamp'", 6),
+      "sub-template": await goes(JOOMLA_VIEW, "loadTemplate('row')", 15),
+    };
+    assert.deepEqual(found, {
+      "language constant": [`${JOOMLA_INI}:2`],
+      layout: ["layouts/joomla/content/tags.php:1", "templates/blue/html/layouts/joomla/content/tags.php:1"],
+      asset: ["media/com_shop/joomla.asset.json:7"],
+      component: [`${JOOMLA_ADMIN}/shop.xml:1`],
+      "ACL action": [`${JOOMLA_ADMIN}/access.xml:5`],
+      "form field": [`${JOOMLA_ADMIN}/forms/item.xml:4`],
+      parameter: [`${JOOMLA_ADMIN}/config.xml:4`],
+      table: [`${JOOMLA_ADMIN}/sql/install.mysql.utf8.sql:1`],
+      "view of a URL": [`${JOOMLA_SITE}/src/View/Items/HtmlView.php:7`],
+      "event handler": ["plugins/content/stamp/src/Extension/Stamp.php:22"],
+      "sub-template": [`${JOOMLA_SITE}/tmpl/items/default_row.php:1`, "templates/blue/html/com_shop/items/default_row.php:1"],
+    });
+    const hover = await hoverAt(JOOMLA_HELPER, "Text::sprintf('COM_SHOP_HITS'", 20);
+    assert.ok(hover.includes("language constant") && hover.includes("Hits: %d"), hover);
+    return `${Object.keys(found).length} kinds`;
+  }],
+  ["Joomla: names complete", async () => {
+    const constants = await completes(JOOMLA_HELPER, "Text::_('COM_SHOP')", 9, "COM_SHOP_HITS");
+    assert.ok(constants.includes("COM_SHOP_FIELD_TITLE"), constants.join(", "));
+    const assets = await completes(JOOMLA_HELPER, "useScript('com_shop.cart')", 11, "com_shop.cart");
+    assert.ok(assets.includes("core"), assets.join(", "));
+    return `${constants.length} constants, ${assets.length} assets`;
+  }],
+  ["Joomla: a name that names nothing is reported", async () => {
+    const document = await open(JOOMLA_HELPER);
+    const edit = new vscode.WorkspaceEdit();
+    const text = "Text::_('COM_SHOP')";
+    const at = document.getText().indexOf(text);
+    edit.replace(document.uri, new vscode.Range(document.positionAt(at), document.positionAt(at + text.length)), "Text::_('COM_SHOP_GONE')");
+    await vscode.workspace.applyEdit(edit);
+    const problems = await until(
+      "the missing constant",
+      async () => vscode.languages.getDiagnostics(document.uri).map((problem) => problem.message),
+      (found) => found.some((message) => message.includes("COM_SHOP_GONE")),
+    );
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    assert.deepEqual(problems, ["Unknown language constant 'COM_SHOP_GONE'"]);
+    return problems.join("; ");
+  }],
+  ["Joomla: an XML and a language file are answered in", async () => {
+    // The server asks for these files once it knows the project: no selector lists them.
+    const form = `${JOOMLA_ADMIN}/forms/item.xml`;
+    const found = {
+      "field type": await goes(form, 'type="money"', 8),
+      label: await goes(form, "COM_SHOP_FIELD_TITLE", 10),
+      layout: await goes(form, "joomla.form.field.number", 20),
+    };
+    assert.deepEqual(found, {
+      "field type": [`${JOOMLA_ADMIN}/src/Field/MoneyField.php:7`],
+      label: [`${JOOMLA_INI}:4`],
+      layout: ["layouts/joomla/form/field/number.php:1"],
+    });
+    const usages = await usagesOf(JOOMLA_INI, "COM_SHOP_FIELD_TITLE=", 10, 1);
+    assert.ok(usages.includes(`${form}:4`), usages.join(", "));
+    return `${Object.keys(found).length} names, ${usages.length} usages of a constant`;
+  }],
+  ["Joomla: the MVC factory, a view's template and an event handler are typed", async () => {
+    assert.deepEqual(await goes(JOOMLA_HELPER, "createModel('Items')->total()", 24), [`${JOOMLA_SITE}/src/Model/ItemsModel.php:17`]);
+    assert.deepEqual(await goes(JOOMLA_VIEW, "$this->heading()", 9), [`${JOOMLA_SITE}/src/View/Items/HtmlView.php:18`]);
+    const members = await completes("plugins/content/stamp/src/Extension/Stamp.php", "$event->getItem()", 8, "getItem");
+    assert.ok(members.includes("getName"), members.join(", "));
+    // (Once the edit of the check before is undone.)
+    const problems = await until(
+      "no problems",
+      async () => vscode.languages.getDiagnostics(file(JOOMLA_HELPER)).map((problem) => problem.message),
+      (found) => !found.some((message) => message.includes("COM_SHOP_GONE")),
+    );
+    assert.deepEqual(problems, []);
+    const inTemplate = vscode.languages.getDiagnostics(file(JOOMLA_VIEW)).map((problem) => problem.message);
+    assert.deepEqual(inTemplate, [], "a template's `$this` isn't undefined");
+    return "the model, the view, the event; no problems in the template";
+  }],
+];
+
 /** The checks of the Symfony fixture (run.js opens it): an application on a stand-in API. */
 const BLOG = "src/Controller/BlogController.php";
 const SHOW = "templates/blog/show.html.twig";
@@ -1373,6 +1591,8 @@ exports.run = async function run() {
     yii: yiiChecks,
     cakephp: cakeChecks,
     laminas: laminasChecks,
+    magento: magentoChecks,
+    joomla: joomlaChecks,
     symfony: symfonyChecks,
   };
   const chosen = byMode[process.env.PHOXITE_E2E_MODE] ?? checks;

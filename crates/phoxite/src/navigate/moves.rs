@@ -197,6 +197,13 @@ impl PhpEngine {
             }
         }
 
+        // The XML of a Magento project naming a moved class.
+        for renamed in plan.renamed.iter().filter(|renamed| renamed.kind == NameKind::ClassLike) {
+            for (file, edit) in self.magento_class_move_edits(&renamed.old, &renamed.new) {
+                files.entry(path_key(&file)).or_insert_with(|| (file.clone(), Vec::new())).1.push(edit);
+            }
+        }
+
         let mut edit = WorkspaceEdit::default();
         for (_, (path, mut edits)) in files {
             edits.sort_by_key(|edit| (edit.range.start, edit.range.end));
@@ -226,7 +233,11 @@ impl PhpEngine {
                 continue;
             }
             let old_ns = namespaces.pop().and_then(|n| n.resolution.primary().map(str::to_owned)).unwrap_or_default();
-            let Some(new_ns) = to.parent().and_then(|dir| layout.autoload().namespace_of_dir(dir)) else { continue };
+            // (A Joomla extension's namespace is its manifest's: no `composer.json` names it.)
+            let new_ns = to
+                .parent()
+                .and_then(|dir| layout.autoload().namespace_of_dir(dir).or_else(|| self.joomla_namespace_of_dir(dir)));
+            let Some(new_ns) = new_ns else { continue };
             let summary = FileSummary::extract(&parsed);
 
             // `Book.php` → `Volume.php` renames the class `Book` it declares.

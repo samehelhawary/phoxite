@@ -301,6 +301,20 @@ pub fn completion(
         }
         return Ok(Some(lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })));
     }
+    if doc.kind == Kind::JoomlaFile {
+        let found = doc.engine.as_ref().and_then(|engine| engine.joomla_document_completion(&doc.path, &doc.text, at));
+        return Ok(found.map(|found| {
+            let items = found.into_iter().map(drupal_item).collect();
+            lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })
+        }));
+    }
+    if doc.kind == Kind::MagentoXml {
+        let found = doc.engine.as_ref().and_then(|engine| engine.magento_document_completion(&doc.path, &doc.text, at));
+        return Ok(found.map(|found| {
+            let items = found.into_iter().map(drupal_item).collect();
+            lsp::CompletionResponse::List(lsp::CompletionList { is_incomplete: false, items })
+        }));
+    }
     if doc.kind == Kind::DrupalYaml {
         let found = doc.engine.as_ref().and_then(|engine| engine.drupal_document_completion(&doc.path, &doc.text, at));
         return Ok(found.map(|found| {
@@ -398,6 +412,8 @@ pub fn hover(state: &State, p: lsp::HoverParams) -> Result<Option<lsp::Hover>> {
         Kind::Blade => engine.blade_hover(&doc.blade(), at),
         Kind::WordPressScript => engine.wordpress_script_hover(&doc.path, &doc.text, at),
         Kind::DrupalYaml => engine.drupal_document_hover(&doc.path, &doc.text, at),
+        Kind::MagentoXml => engine.magento_document_hover(&doc.path, &doc.text, at),
+        Kind::JoomlaFile => engine.joomla_document_hover(&doc.path, &doc.text, at),
         _ => None,
     };
     Ok(found.map(|hover| lsp::Hover {
@@ -512,6 +528,16 @@ pub fn goto(
             }
             Some(locations(found))
         }
+        (Kind::JoomlaFile, Goto::Definition) => doc
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.joomla_document_definition(&doc.path, &doc.text, at))
+            .map(targets),
+        (Kind::MagentoXml, Goto::Definition) => doc
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.magento_document_definition(&doc.path, &doc.text, at))
+            .map(targets),
         (Kind::DrupalYaml, Goto::Definition) => doc
             .engine
             .as_ref()
@@ -603,6 +629,8 @@ pub fn references(
         Kind::TranslationJson => engine.laravel_translation_json_references(&doc.path, &doc.text, at, include, cancel),
         Kind::WordPressScript => engine.wordpress_script_references(&doc.path, &doc.text, at, include, cancel),
         Kind::DrupalYaml => engine.drupal_document_references(&doc.path, &doc.text, at, include, cancel),
+        Kind::MagentoXml => engine.magento_document_references(&doc.path, &doc.text, at, include, cancel),
+        Kind::JoomlaFile => engine.joomla_document_references(&doc.path, &doc.text, at, include, cancel),
         Kind::Twig | Kind::Other => None,
     };
     match found {
@@ -740,6 +768,8 @@ pub fn prepare_rename(state: &State, p: lsp::TextDocumentPositionParams) -> Resu
         Kind::TranslationJson => engine.laravel_translation_json_prepare_rename(&doc.path, &doc.text, at),
         Kind::WordPressScript => engine.wordpress_script_prepare_rename(&doc.path, &doc.text, at).flatten(),
         Kind::DrupalYaml => engine.drupal_document_prepare_rename(&doc.path, &doc.text, at).flatten(),
+        Kind::MagentoXml => engine.magento_document_prepare_rename(&doc.path, &doc.text, at).flatten(),
+        Kind::JoomlaFile => engine.joomla_document_prepare_rename(&doc.path, &doc.text, at).flatten(),
         Kind::Twig | Kind::Other => None,
     };
     match found {
@@ -786,6 +816,8 @@ pub fn rename(state: &State, p: lsp::RenameParams, cancel: &CancellationToken) -
         Kind::TranslationJson => engine.laravel_translation_json_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::WordPressScript => engine.wordpress_script_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::DrupalYaml => engine.drupal_document_rename(&doc.path, &doc.text, at, new, cancel),
+        Kind::MagentoXml => engine.magento_document_rename(&doc.path, &doc.text, at, new, cancel),
+        Kind::JoomlaFile => engine.joomla_document_rename(&doc.path, &doc.text, at, new, cancel),
         Kind::Twig | Kind::Other => None,
     };
     match found {

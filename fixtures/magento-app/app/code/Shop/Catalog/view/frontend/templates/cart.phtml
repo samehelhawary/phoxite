@@ -1,0 +1,10 @@
+<?php
+$totals = $block->getViewModel();
+?>
+<section class="cart">
+    <h1><?= $escaper->escapeHtml($block->title()) ?></h1>
+    <?= $block->getChildHtml('cart.items') ?>
+    <?= $block->getChildHtml('cart.summary') ?>
+    <p><?= $totals->grand() ?> / <?= $viewModel->lines() ?></p>
+    <?= $secureRenderer->renderTag('script', [], 'shop()') ?>
+</section>

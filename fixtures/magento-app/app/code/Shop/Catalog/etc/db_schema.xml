@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <table name="shop_cart" resource="default" engine="innodb" comment="Carts">
+        <column xsi:type="int" name="cart_id" unsigned="true" nullable="false" identity="true"/>
+        <column xsi:type="decimal" name="total" scale="4" precision="12" nullable="false" default="0"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="cart_id"/>
+        </constraint>
+    </table>
+</schema>

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <preference for="Shop\Catalog\Api\CartInterface" type="Shop\Catalog\Model\Cart"/>
+    <virtualType name="ShopLogger" type="Shop\Catalog\Model\Logger">
+        <arguments>
+            <argument name="channel" xsi:type="string">shop</argument>
+        </arguments>
+    </virtualType>
+    <type name="Shop\Catalog\Model\Cart">
+        <plugin name="shop_cart_limit" type="Shop\Catalog\Plugin\CartLimit"/>
+    </type>
+</config>

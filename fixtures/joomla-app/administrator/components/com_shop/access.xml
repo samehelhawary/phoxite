@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<access component="com_shop">
+	<section name="component">
+		<action name="core.edit" title="JACTION_EDIT"/>
+		<action name="shop.ship" title="COM_SHOP_ACTION_SHIP"/>
+	</section>
+</access>

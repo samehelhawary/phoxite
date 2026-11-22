@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <extension_attributes for="Shop\Catalog\Api\Data\ItemInterface">
+        <attribute code="gift_note" type="string"/>
+        <attribute code="logger" type="Shop\Catalog\Model\Logger"/>
+    </extension_attributes>
+</config>

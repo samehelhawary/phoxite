@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <system>
+        <section id="shop" translate="label" sortOrder="10">
+            <label>Shop</label>
+            <group id="cart" translate="label" sortOrder="10">
+                <label>Cart</label>
+                <field id="limit" translate="label" type="text" sortOrder="10">
+                    <label>Lines a cart may have</label>
+                </field>
+                <field id="enabled" translate="label" type="select" sortOrder="20">
+                    <label>Enabled</label>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

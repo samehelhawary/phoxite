@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <body>
+        <referenceContainer name="content">
+            <block class="Shop\Catalog\Block\Cart" name="shop.cart" template="Shop_Catalog::cart.phtml">
+                <arguments>
+                    <argument name="view_model" xsi:type="object">Shop\Catalog\ViewModel\Totals</argument>
+                </arguments>
+                <block class="Shop\Catalog\Block\Items" name="shop.cart.items" as="cart.items" template="Shop_Catalog::cart/items.phtml"/>
+                <block name="shop.cart.summary" as="cart.summary" template="Shop_Catalog::cart/summary.phtml"/>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

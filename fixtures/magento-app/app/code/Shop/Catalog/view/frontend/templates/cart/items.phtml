@@ -1,0 +1,5 @@
+<ul>
+<?php foreach ($block->names() as $name): ?>
+    <li><?= $escaper->escapeHtml($name) ?></li>
+<?php endforeach; ?>
+</ul>

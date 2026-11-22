@@ -716,6 +716,13 @@ impl PhpEngine {
             }
         }
 
+        // The XML of a Magento project naming the class follows it.
+        if let Some((NameKind::ClassLike, fqn)) = &renamed_name {
+            for (file, edit) in self.magento_class_rename_edits(fqn, &new) {
+                files.entry(path_key(&file)).or_insert_with(|| (file.clone(), Vec::new())).1.push(edit);
+            }
+        }
+
         // A model method's other names (Laravel) follow it: `published()`
         // for `scopePublished`, `$post->author` for `author()`.
         for (alias, renamed) in self.model_method_alias_renames(&sought, &new) {

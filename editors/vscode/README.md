@@ -376,6 +376,99 @@ Not read, as they need the application to run: what an abstract factory makes,
 configuration built at run time, and a configuration passed around as a value rather
 than read from the container.
 
+## Joomla
+
+In a Joomla site, or an extension opened on its own (Joomla 6; 4 and 5 share its layout):
+
+- Names with completion, Go to Definition, hover and Find All References:
+  - language constants (`Text::_('COM_SHOP_TITLE')`, `Text::sprintf()`): the line of the
+    `.ini` file, with its text on hover
+  - layouts (`LayoutHelper::render('joomla.content.tags')`, `new FileLayout()`): the
+    file, a template's override first
+  - web assets (`$wa->useScript('com_shop.cart')`): `joomla.asset.json`
+  - components, modules and plugins (`bootComponent('com_content')`,
+    `ComponentHelper::getParams()`): the manifest
+  - events (`dispatch('onContentPrepare')`, the keys of `getSubscribedEvents()`): the
+    event's class; the values go to the method handling it
+  - ACL actions (`$user->authorise('core.edit')`), forms (`loadForm()`) and their fields
+    (`$form->getValue('title')`), parameters (`$params->get('show_title')`)
+  - tables (`'#__content'` in a query), a view's sub-templates
+    (`$this->loadTemplate('links')`), and the parts of a URL: `option=`, `view=`, `task=`
+    in `Route::_()`
+- Rename for a language constant: PHP, the language files and the XML
+- Types: `Factory::getApplication()`, `bootComponent()`, the models and tables the MVC
+  factory makes (`createModel('Article', 'Administrator')`), a controller's `getModel()`,
+  a view's `$this->get('Items')`, and an event handler's `$event`, from the event its
+  class subscribes the method to
+- In a view's template (`tmpl/article/default.php`) `$this` is the view, with its
+  protected properties; in a layout it is the layout, in a site template the document; a
+  module's template has `$module`, `$app`, `$params`
+- The XML files, the language files and `joomla.asset.json` work too: Go to Definition
+  from a label to its constant, from a field's `type` to its class, from a layout or an
+  asset to its file; Find All References from a line of a `.ini` file
+- Warnings: `PhpUndefinedJoomlaLanguage` for a constant of your own extension that no
+  language file has, `PhpUndefinedJoomlaLayout` for one of Joomla's layouts that isn't
+  there
+
+Not read, as they need the site to run: names built from variables, events with a
+variable name, the fields `getItem()` returns, and which template is active.
+
+## Magento
+
+In a Magento 2 project (`app/etc/di.xml`, `magento/framework` in Composer, or a module
+opened alone with its `registration.php` and `etc/module.xml`):
+
+- Names with completion, Go to Definition, hover and Find All References, going into
+  the XML that declares them:
+  - events (`$this->eventManager->dispatch('shop_cart_saved')`): the observers of
+    `events.xml`
+  - configuration paths (`$this->scopeConfig->getValue('shop/cart/limit')`,
+    `isSetFlag()`): the field in `system.xml`, the default in `config.xml`
+  - ACL resources (`isAllowed('Vendor_Module::cart')`, a backend action's
+    `const ADMIN_RESOURCE`): `acl.xml`
+  - templates (`setTemplate('Vendor_Module::cart.phtml')`, a block's `$_template`): the
+    file, a theme's version of it first
+  - layout handles (`addHandle()`) and blocks, by name or by the alias their parent has
+    them under (`getBlock('shop.cart')`, `$block->getChildHtml('cart.items')`)
+  - modules (`isEnabled('Vendor_Module')`): the `registration.php`
+- The classes Magento generates are there without running `setup:di:compile`:
+  `CartFactory` (its `create()` returns a `Cart`), `Cart\Proxy`, `Cart\Interceptor`, and
+  `ItemExtensionInterface` with a typed getter and setter for each attribute of
+  `extension_attributes.xml`
+- Types: `$objectManager->get(Foo::class)` and `create()`, and a virtual type by its
+  name; `$cart->setName('x')` on a data object returns the object
+- In a `.phtml` template, `$block` is the block class the layout XML gives that
+  template, so its methods complete without a `@var` line; `$escaper`,
+  `$secureRenderer` and the block's view model are typed too
+- A plugin's `beforeSave()`, `afterSave()` and `aroundSave()` go to the `save()` they
+  intercept
+- Warnings: `PhpUndefinedMagentoTemplate`, `PhpUndefinedMagentoAcl`,
+  `PhpUndefinedMagentoModule`, and `PhpUndefinedMagentoPluginMethod` for a plugin method
+  named after a method its type doesn't have
+
+- URL paths (`getUrl('wishlist/index/add')`, `_redirect()`, `setPath()`): the action's
+  class, by the modules `routes.xml` gives the front name; tables and columns of
+  `db_schema.xml` (`getTableName('wishlist')`, a resource model's `_init()`)
+- The XML files work too. In `di.xml`, `events.xml`, a layout file, `system.xml`,
+  `acl.xml`, `webapi.xml`, `crontab.xml`, a UI component or a GraphQL schema, a class,
+  a service's method, a virtual type, an event, an ACL resource, a template, a block or
+  a layout handle has Go to Definition, hover, Find All References, completion and
+  rename. Hover on a class says which class its preference makes of it in that area
+  and which plugins are on it
+- A class that doesn't exist or a template whose file isn't there is underlined in the
+  XML (`MagentoXmlUndefinedClass`, `MagentoXmlUndefinedTemplate`)
+- Find All References on a class includes the XML naming it; renaming the class or
+  moving its file updates the XML. On a method it includes the plugin methods that
+  intercept it, and the method's hover lists them
+- Rename works across PHP and XML for an event, a block's name, an ACL resource and a
+  template (the `.phtml` file is renamed, in the module and in the themes)
+- An area's `di.xml` wins over the global one where the area is known; a template is
+  looked for in a theme before the themes it inherits from
+
+Not read, as they need the shop to run: a template or a block class set from a
+variable, layout stored in the database, which theme is active, and what a data object
+holds.
+
 ## Drupal
 
 In a Drupal site, or a module or theme opened on its own (Drupal 8 and later; for Drupal

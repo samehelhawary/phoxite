@@ -481,7 +481,7 @@ impl PhpEngine {
     /// The namespaces and classes directly below the namespace `written`
     /// ends in (those of `Drupal\shop` for `Drupal\shop\Cat`), each written
     /// out.
-    fn class_names(&self, written: &str, range: Range) -> Vec<NameCompletion> {
+    pub(crate) fn class_names(&self, written: &str, range: Range) -> Vec<NameCompletion> {
         let written = written.trim_start_matches('\\');
         let namespace = written.rsplit_once('\\').map_or("", |(namespace, _)| namespace);
         let Some(index) = self.index() else { return Vec::new() };

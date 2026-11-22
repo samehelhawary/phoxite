@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <event name="shop_cart_saved">
+        <observer name="shop_notify" instance="Shop\Catalog\Observer\Notify"/>
+    </event>
+    <event name="shop_cart_emptied">
+        <observer name="shop_notify" instance="Shop\Catalog\Observer\Notify"/>
+    </event>
+</config>

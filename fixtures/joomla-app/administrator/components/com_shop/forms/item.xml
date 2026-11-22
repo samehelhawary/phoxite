@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form>
+	<fieldset addfieldprefix="Acme\Component\Shop\Administrator\Field">
+		<field name="title" type="text" label="COM_SHOP_FIELD_TITLE"/>
+		<field name="price" type="money" label="COM_SHOP_FIELD_PRICE" layout="joomla.form.field.number"/>
+	</fieldset>
+</form>

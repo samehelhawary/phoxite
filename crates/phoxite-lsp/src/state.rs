@@ -44,6 +44,12 @@ pub enum Kind {
     /// `*.routing.yml`…), or Drupal 7's `<name>.info`: the names it
     /// declares and writes.
     DrupalYaml,
+    /// A file of a Magento module the engine reads (`di.xml`, `events.xml`,
+    /// a layout file, a GraphQL schema…): the names it declares and writes.
+    MagentoXml,
+    /// An XML file, a language file or an asset list of a Joomla site or
+    /// extension: the names it declares and writes.
+    JoomlaFile,
     Other,
 }
 
@@ -66,11 +72,16 @@ impl Kind {
             && phoxite::frameworks::drupal::FileKind::of(path).is_some()
         {
             Kind::DrupalYaml
+        } else if phoxite::frameworks::magento::project::XmlKind::of(path).is_some() {
+            Kind::MagentoXml
         } else if name == "block.json"
             || matches!(language, "javascript" | "javascriptreact" | "typescript" | "typescriptreact")
             || [".js", ".jsx", ".mjs", ".ts", ".tsx"].iter().any(|ext| name.ends_with(ext))
         {
             Kind::WordPressScript
+        } else if name.ends_with(".xml") || name.ends_with(".ini") || name == "joomla.asset.json" {
+            // (Whether the project is a Joomla one is the engine's to say.)
+            Kind::JoomlaFile
         } else {
             Kind::Other
         }
@@ -569,6 +580,16 @@ impl State {
             self.problems_changed(&doc.path, phoxite::twig::DIAGNOSTIC_SOURCE.to_owned(), items);
             return;
         }
+        if doc.kind == Kind::MagentoXml {
+            // The classes and templates the file names that aren't there.
+            let settings = self.settings_for(&doc.path);
+            let found = doc.engine.as_ref().and_then(|engine| engine.magento_document_problems(&doc.path, &doc.text));
+            let mut items = found.unwrap_or_default();
+            items.retain(|item| item.code.as_deref().is_none_or(|code| settings.inspection_enabled(code)));
+            let source = phoxite::frameworks::magento::documents::DIAGNOSTIC_SOURCE.to_owned();
+            self.problems_changed(&doc.path, source, items);
+            return;
+        }
         if doc.kind != Kind::Blade {
             return;
         }
@@ -578,6 +599,17 @@ impl State {
         };
         let source = phoxite::blade::structure::DIAGNOSTIC_SOURCE.to_owned();
         self.problems_changed(&doc.path, source, items);
+    }
+
+    /// The open files of a Magento project are looked at again: what they
+    /// name is known once the index is there, and changes with the other
+    /// files.
+    pub fn magento_documents_changed(&self) {
+        let open: Vec<Url> =
+            self.docs.read().values().filter(|doc| doc.kind == Kind::MagentoXml).map(|doc| doc.uri.clone()).collect();
+        for uri in open {
+            self.template_problems(&uri);
+        }
     }
 
     /// Records the problems of `path` from `source` and publishes the file's

@@ -380,6 +380,18 @@ impl PhpEngine {
                 return Some(targets);
             }
         }
+        // The name of a Magento plugin's method: the method it intercepts.
+        let method = here.class_likes.iter().find_map(|class| {
+            let at =
+                |method: &&crate::summary::Method| method.name_loc.start <= offset && offset <= method.name_loc.end;
+            class.methods.iter().find(at).map(|method| (class, method))
+        });
+        if let Some((class, method)) = method
+            && let Some(targets) = self.magento_intercepted(&class.fqn, &method.name)
+            && !targets.is_empty()
+        {
+            return Some(targets);
+        }
         let found = self.at_caret(&parsed, &here, &resolver, offset)?;
         let mut out: Vec<Target> = Vec::new();
         match found.subject {

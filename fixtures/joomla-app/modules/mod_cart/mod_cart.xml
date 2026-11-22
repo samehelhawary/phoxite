@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="module" client="site" method="upgrade">
+	<name>mod_cart</name>
+	<version>1.0.0</version>
+	<config>
+		<fields name="params">
+			<fieldset name="basic">
+				<field name="limit" type="text" default="5"/>
+			</fieldset>
+		</fields>
+	</config>
+</extension>

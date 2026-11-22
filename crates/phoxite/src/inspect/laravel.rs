@@ -36,7 +36,7 @@
 //! - `PhpUndefinedTemplate` (Symfony) and `PhpUndefinedHook` (WordPress,
 //!   off by default) are of the other frameworks' kinds, as are
 //!   CodeIgniter's eight ([`CODEIGNITER`]), Yii's four ([`YII`]), CakePHP's seven
-//!   ([`CAKEPHP`]), Laminas's four ([`LAMINAS`]).
+//!   ([`CAKEPHP`]), Laminas's four ([`LAMINAS`]), Magento's three ([`MAGENTO`]).
 //!
 //! They run only while the indexes are ready, each in projects of its
 //! framework.
@@ -63,7 +63,22 @@ type Inspections = &'static [(&'static str, &'static dyn ReferenceKind)];
 /// …" inspections of its own adds its list here. A kind is only asked in a
 /// project of its framework ([`crate::frameworks::refs::kinds_for`]), so an
 /// inspection reports nothing elsewhere.
-const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER, YII, CAKEPHP, LAMINAS];
+const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER, YII, CAKEPHP, LAMINAS, MAGENTO, JOOMLA];
+
+/// Joomla's: a language constant of the file's own extension that no
+/// language file has, one of Joomla's layouts that isn't there.
+const JOOMLA: Inspections = &[
+    ("PhpUndefinedJoomlaLanguage", &crate::frameworks::joomla::refs::LANGUAGE_CONSTANT),
+    ("PhpUndefinedJoomlaLayout", &crate::frameworks::joomla::refs::LAYOUT),
+];
+
+/// Magento's: a template whose file isn't there, an ACL resource no
+/// `acl.xml` declares, a module the project doesn't have.
+const MAGENTO: Inspections = &[
+    ("PhpUndefinedMagentoTemplate", &crate::frameworks::magento::refs::TEMPLATE),
+    ("PhpUndefinedMagentoAcl", &crate::frameworks::magento::refs::ACL),
+    ("PhpUndefinedMagentoModule", &crate::frameworks::magento::refs::MODULE),
+];
 
 /// Laminas's and Mezzio's: a route, a template and a service no
 /// configuration has, an action its controller doesn't have.

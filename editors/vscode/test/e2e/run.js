@@ -4,7 +4,7 @@
 //
 //   node test/e2e/run.js [path to Code executable]
 //
-// PHOXITE_E2E_ONLY=wordpress (or one-project, two-projects, drupal, codeigniter, yii, cakephp, laminas, symfony) runs that
+// PHOXITE_E2E_ONLY=wordpress (or one-project, two-projects, drupal, codeigniter, yii, cakephp, laminas, magento, joomla, symfony) runs that
 // part alone.
 // Without a path it downloads a VS Code build. The extension needs a server:
 // server/phoxite-lsp(.exe), or PHOXITE_SERVER pointing at one.
@@ -27,14 +27,14 @@ function copyDir(from, to) {
 /**
  * Runs the suite in a fresh VS Code on a fresh copy of the fixture. In mode `two-projects`
  * the workspace has two folders, each a copy of the fixture, and the suite runs the
- * checks about that instead. In modes `wordpress`, `drupal`, `codeigniter`, `yii`, `cakephp`, `laminas` and `symfony` the project is that fixture.
+ * checks about that instead. In modes `wordpress`, `drupal`, `codeigniter`, `yii`, `cakephp`, `laminas`, `magento`, `joomla` and `symfony` the project is that fixture.
  */
 async function run(mode) {
   const extension = path.resolve(__dirname, "../..");
   const fixtures = path.resolve(extension, "../../fixtures");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "phoxite-e2e-"));
   const project = path.join(tmp, "app");
-  if (mode === "wordpress" || mode === "drupal" || mode === "codeigniter" || mode === "yii" || mode === "cakephp" || mode === "laminas" || mode === "symfony") {
+  if (mode === "wordpress" || mode === "drupal" || mode === "codeigniter" || mode === "yii" || mode === "cakephp" || mode === "laminas" || mode === "magento" || mode === "joomla" || mode === "symfony") {
     copyDir(path.join(fixtures, `${mode}-app`), project);
   } else {
     copyDir(path.join(fixtures, "laravel-app"), project);
@@ -78,7 +78,7 @@ async function run(mode) {
 async function main() {
   try {
     const only = process.env.PHOXITE_E2E_ONLY;
-    for (const mode of ["one-project", "two-projects", "wordpress", "drupal", "codeigniter", "yii", "cakephp", "laminas", "symfony"]) {
+    for (const mode of ["one-project", "two-projects", "wordpress", "drupal", "codeigniter", "yii", "cakephp", "laminas", "magento", "joomla", "symfony"]) {
       if (!only || only === mode) await run(mode);
     }
   } catch (e) {
