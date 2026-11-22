@@ -1042,6 +1042,92 @@ const codeigniterChecks = [
   }],
 ];
 
+/** The checks of the Yii fixture (run.js opens it): an application on a stand-in API. */
+const SITE = "controllers/SiteController.php";
+const CONTACT = "models/ContactForm.php";
+const yiiChecks = [
+  ["Yii: the project is named", async () => {
+    await open(SITE);
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["Yii"]);
+    return names.join(", ");
+  }],
+  ["Yii: names go to what they name", async () => {
+    const found = {
+      view: await goes(SITE, "render('index'", 9),
+      layout: await goes(SITE, "$layout = 'main'", 12),
+      "mail view": await goes(CONTACT, "compose('welcome'", 10),
+      route: await goes(SITE, "['book/view'", 8),
+      "route of the controller": await goes(SITE, "redirect(['index'])", 12),
+      "route of a module": await goes("controllers/BookController.php", "'/admin/report/index'", 16),
+      component: await goes(SITE, "get('cache')", 6),
+      alias: await goes("controllers/BookController.php", "getAlias('@covers')", 12),
+      message: await goes(SITE, "t('app', 'Newest books')", 12),
+      attribute: await goes(CONTACT, "[['email', 'body']", 5),
+      parameter: await goes(CONTACT, "params['adminEmail']", 10),
+      "parameter below another": await goes(CONTACT, "params['mail']['from']", 17),
+      column: await goes("models/Book.php", "$this->pages", 8),
+    };
+    assert.deepEqual(found, {
+      view: ["views/site/index.php:1"],
+      layout: ["views/layouts/main.php:1"],
+      "mail view": ["mail/welcome.php:1"],
+      route: ["controllers/BookController.php:12"],
+      "route of the controller": [`${SITE}:13`],
+      "route of a module": ["modules/admin/controllers/ReportController.php:10"],
+      component: ["config/web.php:14"],
+      alias: ["config/web.php:11"],
+      message: ["messages/de/app.php:4"],
+      attribute: [`${CONTACT}:11`],
+      parameter: ["config/params.php:4"],
+      "parameter below another": ["config/params.php:7"],
+      column: ["migrations/m240101_000000_create_library.php:17"],
+    });
+    const hover = await hoverAt(SITE, "t('app', 'Newest books')", 12);
+    assert.ok(hover.includes("message") && hover.includes("Neueste"), hover);
+    return `${Object.keys(found).length} kinds`;
+  }],
+  ["Yii: names complete", async () => {
+    const routes = await completes(SITE, "['book/view'", 2, "book/view");
+    assert.ok(routes.includes("admin/report/index") && routes.includes("site/contact"), routes.join(", "));
+    const views = await completes(SITE, "render('index'", 8, "index");
+    assert.ok(views.includes("contact"), views.join(", "));
+    const messages = await completes(SITE, "t('app', 'Newest books')", 10, "Newest books");
+    assert.ok(messages.includes("Title"), messages.join(", "));
+    return `${routes.length} routes, ${views.length} views, ${messages.length} messages`;
+  }],
+  ["Yii: a name that names nothing is reported", async () => {
+    const document = await open(SITE);
+    const edit = new vscode.WorkspaceEdit();
+    const at = document.getText().indexOf("render('contact'");
+    edit.replace(document.uri, new vscode.Range(document.positionAt(at), document.positionAt(at + 16)), "render('nope'");
+    await vscode.workspace.applyEdit(edit);
+    const problems = await until(
+      "the missing view",
+      async () => vscode.languages.getDiagnostics(document.uri).map((problem) => problem.message),
+      (found) => found.some((message) => message.includes("nope")),
+    );
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    assert.deepEqual(problems, ["Unknown view 'nope'"]);
+    return problems.join("; ");
+  }],
+  ["Yii: components, records and a view's variables are typed", async () => {
+    // A component of the configuration, by its property.
+    assert.deepEqual(await goes(SITE, "Yii::$app->catalog", 14), ["config/web.php:17"]);
+    assert.deepEqual(await goes(SITE, "$catalog->newest()", 11), ["components/Catalog.php:16"]);
+    // In the view: what the controller passes, a property read through its getter, the view itself.
+    const view = "views/book/view.php";
+    assert.deepEqual(await goes(view, "$book->label", 8), ["models/Book.php:42"]);
+    assert.deepEqual(await goes(view, "render('_row'", 9), ["views/book/_row.php:1"]);
+    const members = await completes(view, "$book->label", 7, "label");
+    assert.ok(members.includes("author") && members.includes("title"), members.join(", "));
+    const problems = vscode.languages.getDiagnostics(file(view)).map((problem) => problem.message);
+    assert.deepEqual(problems, [], "a view's variables aren't undefined");
+    return `${members.filter((name) => ["author", "label", "title"].includes(name)).join(", ")}; no problems in the view`;
+  }],
+];
+
 /** The checks of the Symfony fixture (run.js opens it): an application on a stand-in API. */
 const BLOG = "src/Controller/BlogController.php";
 const SHOW = "templates/blog/show.html.twig";
@@ -1115,6 +1201,7 @@ exports.run = async function run() {
     wordpress: wordpressChecks,
     drupal: drupalChecks,
     codeigniter: codeigniterChecks,
+    yii: yiiChecks,
     symfony: symfonyChecks,
   };
   const chosen = byMode[process.env.PHOXITE_E2E_MODE] ?? checks;

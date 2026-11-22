@@ -1,10 +1,10 @@
 // Runs the end-to-end suite (suite.js) inside VS Code on a copy of the Laravel
-// fixture (and once on each of the WordPress, Drupal, CodeIgniter and Symfony ones), with only this
+// fixture (and once on each of the WordPress, Drupal, CodeIgniter, Yii and Symfony ones), with only this
 // extension loaded.
 //
 //   node test/e2e/run.js [path to Code executable]
 //
-// PHOXITE_E2E_ONLY=wordpress (or one-project, two-projects, drupal, codeigniter, symfony) runs that
+// PHOXITE_E2E_ONLY=wordpress (or one-project, two-projects, drupal, codeigniter, yii, symfony) runs that
 // part alone.
 // Without a path it downloads a VS Code build. The extension needs a server:
 // server/phoxite-lsp(.exe), or PHOXITE_SERVER pointing at one.
@@ -27,14 +27,14 @@ function copyDir(from, to) {
 /**
  * Runs the suite in a fresh VS Code on a fresh copy of the fixture. In mode `two-projects`
  * the workspace has two folders, each a copy of the fixture, and the suite runs the
- * checks about that instead. In modes `wordpress`, `drupal`, `codeigniter` and `symfony` the project is that fixture.
+ * checks about that instead. In modes `wordpress`, `drupal`, `codeigniter`, `yii` and `symfony` the project is that fixture.
  */
 async function run(mode) {
   const extension = path.resolve(__dirname, "../..");
   const fixtures = path.resolve(extension, "../../fixtures");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "phoxite-e2e-"));
   const project = path.join(tmp, "app");
-  if (mode === "wordpress" || mode === "drupal" || mode === "codeigniter" || mode === "symfony") {
+  if (mode === "wordpress" || mode === "drupal" || mode === "codeigniter" || mode === "yii" || mode === "symfony") {
     copyDir(path.join(fixtures, `${mode}-app`), project);
   } else {
     copyDir(path.join(fixtures, "laravel-app"), project);
@@ -43,7 +43,11 @@ async function run(mode) {
   const userData = path.join(tmp, "user-data");
   const settings = path.join(userData, "User", "settings.json");
   fs.mkdirSync(path.dirname(settings), { recursive: true });
-  const server = process.env.PHOXITE_SERVER;
+  // A relative path is from where the suite is started, not from the project VS Code opens.
+  let server = process.env.PHOXITE_SERVER && path.resolve(process.env.PHOXITE_SERVER);
+  if (server && process.platform === "win32" && !fs.existsSync(server) && fs.existsSync(server + ".exe")) {
+    server += ".exe";
+  }
   fs.writeFileSync(
     settings,
     JSON.stringify({
@@ -74,7 +78,7 @@ async function run(mode) {
 async function main() {
   try {
     const only = process.env.PHOXITE_E2E_ONLY;
-    for (const mode of ["one-project", "two-projects", "wordpress", "drupal", "codeigniter", "symfony"]) {
+    for (const mode of ["one-project", "two-projects", "wordpress", "drupal", "codeigniter", "yii", "symfony"]) {
       if (!only || only === mode) await run(mode);
     }
   } catch (e) {

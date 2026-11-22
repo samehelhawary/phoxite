@@ -617,6 +617,41 @@ fn a_codeigniter_application_names_its_views_and_types_them() {
 }
 
 #[test]
+fn a_yii_application_names_its_views_and_types_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("yii-app"), &root);
+    let controller = root.join("controllers/SiteController.php");
+    let view = root.join("views/site/index.php");
+    let mut c = Client::start(&root);
+    let uri = c.open(&controller, "php");
+    let filled = |v: &Value| v.as_array().is_some_and(|a| !a.is_empty());
+
+    // A view's name goes to its file, a route to its action, a component to the configuration.
+    let (line, col) = find(&controller, "render('index'", 9);
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("views/site/index.php")), "{found}");
+    let (line, col) = find(&controller, "['book/view'", 8);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("controllers/BookController.php")), "{found}");
+    let items = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(items.contains("\"book/view\""), "{items}");
+    let (line, col) = find(&controller, "Yii::$app->catalog", 14);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("config/web.php")), "{found}");
+
+    // The view has what the controller passes it, with its type.
+    let page = c.open(&view, "php");
+    let (line, col) = find(&view, "Html::encode($heading)", 15);
+    let hover = c.request_until::<r::HoverRequest>(at(&page, line, col), |v| v.to_string().contains("string"));
+    assert!(hover.to_string().contains("$heading"), "{hover}");
+
+    let status = c.call(crate::laravel::STATUS, json!({})).expect("answered");
+    assert_eq!(status["frameworks"], json!(["Yii"]), "{status}");
+    c.shutdown();
+}
+
+#[test]
 fn a_twig_template_names_routes_and_templates_of_a_symfony_project() {
     let (_dir, root) = symfony_project();
     let layout = root.join("templates/base.html.twig");

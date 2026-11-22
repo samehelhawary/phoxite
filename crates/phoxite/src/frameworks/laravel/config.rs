@@ -4,7 +4,8 @@
 //! `app.*`, `config/services/mail.php` holds `services.mail.*`), each with
 //! the place declaring it and the source text of its value.
 //!
-//! Only string keys of array literals count; a value that isn't an array
+//! The array is found with the shared reader's helpers
+//! ([`crate::frameworks::php_array`]). Only string keys of array literals count; a value that isn't an array
 //! literal (`env(…)`, a function call) ends the nesting.
 //!
 //! Packages add configuration of their own ([`package_configs`]): the
@@ -24,11 +25,12 @@ use std::sync::Arc;
 
 use crate::base::Range;
 use mago_span::HasSpan;
-use mago_syntax::cst::{ArrayElement, Expression, Literal, Statement};
+use mago_syntax::cst::{ArrayElement, Expression};
 
 use super::LaravelProject;
 use super::parts::{Merged, PartReader, TextParts};
 use super::views::{call_arguments, clean, path_expression, php_files, provider_files, string_literal};
+use crate::frameworks::php_array::{elements, is_array, returned_array};
 use crate::syntax::ParsedFile;
 
 /// The longest value text kept for completion details.
@@ -228,32 +230,9 @@ fn config_files(dir: &Path, base: &Path, out: &mut Vec<(String, PathBuf)>) {
     }
 }
 
-/// The array literal the file's top-level `return` returns.
-fn returned_array<'a>(parsed: &'a ParsedFile) -> Option<&'a Expression<'a>> {
-    parsed.program().statements.iter().find_map(|statement| match statement {
-        Statement::Return(r#return) => r#return.value.filter(|value| is_array(value)),
-        _ => None,
-    })
-}
-
-fn is_array(expr: &Expression<'_>) -> bool {
-    matches!(expr, Expression::Array(_) | Expression::LegacyArray(_))
-}
-
-fn elements<'a>(expr: &'a Expression<'a>) -> Vec<&'a ArrayElement<'a>> {
-    match expr {
-        Expression::Array(array) => array.elements.iter().collect(),
-        Expression::LegacyArray(array) => array.elements.iter().collect(),
-        _ => Vec::new(),
-    }
-}
-
 /// A string literal key's value and the byte range of its content.
 fn string_key(key: &Expression<'_>) -> Option<(String, u32, u32)> {
-    let Expression::Literal(Literal::String(string)) = key else { return None };
-    let value = String::from_utf8_lossy(string.value?).into_owned();
-    let span = string.span();
-    Some((value, span.start.offset + 1, span.end.offset.saturating_sub(1)))
+    crate::frameworks::php_array::string_literal(key)
 }
 
 fn collect(parsed: &ParsedFile, path: &Path, prefix: &str, array: &Expression<'_>, out: &mut Vec<ConfigEntry>) {

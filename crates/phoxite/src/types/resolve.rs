@@ -177,6 +177,22 @@ pub trait Declarations {
     fn loaded_class(&self, _name: &str) -> Option<String> {
         None
     }
+    /// What the configuration of a Yii application says: its components,
+    /// its modules, the identity class of its user component. `None`
+    /// outside a Yii project.
+    fn yii(&self) -> Option<std::sync::Arc<crate::frameworks::yii::YiiProject>> {
+        None
+    }
+    /// The tables the migrations of a Yii project make. `None` outside a
+    /// Yii project.
+    fn yii_tables(&self) -> Option<std::sync::Arc<Vec<crate::frameworks::yii::migrations::Table>>> {
+        None
+    }
+    /// The table the `tableName()` of the class `class` returns as a
+    /// string, in a Yii project.
+    fn yii_table_name(&self, _class: &str) -> Option<String> {
+        None
+    }
     /// The functions of the global namespace named `hook_…` (FQNs): the
     /// hooks a Drupal project's `*.api.php` files document.
     fn hook_functions(&self) -> Vec<String> {
@@ -898,6 +914,21 @@ impl<'a> Resolver<'a> {
     /// [`Declarations::loaded_class`].
     pub fn loaded_class(&self, name: &str) -> Option<String> {
         self.decls.loaded_class(name)
+    }
+
+    /// [`Declarations::yii`].
+    pub fn yii(&self) -> Option<std::sync::Arc<crate::frameworks::yii::YiiProject>> {
+        self.decls.yii()
+    }
+
+    /// [`Declarations::yii_table_name`].
+    pub fn yii_table_name(&self, class: &str) -> Option<String> {
+        self.decls.yii_table_name(class)
+    }
+
+    /// [`Declarations::yii_tables`].
+    pub fn yii_tables(&self) -> Option<std::sync::Arc<Vec<crate::frameworks::yii::migrations::Table>>> {
+        self.decls.yii_tables()
     }
 
     /// [`Declarations::view_variable`].

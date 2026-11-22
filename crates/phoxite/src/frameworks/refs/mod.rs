@@ -115,6 +115,12 @@ pub enum CalleePattern {
     /// `$build['#theme'] = 'item_list'`. The value is the argument at
     /// index 0; an array below it is reached with a [`Position`].
     Entry(&'static str),
+    /// The key read from one of the properties `names` of an object of one
+    /// of `classes` or of a subclass: `'adminEmail'` in
+    /// `Yii::$app->params['adminEmail']`, and `'from'` in
+    /// `Yii::$app->params['mail']['from']` (the keys before it are the
+    /// target's, [`CallTarget::Read`]). The key is the argument at index 0.
+    Read { classes: &'static [&'static str], names: &'static [&'static str] },
 }
 
 /// Where in the argument the string sits.
@@ -171,6 +177,7 @@ impl PlacePattern {
             }
             CalleePattern::Entry(key) => vec![key],
             CalleePattern::Method { names, .. }
+            | CalleePattern::Read { names, .. }
             | CalleePattern::Return { names, .. }
             | CalleePattern::Rules { names, .. }
             | CalleePattern::Property { names, .. } => names.to_vec(),
@@ -238,6 +245,15 @@ impl PlacePattern {
                         }))
             }
             (CalleePattern::Entry(wanted), CallTarget::Entry { key }) => key == wanted,
+            (CalleePattern::Read { classes, names }, CallTarget::Read { classes: receivers, name, .. }) => {
+                names.contains(&name.as_str())
+                    && receivers.iter().any(|receiver| {
+                        classes.iter().any(|class| fqn_eq(NameKind::ClassLike, receiver, class))
+                            || resolver
+                                .class_model(receiver)
+                                .is_some_and(|model| classes.iter().any(|class| model.is_subclass_of(class)))
+                    })
+            }
             (CalleePattern::Rules { form_request, names }, CallTarget::Return { class, method }) => {
                 names.iter().any(|wanted| wanted.eq_ignore_ascii_case(method))
                     && resolver.class_model(class).is_some_and(|model| {
@@ -277,6 +293,10 @@ pub enum CallTarget {
     Property { class: String, name: String },
     /// The value under a key of an array ([`CalleePattern::Entry`]).
     Entry { key: String },
+    /// A key read from the property `name` of an object of `classes`
+    /// ([`CalleePattern::Read`]); `keys` are the keys read before it
+    /// (`mail` for `'from'` in `->params['mail']['from']`).
+    Read { classes: Vec<String>, name: String, keys: Vec<String> },
 }
 
 /// One step from an argument into the arrays around the string.
@@ -360,6 +380,13 @@ enum SiteCall<'a> {
         key: String,
         at: u32,
     },
+    /// A key read from the property `name` of `object`, after `keys`.
+    Read {
+        object: &'a Expression<'a>,
+        name: String,
+        keys: Vec<String>,
+        at: u32,
+    },
 }
 
 impl SiteCall<'_> {
@@ -369,7 +396,8 @@ impl SiteCall<'_> {
             SiteCall::Return { at, .. }
             | SiteCall::Property { at, .. }
             | SiteCall::Attribute { at, .. }
-            | SiteCall::Entry { at, .. } => *at,
+            | SiteCall::Entry { at, .. }
+            | SiteCall::Read { at, .. } => *at,
         }
     }
 }
@@ -530,6 +558,32 @@ impl<'a> Collect<'a, '_> {
             };
             let call = SiteCall::Entry { key, at: element.key.span().start.offset };
             self.strings(&call, element.value, (Some(0), None), &mut Vec::new(), None);
+        }
+        // `Yii::$app->params['mail']['from']`: a key read from the property asked about
+        // ([`CalleePattern::Read`]), after the keys read before it.
+        if let Expression::ArrayAccess(access) = expr {
+            let mut keys: Vec<String> = Vec::new();
+            let mut below = access.array;
+            while let Expression::ArrayAccess(inner) = below
+                && let Expression::Literal(Literal::String(key)) = inner.index
+                && let Some(key) = key.value
+            {
+                keys.push(lossy(key));
+                below = inner.array;
+            }
+            if let Expression::Access(Access::Property(property)) = below
+                && let ClassLikeMemberSelector::Identifier(name) = &property.property
+                && self.names.contains(&lossy(name.value).to_ascii_lowercase())
+            {
+                keys.reverse();
+                let call = SiteCall::Read {
+                    object: property.object,
+                    name: lossy(name.value),
+                    keys,
+                    at: below.span().start.offset,
+                };
+                self.strings(&call, access.index, (Some(0), None), &mut Vec::new(), None);
+            }
         }
         // `$build['#attached']['library'][] = 'core/drupal.ajax'`: the keys the target is reached by.
         let Expression::Assignment(assignment) = expr else { return };
@@ -748,6 +802,20 @@ pub fn sites_with(
     rules: &[CompletionRule],
     want: Option<u32>,
 ) -> Vec<StringSite> {
+    sites_at(None, parsed, resolver, kinds, rules, want)
+}
+
+/// [`sites_with`], `parsed` being the file at `path`: a receiver that is a
+/// variable a view is passed (`$form->getAttributeLabel('email')`) is typed
+/// by what the view is passed.
+pub fn sites_at(
+    path: Option<&Path>,
+    parsed: &ParsedFile,
+    resolver: &Resolver<'_>,
+    kinds: &[&dyn ReferenceKind],
+    rules: &[CompletionRule],
+    want: Option<u32>,
+) -> Vec<StringSite> {
     let rule_names = |next: bool| {
         rules
             .iter()
@@ -783,7 +851,7 @@ pub fn sites_with(
     }
     let file_names = FileNames::resolve(parsed);
     let summary = FileSummary::extract(parsed);
-    let types = ExprTypes::new(parsed, &file_names, &summary, resolver);
+    let types = ExprTypes::new(parsed, &file_names, &summary, resolver).at_path(path);
     let text = parsed.text();
     collect
         .out
@@ -807,6 +875,24 @@ pub fn sites_with(
                     CallTarget::Property { class: class.trim_start_matches('\\').to_owned(), name }
                 }
                 SiteCall::Entry { key, .. } => CallTarget::Entry { key },
+                SiteCall::Read { object, name, keys, .. } => {
+                    let frames = types
+                        .locate(object.span().start.offset)
+                        .expression
+                        .map(|(_, frames)| frames)
+                        .unwrap_or_default();
+                    let classes: Vec<String> = types
+                        .type_of(object, &frames)
+                        .members()
+                        .iter()
+                        .filter_map(|member| match member {
+                            Type::Named { fqn, .. } => Some(fqn.trim_start_matches('\\').to_owned()),
+                            Type::Relative(_) | Type::GenericRelative { .. } => types.context(&frames).self_class,
+                            _ => None,
+                        })
+                        .collect();
+                    CallTarget::Read { classes, name, keys }
+                }
                 SiteCall::Attribute { class: (class, offset), .. } => {
                     let class = match file_names.scope_at(offset).resolve(NameKind::ClassLike, &class).resolution {
                         Resolution::Fqn(fqn) | Resolution::Fallback { namespaced: fqn, .. } => fqn,
@@ -1312,6 +1398,7 @@ pub fn framework_kinds(framework: super::Framework) -> &'static [&'static dyn Re
         super::Framework::WordPress => super::wordpress::refs::kinds(),
         super::Framework::Drupal => super::drupal::refs::kinds(),
         super::Framework::CodeIgniter => super::codeigniter::refs::kinds(),
+        super::Framework::Yii => super::yii::refs::kinds(),
         _ => &[],
     }
 }
@@ -1414,9 +1501,21 @@ pub fn site_at_in(
     rules: &[CompletionRule],
     offset: u32,
 ) -> Option<StringSite> {
+    site_at_in_file(None, kinds, parsed, resolver, rules, offset)
+}
+
+/// [`site_at_in`], `parsed` being the file at `path` ([`sites_at`]).
+pub fn site_at_in_file(
+    path: Option<&Path>,
+    kinds: &[&'static dyn ReferenceKind],
+    parsed: &ParsedFile,
+    resolver: &Resolver<'_>,
+    rules: &[CompletionRule],
+    offset: u32,
+) -> Option<StringSite> {
     let text = parsed.text();
     let (quote, content_end, closed) = literal_around(text, offset as usize)?;
-    if let Some(site) = placed(sites_with(parsed, resolver, kinds, rules, Some(quote as u32)), kinds, resolver) {
+    if let Some(site) = placed(sites_at(path, parsed, resolver, kinds, rules, Some(quote as u32)), kinds, resolver) {
         return Some(site);
     }
     // Not a literal of the parse (being typed): a probe string in its place.
@@ -1431,7 +1530,8 @@ pub fn site_at_in(
         let probe_value = "x".repeat(content_end - quote - 1);
         let probe =
             ParsedFile::parse("reference.php", format!("{}'{probe_value}'{close}{terminator}{rest}", &text[..quote]));
-        if let Some(mut site) = placed(sites_with(&probe, resolver, kinds, rules, Some(quote as u32)), kinds, resolver)
+        if let Some(mut site) =
+            placed(sites_at(path, &probe, resolver, kinds, rules, Some(quote as u32)), kinds, resolver)
         {
             site.start = quote as u32 + 1;
             site.end = content_end as u32;
@@ -1505,7 +1605,7 @@ impl PhpEngine {
         let resolver = self.resolver();
         let kinds = kinds_for(cx.frameworks);
         let rules = cx.rules();
-        if let Some(site) = site_at_in(&kinds, parsed, &resolver, rules, offset)
+        if let Some(site) = site_at_in_file(Some(path), &kinds, parsed, &resolver, rules, offset)
             && let Some((kind, rule)) = classify_in(&kinds, &site, &resolver, rules)
         {
             let site_cx = self.rule_site_context(path, &site, rule)?;
@@ -1664,7 +1764,7 @@ impl PhpEngine {
         if parameters {
             walked.push(&Middleware);
         }
-        let sites = sites_with(parsed, &resolver, &walked, rules, None);
+        let sites = sites_at(Some(path), parsed, &resolver, &walked, rules, None);
         // Configuration keys the file sets (`config(['themes.shop.narrow' =>
         // …])` in Bagisto's tests): setting a new key is fine, and so is
         // reading it, or a key below it, afterwards.
@@ -1905,7 +2005,7 @@ impl PhpEngine {
         let key = if subject.declaration { subject.value.clone() } else { subject.kind.canonical(&cx, &subject.value) };
         let rules = cx.rules();
         let kinds = kinds_for(cx.frameworks);
-        for site in sites_with(&parsed, &resolver, &[subject.kind], rules, None) {
+        for site in sites_at(Some(&path), &parsed, &resolver, &[subject.kind], rules, None) {
             let Some((kind, rule)) = classify_in(&kinds, &site, &resolver, rules) else { continue };
             if kind.id() == subject.kind.id()
                 && self.rule_site_context(&path, &site, rule).is_some_and(|cx| {
@@ -1965,7 +2065,7 @@ impl PhpEngine {
                 return Err(IdeError::cancelled());
             }
             let Some(file) = self.usage_file(&path, &open, text) else { continue };
-            for site in sites_with(&file.parsed, &resolver, &[kind], &rules, None) {
+            for site in sites_at(Some(&path), &file.parsed, &resolver, &[kind], &rules, None) {
                 let rule = if kind.patterns().iter().any(|pattern| pattern.matches(&site, &resolver)) {
                     None
                 } else {

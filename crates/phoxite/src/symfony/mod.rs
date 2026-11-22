@@ -18,7 +18,12 @@
 //!
 //! The format is Symfony's documented YAML configuration (Service
 //! Container, Routing); the files are read with the small reader in
-//! [`yaml`]. [`SymfonyConfig::load`] reads them from disk; the engine
+//! [`yaml`]. A PHP file in the place of a YAML one (`config/services.php`,
+//! `config/routes.php`, a file of `config/packages`) is read the same way
+//! where it returns an array of that shape (`return ['services' => [...]]`,
+//! `return App::config([...])`), through
+//! [`crate::frameworks::php_array`]; one that returns a closure configuring
+//! the container says nothing that can be read. [`SymfonyConfig::load`] reads them from disk; the engine
 //! caches the result until a watcher batch touches a YAML file.
 
 /// The YAML reader, which other frameworks' configuration uses too.
@@ -96,7 +101,8 @@ impl SymfonyConfig {
         if !config.is_dir() {
             return out;
         }
-        let mut queue = existing(&[config.join("services.yaml"), config.join("services.yml")]);
+        let mut queue =
+            existing(&[config.join("services.yaml"), config.join("services.yml"), config.join("services.php")]);
         queue.extend(prefixed(&config, "services_"));
         // Symfony's kernel loads every file of `config/packages` too: their parameters and services.
         let mut packages = yaml_files_below(&config.join("packages"));
@@ -112,7 +118,7 @@ impl SymfonyConfig {
             let imports = out.add_services(&file, &text);
             queue.extend(imports);
         }
-        let mut routes = existing(&[config.join("routes.yaml"), config.join("routes.yml")]);
+        let mut routes = existing(&[config.join("routes.yaml"), config.join("routes.yml"), config.join("routes.php")]);
         routes.extend(prefixed(&config, "routes_"));
         routes.extend(yaml_files_below(&config.join("routes")));
         for file in routes.into_iter().take(MAX_FILES) {
@@ -126,7 +132,7 @@ impl SymfonyConfig {
     /// The services of one services file; returns the files its `imports`
     /// name that exist.
     pub fn add_services(&mut self, file: &Path, text: &str) -> Vec<PathBuf> {
-        let root = yaml::parse(text);
+        let root = document(file, text);
         let mut imports = Vec::new();
         for section in sections(&root) {
             for import in section.get("imports").map(Node::items).unwrap_or_default() {
@@ -157,7 +163,7 @@ impl SymfonyConfig {
 
     /// The routes of one routes file.
     pub fn add_routes(&mut self, file: &Path, text: &str) {
-        let root = yaml::parse(text);
+        let root = document(file, text);
         for section in sections(&root) {
             for entry in section.entries() {
                 if entry.key.starts_with("when@") {
@@ -336,8 +342,48 @@ pub fn is_class_id(id: &str) -> bool {
         && (id.contains('\\') || id.starts_with(|c: char| c.is_ascii_uppercase()))
 }
 
+/// A file the configuration is read from: YAML, or PHP returning an array.
 fn is_yaml(path: &Path) -> bool {
-    matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml"))
+    matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml" | "php"))
+}
+
+/// The content of a configuration file as the YAML reader gives it: a PHP
+/// file's is the array it returns, each key where it is written.
+fn document(file: &Path, text: &str) -> Node {
+    if file.extension().is_none_or(|extension| extension != "php") {
+        return yaml::parse(text);
+    }
+    crate::frameworks::php_array::parse(file, text).map_or(Node::Null, |array| from_php(&array))
+}
+
+/// A PHP array as a YAML mapping or sequence. `Foo::class` is the class's
+/// name; what isn't a constant value is nothing.
+pub(crate) fn from_php(node: &crate::frameworks::php_array::Node) -> Node {
+    use crate::frameworks::php_array::{Key, Node as Php};
+    match node {
+        Php::Null | Php::Other(_) | Php::Constant { .. } => Node::Null,
+        Php::Bool(value) => Node::Scalar(value.to_string()),
+        Php::Int(value) => Node::Scalar(value.to_string()),
+        Php::Float(text) | Php::String(text) | Php::Class(text) => Node::Scalar(text.clone()),
+        Php::Array(entries) if !entries.is_empty() && entries.iter().all(|entry| entry.key.is_none()) => {
+            Node::Seq(entries.iter().map(|entry| from_php(&entry.value)).collect())
+        }
+        Php::Array(entries) => Node::Map(
+            entries
+                .iter()
+                .enumerate()
+                .filter_map(|(at, entry)| {
+                    let key = match &entry.key {
+                        Some(Key::Str(key) | Key::Class(key)) => key.clone(),
+                        Some(Key::Int(key)) => key.to_string(),
+                        Some(Key::Constant { .. }) => return None,
+                        None => at.to_string(),
+                    };
+                    Some(yaml::Entry { key, range: entry.range, value: from_php(&entry.value) })
+                })
+                .collect(),
+        ),
+    }
 }
 
 fn existing(paths: &[PathBuf]) -> Vec<PathBuf> {

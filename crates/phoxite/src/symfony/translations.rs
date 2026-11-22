@@ -8,7 +8,8 @@
 //! `.xliff`; versions 1.2 and 2.0) a key is a unit's `resname` (or `name`),
 //! else the text of its `<source>`, and the translation is its `<target>`.
 //! In JSON a key is a key of the object, or the keys of nested objects
-//! joined by dots. PHP catalogues aren't read.
+//! joined by dots. A PHP catalogue (`messages.en.php`) returns an array: a
+//! key is a string key of it, or the keys of nested arrays joined by dots.
 
 use std::path::{Path, PathBuf};
 
@@ -40,7 +41,7 @@ pub fn load(root: &Path) -> Vec<TranslationKey> {
         .flatten()
         .map(|entry| entry.path())
         .filter(|path| {
-            matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml" | "xlf" | "xliff" | "json"))
+            matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml" | "xlf" | "xliff" | "json" | "php"))
         })
         .collect();
     files.sort();
@@ -51,6 +52,13 @@ pub fn load(root: &Path) -> Vec<TranslationKey> {
         let extension = file.extension().and_then(|e| e.to_str());
         if matches!(extension, Some("xlf" | "xliff")) {
             add_xliff(&text, &domain, &locale, &file, &mut out);
+        } else if extension == Some("php") {
+            let read = |path: &Path| std::fs::read_to_string(path).ok();
+            if let Some(array) = crate::frameworks::php_array::parse(&file, &text) {
+                add_php(&array, "", &domain, &locale, &mut out);
+            } else if let Some(array) = crate::frameworks::php_array::read(&file, &read) {
+                add_php(&array, "", &domain, &locale, &mut out);
+            }
         } else if extension == Some("json") {
             add_json(&text, &domain, &locale, &file, &mut out);
         } else {
@@ -234,6 +242,32 @@ fn catalogue(file: &Path) -> Option<(String, String)> {
     (!domain.is_empty() && !locale.is_empty()).then(|| (domain.to_owned(), locale.to_owned()))
 }
 
+/// The keys of a PHP catalogue.
+fn add_php(
+    node: &crate::frameworks::php_array::Node,
+    prefix: &str,
+    domain: &str,
+    locale: &str,
+    out: &mut Vec<TranslationKey>,
+) {
+    for entry in node.entries() {
+        let Some(name) = entry.name() else { continue };
+        let key = if prefix.is_empty() { name.to_owned() } else { format!("{prefix}.{name}") };
+        if entry.value.is_array() {
+            add_php(&entry.value, &key, domain, locale, out);
+            continue;
+        }
+        out.push(TranslationKey {
+            key,
+            domain: domain.to_owned(),
+            locale: locale.to_owned(),
+            value: entry.value.as_str().map(str::to_owned),
+            file: entry.file.to_path_buf(),
+            range: entry.range,
+        });
+    }
+}
+
 fn add(node: &Node, prefix: &str, domain: &str, locale: &str, file: &Path, out: &mut Vec<TranslationKey>) {
     for entry in node.entries() {
         let key = if prefix.is_empty() { entry.key.clone() } else { format!("{prefix}.{}", entry.key) };
@@ -283,6 +317,23 @@ mod tests {
         let title = keys.iter().find(|k| k.key == "form.title").unwrap();
         assert_eq!((title.range.start.line, title.range.start.col), (2, 4));
         assert_eq!(load(&dir.path().join("nowhere")), []);
+    }
+
+    #[test]
+    fn keys_of_php_catalogues() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("translations");
+        std::fs::create_dir_all(&folder).unwrap();
+        let php = "<?php\n\nreturn [\n    'welcome' => 'Hello',\n    'form' => [\n        'title' => 'Title',\n    ],\n    'made' => sprintf('%s', 'x'),\n];\n";
+        std::fs::write(folder.join("messages.en.php"), php).unwrap();
+        std::fs::write(folder.join("closure.en.php"), "<?php\nreturn fn () => [];\n").unwrap();
+        let keys = load(dir.path());
+        let found: Vec<(&str, Option<&str>, u32, u32)> =
+            keys.iter().map(|k| (k.key.as_str(), k.value.as_deref(), k.range.start.line, k.range.start.col)).collect();
+        assert_eq!(
+            found,
+            [("welcome", Some("Hello"), 3, 5), ("form.title", Some("Title"), 5, 9), ("made", None, 7, 5)]
+        );
     }
 
     #[test]

@@ -426,6 +426,10 @@ fn replacing_the_inspections_runs_them_again() {
             "PhpUndefinedCodeIgniterConfig",
             "PhpUndefinedCodeIgniterService",
             "PhpUndefinedCodeIgniterCell",
+            "PhpUndefinedYiiView",
+            "PhpUndefinedYiiLayout",
+            "PhpUndefinedYiiRoute",
+            "PhpUnknownYiiAttribute",
         ]
     );
 }

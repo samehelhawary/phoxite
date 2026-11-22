@@ -239,6 +239,12 @@ struct Shared {
     symfony_config: Mutex<Option<Arc<SymfonyConfig>>>,
     /// What a CodeIgniter project's files declare, for an edit count.
     codeigniter: Mutex<Option<(u64, Arc<crate::frameworks::codeigniter::CodeIgniterProject>)>>,
+    /// What a Yii project's configuration says, for an edit count.
+    yii: Mutex<Option<(u64, Arc<crate::frameworks::yii::YiiProject>)>>,
+    /// What each view of a Yii project is passed, for an edit count.
+    yii_views: TypedViewVariables,
+    /// The tables the migrations of a Yii project make.
+    yii_tables: Mutex<crate::frameworks::yii::migrations::TableCache>,
     /// What each view of a CodeIgniter project is passed, for an edit count.
     codeigniter_views: TypedViewVariables,
     /// What a Drupal project's YAML files declare, until one changes.
@@ -494,6 +500,9 @@ impl PhpEngine {
             symfony_config: Mutex::new(None),
             drupal: Mutex::new(None),
             codeigniter: Mutex::new(None),
+            yii: Mutex::new(None),
+            yii_views: Mutex::new(HashMap::new()),
+            yii_tables: Mutex::default(),
             codeigniter_views: Mutex::new(HashMap::new()),
             framework_settings: Mutex::new(FrameworkSettings::default()),
             frameworks: Mutex::new(None),
@@ -768,11 +777,12 @@ impl PhpEngine {
         if changed.iter().any(block) || removed.iter().any(|p| !is_php_path(p)) {
             *self.shared.wordpress_blocks.lock() = None;
         }
-        if changed
-            .iter()
-            .chain(removed)
-            .any(|p| is_yaml_path(p) || p.extension().is_some_and(|ext| ext == "info") || p.ends_with("config"))
-        {
+        if changed.iter().chain(removed).any(|p| {
+            is_yaml_path(p)
+                || p.extension().is_some_and(|ext| ext == "info")
+                || p.ends_with("config")
+                || is_php_configuration(p)
+        }) {
             // The Symfony configuration is read again on next use.
             *self.shared.symfony_config.lock() = None;
             *self.shared.drupal.lock() = None;
@@ -971,6 +981,41 @@ impl PhpEngine {
         let project = Arc::new(crate::frameworks::codeigniter::CodeIgniterProject::load(&root, text_of));
         *self.shared.codeigniter.lock() = Some((count, project.clone()));
         project
+    }
+
+    /// What the configuration of a Yii project says
+    /// ([`YiiProject`](crate::frameworks::yii::YiiProject)): its components,
+    /// modules, parameters, aliases and messages.
+    pub fn yii(&self) -> Arc<crate::frameworks::yii::YiiProject> {
+        let count = self.edit_count();
+        if let Some((at, project)) = self.shared.yii.lock().clone()
+            && at == count
+        {
+            return project;
+        }
+        let root = self.shared.layout_config.lock().root.clone();
+        let text_of = |path: &Path| match self.open_document(path) {
+            Some(document) => Some(document.text.to_string()),
+            None => std::fs::read_to_string(path).ok(),
+        };
+        let project = Arc::new(crate::frameworks::yii::YiiProject::load(&root, text_of));
+        *self.shared.yii.lock() = Some((count, project.clone()));
+        project
+    }
+
+    /// The tables the migrations of a Yii project make
+    /// ([`crate::frameworks::yii::migrations`]), for an edit count; a
+    /// migration is read again when its file changes.
+    pub fn yii_tables(&self) -> Arc<Vec<crate::frameworks::yii::migrations::Table>> {
+        let count = self.edit_count();
+        let folders = self.yii().migration_paths.clone();
+        let open = |path: &Path| self.open_document(path).map(|document| document.text.to_string());
+        self.shared.yii_tables.lock().tables(count, &folders, open)
+    }
+
+    /// The cache of [`PhpEngine::yii_view_variables`].
+    pub(crate) fn yii_views_cache(&self) -> &TypedViewVariables {
+        &self.shared.yii_views
     }
 
     /// The cache of [`PhpEngine::codeigniter_view_variables`].
@@ -1951,7 +1996,48 @@ impl Declarations for PhpEngine {
         })
     }
 
+    fn yii(&self) -> Option<Arc<crate::frameworks::yii::YiiProject>> {
+        self.frameworks().contains(crate::frameworks::Framework::Yii).then(|| PhpEngine::yii(self))
+    }
+
+    fn yii_tables(&self) -> Option<Arc<Vec<crate::frameworks::yii::migrations::Table>>> {
+        self.frameworks().contains(crate::frameworks::Framework::Yii).then(|| PhpEngine::yii_tables(self))
+    }
+
+    fn yii_table_name(&self, class: &str) -> Option<String> {
+        let count = self.edit_count();
+        if let Some(known) = self.shared.yii_tables.lock().name(count, class) {
+            return known;
+        }
+        let read = || {
+            let path = self.class_targets(class).into_iter().next()?.path;
+            let text = match self.open_document(&path) {
+                Some(document) => document.text.to_string(),
+                None => std::fs::read_to_string(&path).ok()?,
+            };
+            let short = class.rsplit(|c: char| !c.is_ascii_alphanumeric() && c != '_').next()?;
+            crate::frameworks::yii::migrations::returned_table(&text, short)
+        };
+        let name = read();
+        self.shared.yii_tables.lock().set_name(count, class, name.clone());
+        name
+    }
+
     fn view_variable(&self, path: &Path, name: &str) -> Option<Type> {
+        // Yii: a file of a `views` or a `mail` folder; `$this` is the view object.
+        if self.frameworks().contains(crate::frameworks::Framework::Yii) {
+            if !self.is_yii_view(path) {
+                return None;
+            }
+            if name == "this" {
+                let resolver = self.resolver();
+                let classes = ["yii\\web\\View", "yii\\base\\View"];
+                let view = classes.into_iter().find(|class| resolver.class_model(class).is_some());
+                return view.map(Type::named);
+            }
+            let variables = self.yii_view_variables(path);
+            return variables.iter().find(|(known, _)| known == name).map(|(_, ty)| ty.clone());
+        }
         // Only a file of a `Views` folder is asked about.
         if !path.components().any(|part| part.as_os_str() == "Views" || part.as_os_str() == "views") {
             return None;
@@ -2005,6 +2091,19 @@ impl Drop for PhpEngine {
 
 fn is_yaml_path(path: &Path) -> bool {
     matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml"))
+}
+
+/// A PHP file that may be configuration read as an array: one below a
+/// `config` or a `translations` folder (Symfony's `services.php`, a PHP
+/// catalogue).
+fn is_php_configuration(path: &Path) -> bool {
+    path.extension().is_some_and(|ext| ext == "php")
+        && path.parent().is_some_and(|folder| {
+            folder.components().any(|part| {
+                let part = part.as_os_str();
+                part == "config" || part == "translations"
+            })
+        })
 }
 
 /// A file the Laravel project model reads when it loads: files that

@@ -196,3 +196,31 @@ fn the_project_merges_the_configuration_and_the_php_facts() {
     assert_eq!(project.entity_of("\\app\\repository\\postrepository"), Some("App\\Entity\\Post"));
     assert_eq!(project.entity_of("App\\Repository\\Other"), None);
 }
+
+#[test]
+fn php_files_returning_arrays_are_read_like_yaml() {
+    let services = "<?php\n\nnamespace Symfony\\Config;\n\nuse App\\Service\\Clock;\nuse App\\Service\\Mailer;\n\nreturn App::config([\n    'imports' => [['resource' => 'more.php']],\n    'parameters' => [\n        'locale' => 'en',\n    ],\n    'services' => [\n        '_defaults' => ['autowire' => true],\n        'App\\\\' => ['resource' => '../src/'],\n        'mailer.default' => ['class' => Mailer::class],\n        'mailer' => '@mailer.default',\n        Clock::class => null,\n    ],\n    'when@test' => [\n        'services' => ['test.mailer' => ['class' => 'App\\Tests\\FakeMailer']],\n    ],\n]);\n";
+    let tmp = project(&[
+        ("config/services.php", services),
+        ("config/more.php", "<?php\nreturn ['parameters' => ['from.import' => 3]];\n"),
+        ("config/packages/framework.php", "<?php\nreturn static function ($container): void {};\n"),
+        (
+            "config/routes.php",
+            "<?php\nreturn [\n    'blog_list' => ['path' => '/blog', 'controller' => 'App\\Controller\\Blog::list'],\n    'controllers' => ['resource' => '../src/Controller/', 'type' => 'attribute'],\n];\n",
+        ),
+    ]);
+    let config = SymfonyConfig::load(tmp.path());
+    let ids: Vec<&str> = config.services.iter().map(|service| service.id.as_str()).collect();
+    assert_eq!(ids, ["mailer.default", "mailer", "App\\Service\\Clock", "test.mailer"]);
+    assert_eq!(config.service_class("mailer").as_deref(), Some("App\\Service\\Mailer"));
+    assert_eq!(config.service_class("App\\Service\\Clock").as_deref(), Some("App\\Service\\Clock"));
+    let mailer = config.service("mailer.default").unwrap();
+    assert!(mailer.file.ends_with("services.php"));
+    assert_eq!(mailer.range, Range { start: Pos { line: 15, col: 9 }, end: Pos { line: 15, col: 23 } });
+    let parameters: Vec<(&str, Option<&str>)> =
+        config.parameters.iter().map(|parameter| (parameter.name.as_str(), parameter.value.as_deref())).collect();
+    assert_eq!(parameters, [("locale", Some("en")), ("from.import", Some("3"))]);
+    let routes: Vec<(&str, Option<&str>)> =
+        config.routes.iter().map(|route| (route.name.as_str(), route.path.as_deref())).collect();
+    assert_eq!(routes, [("blog_list", Some("/blog"))]);
+}

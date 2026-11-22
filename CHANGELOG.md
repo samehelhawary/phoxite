@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased
+
+- **Yii 2.** In a Yii application (Composer installs `yiisoft/yii2`, or the project has a
+  `yii` script) the names its strings write are references: views (`render('index')` of a
+  controller, a view or a widget, found as Yii finds them: beside the view,
+  `views/<controller>`, `//` and `/` paths, aliases), layouts (`$layout`), mail views
+  (`compose('welcome')`), routes (`Url::to(['post/view'])`, `redirect([...])`,
+  `Html::a($text, [...])`, `'url' => [...]` ↔ `PostController::actionView()`, an action
+  of the controller asking, a module's), components and modules
+  (`Yii::$app->get('cache')` ↔ the configuration), parameters
+  (`Yii::$app->params['adminEmail']`), path aliases (`Yii::getAlias('@app/runtime')`),
+  message categories and messages (`Yii::t('app', 'Hello')` ↔ `messages/<language>/app.php`)
+  and a model's attributes (in `rules()`, `attributeLabels()`, `scenarios()`,
+  `getAttributeLabel()`, `addError()`…). Each completes, goes to what it names and has a
+  hover and Find References.
+  - Types: `Yii::$app->mailer` and `Yii::$app->get('mailer')` are the class the
+    configuration gives the component, `Yii::$app->user->identity` the `identityClass`;
+    `Yii::createObject(Foo::class)` and `Yii::$container->get(Foo::class)` are a `Foo`;
+    `Post::find()->where(…)->one()` is a `Post` or null and `all()` a list of them; a
+    relation (`$post->author`, from `getAuthor()` with `hasOne()` or `hasMany()`) is the
+    related model or a list; any property read through a getter (`$catalog->size` ↔
+    `getSize()`) has the getter's type. Components and getters complete as properties.
+  - A view has the variables `render()` passes it, with their types, and they aren't
+    reported as undefined; `$this` in a view is the view object.
+  - Inspections for a name that names nothing: `PhpUndefinedYiiView`,
+    `PhpUndefinedYiiLayout`, `PhpUndefinedYiiRoute` (a controller without that action),
+    `PhpUnknownYiiAttribute` (a form model without that property).
+  - The configuration is read as Yii's templates write it: `return $config;` with what
+    the file adds to `$config` afterwards, `require __DIR__ . '/params.php'`,
+    `array_merge()`; the basic template's `config/web.php` and the advanced template's
+    `common`, `frontend` and `backend`, each with its own controllers, views and
+    parameters.
+  - A record's columns come from the project's migrations (`createTable()`,
+    `addColumn()`, `dropColumn()`, `renameColumn()`, `alterColumn()`, `renameTable()`,
+    read in the order of the files, without running them): `$post->title` has the
+    column's type, completes, goes to the migration, and is an attribute in `rules()`.
+    The table is what `tableName()` returns, else Yii's name for the class.
+  - More of the configuration is followed: `controllerMap`, the actions `actions()`
+    lists (`site/captcha` goes to its key), the routes of the URL manager's `rules`
+    and of a filter's `only`, `except` and `actions`; parameters below another
+    (`Yii::$app->params['mail']['from']`); a `viewPath`, a `layoutPath`, the mailer's
+    `viewPath` and themes; the aliases of the installed extensions and of
+    `Yii::setAlias()` in the entry scripts; gettext catalogues (`.po`);
+    `Yii::createObject(['class' => Foo::class])`.
+- **Symfony: PHP configuration.** `config/services.php`, `config/routes.php` and the PHP
+  files of `config/packages` are read where they return an array (`return [...]`,
+  `return App::config([...])`): their services, parameters and routes beside the YAML
+  files', with `'@service'` and `'%parameter%'` in them as usages. PHP translation
+  catalogues (`translations/messages.en.php`) are read beside YAML, XLIFF and JSON.
+- **A name in a view after a variable the view is passed** is a name:
+  `$model->where('title', …)` in a CodeIgniter view, `$form->getAttributeLabel('email')`
+  in a Yii one.
+
 ## 0.10.0 — 2026-11-21
 
 - **PHP 8.6.** It is the version of a project that names none, and the built-in

@@ -44,6 +44,12 @@ servers. What it does:
   by name, with a warning for one that names nothing; the types of `service()`,
   `model()` and `config()`, of what a model finds, and of the variables a controller
   passes its view. In CodeIgniter 3, what `$this->load` loads and gives the controller.
+- **Yii 2:** views, layouts, routes, components, modules, parameters, path aliases,
+  messages and model attributes by name, with a warning for a view, a route or an
+  attribute that names nothing; the types of `Yii::$app`'s components, of
+  `Yii::createObject()`, of Active Record queries and relations, of a record's columns
+  (from the migrations), of properties read through a getter, and of the variables a
+  controller passes its view. Views are found where a `viewPath` or a theme puts them.
 - **Drupal:** services, routes, permissions, libraries, configuration, entity types,
   plugins, theme hooks and hooks, from the module's YAML files, attributes and
   annotations; the types of `\Drupal::service()`, of an entity storage and of a hook

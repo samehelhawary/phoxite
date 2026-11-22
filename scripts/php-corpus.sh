@@ -19,6 +19,9 @@ CORPORA=(
     "drupal7 https://github.com/drupal/drupal.git 7.103"
     "codeigniter https://github.com/codeigniter4/CodeIgniter4.git v4.6.5"
     "codeigniter3 https://github.com/bcit-ci/CodeIgniter.git 3.1.13"
+    "yii https://github.com/yiisoft/yii2-app-basic.git 2.0.55"
+    "yii-framework https://github.com/yiisoft/yii2-framework.git 2.0.55"
+    "yii-advanced https://github.com/yiisoft/yii2-app-advanced.git 2.0.55"
 )
 
 check=0
@@ -33,7 +36,7 @@ for name in "${wanted[@]}"; do
         [[ "${entry%% *}" == "$name" ]] && known=1
     done
     if ((!known)); then
-        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7|codeigniter|codeigniter3]..." >&2
+        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7|codeigniter|codeigniter3|yii|yii-framework|yii-advanced]..." >&2
         exit 2
     fi
 done

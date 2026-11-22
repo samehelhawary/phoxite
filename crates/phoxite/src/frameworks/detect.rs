@@ -115,7 +115,9 @@ impl Framework {
             ],
             // The second is CodeIgniter 3's.
             Framework::CodeIgniter => &["spark", "system/core/CodeIgniter.php"],
-            Framework::Yii | Framework::CakePhp | Framework::Laminas => &[],
+            // The console entry script of both application templates.
+            Framework::Yii => &["yii", "vendor/yiisoft/yii2/Yii.php"],
+            Framework::CakePhp | Framework::Laminas => &[],
             Framework::Magento => &["app/etc/di.xml"],
         }
     }
@@ -392,6 +394,7 @@ mod tests {
         assert_eq!(detected(&[("wp-config.php", "<?php")]), [Framework::WordPress]);
         assert_eq!(detected(&[("web/core/lib/Drupal.php", "<?php")]), [Framework::Drupal]);
         assert_eq!(detected(&[("spark", "")]), [Framework::CodeIgniter]);
+        assert_eq!(detected(&[("yii", "")]), [Framework::Yii]);
         assert_eq!(detected(&[("app/etc/di.xml", "<config/>")]), [Framework::Magento]);
         assert_eq!(detected(&[("index.php", "<?php")]), []);
     }

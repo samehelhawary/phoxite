@@ -542,6 +542,39 @@ fn with_wiring() -> Project {
 }
 
 #[test]
+fn a_service_of_a_php_configuration_has_its_usages_there() {
+    let services = "<?php\nreturn [\n    'parameters' => ['app.locale' => 'en', 'app.title' => 'Shop (%app.locale%)'],\n    'services' => [\n        'mailer.default' => ['class' => 'App\\Service\\Mailer'],\n        'mailer' => '@mailer.default',\n        'mailer.alias' => ['alias' => 'mailer.default'],\n        'mailer.default.extra' => ['class' => 'App\\Service\\Mailer'],\n    ],\n];\n";
+    let mut project = Project::new(&[
+        ("lib/libraries.php", LIBRARIES),
+        ("lib/app.php", APP),
+        ("lib/bundle.php", FRAMEWORK_BUNDLE),
+        ("config/services.php", services),
+    ]);
+    let source = controller("$c->get('mailer.de/*|*/fault');");
+    assert_eq!(project.definition(CONTROLLER, &source), Some(vec![target("config/services.php", 4, "mailer.default")]));
+    let found = project.route_usages(CONTROLLER, &source);
+    assert_eq!(
+        found,
+        [
+            target("config/services.php", 4, "mailer.default"),
+            target("config/services.php", 5, "mailer.default"),
+            target("config/services.php", 6, "mailer.default"),
+            target(CONTROLLER, 11, "mailer.default"),
+        ]
+    );
+    let source = controller("$this->getParameter('app.lo/*|*/cale');");
+    let found = project.route_usages(CONTROLLER, &source);
+    assert_eq!(
+        found,
+        [
+            target("config/services.php", 2, "app.locale"),
+            target("config/services.php", 2, "app.locale"),
+            target(CONTROLLER, 11, "app.locale"),
+        ]
+    );
+}
+
+#[test]
 fn a_service_and_a_parameter_are_renamed_in_php_in_yaml_and_in_attributes() {
     let mut project = with_wiring();
     // The usages of a service: its key, `@id` and `@?id` in YAML, the attribute's argument, PHP.

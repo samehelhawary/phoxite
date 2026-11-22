@@ -92,7 +92,7 @@
       }
     },
     "frameworks": {
-      "description": "Whether each framework's support is on: `auto` (when Composer installs the framework or one of its own files exists), `enabled` or `disabled`. `laravel` wins over `laravel.detection` unless it is `auto`. Laravel, Symfony, WordPress, Drupal and CodeIgniter have support today; the other names (`yii`, `cakephp`, `laminas`, `magento`) are read now and take effect as each framework's support is released.",
+      "description": "Whether each framework's support is on: `auto` (when Composer installs the framework or one of its own files exists), `enabled` or `disabled`. `laravel` wins over `laravel.detection` unless it is `auto`. Laravel, Symfony, WordPress, Drupal, CodeIgniter and Yii have support today; the other names (`cakephp`, `laminas`, `magento`) are read now and take effect as each framework's support is released.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

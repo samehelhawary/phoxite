@@ -12,7 +12,8 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | WordPress | yes | none (hook callbacks and `global` variables are typed by the engine itself, from name facts) | hooks, shortcodes, post types, taxonomies, script and style handles, options, image sizes, menu locations, template parts (`frameworks::wordpress::refs`; see [`wordpress.md`](wordpress.md)) |
 | Drupal | yes | `types::provider::DrupalProvider` (services, entity storages); hook implementations by the engine itself | services, routes, permissions, libraries, configuration, modules, entity types, plugins, theme hooks, hooks (`frameworks::drupal::refs`; see [`drupal.md`](drupal.md)) |
 | CodeIgniter (4, and 3) | yes | `types::provider::CodeIgniterProvider` (helper functions, a model's finders, a builder's table, what CodeIgniter 3's loader gives a controller); a view's variables by the engine itself | views, helpers, language lines, routes, filters, route handlers, configurations, models, services, view cells, events, validation rules and groups, tables and columns; 3's libraries, configuration items and controller paths (`frameworks::codeigniter::refs`; see [`codeigniter.md`](codeigniter.md)) |
-| Yii, CakePHP, Laminas, Magento | yes | none yet | none yet |
+| Yii 2 | yes | `types::provider::YiiProvider` (components, the identity, `createObject()`, properties read through a getter, Active Record queries and relations, a record's columns from the migrations); a view's variables by the engine itself | views, layouts, mail views, routes, components, modules, parameters, aliases, message categories and messages, model attributes (`frameworks::yii::refs`; see [`yii.md`](yii.md)) |
+| CakePHP, Laminas, Magento | yes | none yet | none yet |
 
 Twig templates are not a framework in this sense: `phoxite::twig` reads a template's text
 and the project's template folders, needs no engine, and is served for every `*.twig` file.
@@ -33,7 +34,7 @@ Whether Symfony's Twig extensions are known there depends on Composer installing
 | WordPress | `johnpbloch/wordpress`, `johnpbloch/wordpress-core`, `roots/wordpress`, `roots/wordpress-no-content`, `php-stubs/wordpress-stubs` | `wp-config.php`, `wp-load.php`, `wp-includes/version.php`; a root PHP file with a `Plugin Name:` header; a `style.css` with a `Theme Name:` header |
 | Drupal | `drupal/core`, `drupal/core-recommended` | `core/lib/Drupal.php` (also below `web/` and `docroot/`); a root `*.info.yml` with a core requirement |
 | CodeIgniter | `codeigniter4/framework`, `codeigniter/framework` | `spark`, `system/core/CodeIgniter.php` |
-| Yii | `yiisoft/yii2` | |
+| Yii | `yiisoft/yii2` | `yii`, `vendor/yiisoft/yii2/Yii.php` |
 | CakePHP | `cakephp/cakephp` | |
 | Laminas | `laminas/laminas-mvc`, `mezzio/mezzio` | |
 | Magento | `magento/framework`, `magento/product-community-edition`, `magento/product-enterprise-edition` | `app/etc/di.xml`; `registration.php` with `etc/module.xml` |
@@ -89,15 +90,12 @@ arguments), and the handling of a few Laravel kinds in `undefined_references`.
    needs plumbing. For other facts: a struct in `summary/`, a field of `FileSummary`, the
    walker hooks in `summary/extract.rs` and an index key in `index/tables.rs`. Either way,
    a bump of `SCHEMA_VERSION` (`summary/mod.rs`).
-5. **Configuration that isn't PHP.** `base::yaml` reads the YAML that Symfony's and
-   Drupal's files use.
+5. **Configuration files.** `base::yaml` reads the YAML that Symfony's and Drupal's files
+   use. `frameworks::php_array` reads a PHP file that returns an array (Yii's
+   configuration, Symfony's `services.php`): `return $config;`, `require`, `array_merge()`,
+   `Foo::class` keys and class-constant values; see [`yii.md`](yii.md).
 6. **Design inputs.** The framework's public documentation, and its source where the
    licence allows it (see `CONTRIBUTING.md`). WordPress and Drupal are GPL and Magento is
    OSL: read their documentation for behaviour and copy nothing from them. Names (hooks,
    services, events) come from indexing the user's project, never from a list in this
    repository.
-
-## Not built yet
-
-- A reader for PHP files that return an array (Yii, CakePHP and Laminas configuration),
-  generalised from `frameworks/laravel/config.rs`.

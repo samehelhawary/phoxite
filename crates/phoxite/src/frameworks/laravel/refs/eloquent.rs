@@ -253,7 +253,7 @@ fn site_model(cx: &RefContext<'_>) -> Option<String> {
         CallTarget::Property { class, .. } | CallTarget::Return { class, .. } => {
             is_model(class).map(|model| model.fqn().to_owned())
         }
-        CallTarget::Function(_) | CallTarget::Entry { .. } => None,
+        CallTarget::Function(_) | CallTarget::Entry { .. } | CallTarget::Read { .. } => None,
     }
 }
 
@@ -449,7 +449,10 @@ fn attributes(cx: &RefContext<'_>, model: &str) -> Vec<Attribute> {
             AttributeOrigin::Relation { method } | AttributeOrigin::Count { method } => {
                 (method_target(cx, class, method), false, false)
             }
-            AttributeOrigin::Rule { .. } => continue,
+            // Not Eloquent's.
+            AttributeOrigin::Rule { .. } | AttributeOrigin::Getter { .. } | AttributeOrigin::Configured { .. } => {
+                continue;
+            }
         };
         out.push(Attribute { name: member.name.clone(), detail: ty.to_string(), target, stored, accessor });
     }

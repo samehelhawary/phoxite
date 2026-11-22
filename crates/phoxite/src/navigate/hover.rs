@@ -467,6 +467,8 @@ impl PhpEngine {
             }
             AttributeOrigin::Rule { rules, .. } if rules.is_empty() => "Validated field, from `rules()`".to_owned(),
             AttributeOrigin::Rule { rules, .. } => format!("Validated field (`{rules}`), from `rules()`"),
+            AttributeOrigin::Getter { method } => format!("Read through `{method}()`"),
+            AttributeOrigin::Configured { what, .. } => format!("{what}, from the configuration"),
         };
         if let Some(doc) = method.and_then(|member| self.member_doc(&member, resolver, here, summary)) {
             let doc = doc.markdown();

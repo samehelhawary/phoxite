@@ -35,7 +35,7 @@
 //!
 //! - `PhpUndefinedTemplate` (Symfony) and `PhpUndefinedHook` (WordPress,
 //!   off by default) are of the other frameworks' kinds, as are
-//!   CodeIgniter's eight ([`CODEIGNITER`]).
+//!   CodeIgniter's eight ([`CODEIGNITER`]), Yii's four ([`YII`]).
 //!
 //! They run only while the indexes are ready, each in projects of its
 //! framework.
@@ -62,7 +62,16 @@ type Inspections = &'static [(&'static str, &'static dyn ReferenceKind)];
 /// …" inspections of its own adds its list here. A kind is only asked in a
 /// project of its framework ([`crate::frameworks::refs::kinds_for`]), so an
 /// inspection reports nothing elsewhere.
-const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER];
+const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER, YII];
+
+/// Yii's: a view whose file isn't there, a route whose controller has no
+/// such action, an attribute a form model doesn't have.
+const YII: Inspections = &[
+    ("PhpUndefinedYiiView", &crate::frameworks::yii::refs::VIEW),
+    ("PhpUndefinedYiiLayout", &crate::frameworks::yii::refs::LAYOUT),
+    ("PhpUndefinedYiiRoute", &crate::frameworks::yii::refs::ROUTE),
+    ("PhpUnknownYiiAttribute", &crate::frameworks::yii::refs::ATTRIBUTE),
+];
 
 /// CodeIgniter's: a view, a helper, a language line, a route, a filter, a
 /// route's handler, a validation rule, a rule group, a model, a

@@ -1,6 +1,7 @@
 //! Framework support built on the engine's indexes: which frameworks a
 //! project uses ([`detect`]), the string references every framework shares
-//! ([`refs`]), the names files declare for a framework ([`names`]), and
+//! ([`refs`]), the names files declare for a framework ([`names`]), the reader of PHP
+//! files that return an array ([`php_array`]), and
 //! each framework's project model and reference kinds ([`laravel`],
 //! [`symfony`], [`wordpress`]).
 //!
@@ -13,8 +14,10 @@ pub mod detect;
 pub mod drupal;
 pub mod laravel;
 pub mod names;
+pub mod php_array;
 pub mod refs;
 pub mod symfony;
 pub mod wordpress;
+pub mod yii;
 
 pub use detect::{ComposerPackages, Framework, Frameworks};

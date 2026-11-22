@@ -889,7 +889,8 @@ function never_set() { return $missing; }
             r"~ returns: Lib\Repo",
             r"~ returns: Lib\Repo",
             "~ returns: int|string",
-            r"~ returns: laravel:call:find:::(Lib\Repo, Lib\Repo->find()) ?? Lib\Repo->find()",
+            // Each provider that may answer keeps its question, the next one's answer its fallback.
+            r"~ returns: laravel:call:find:::(Lib\Repo, yii:find(Lib\Repo, Lib\Repo->find()) ?? Lib\Repo->find()) ?? yii:find(Lib\Repo, Lib\Repo->find()) ?? Lib\Repo->find()",
             r"~ returns: Lib\Repo",
             "~ returns: mixed",
             "~ returns: mixed",

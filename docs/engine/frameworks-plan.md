@@ -1,13 +1,14 @@
 # Framework support: plan and progress
 
 Tracks the plan to support what Phoxite doesn't cover yet: Twig in the server and VS Code,
-deeper Symfony, and WordPress, Drupal, CodeIgniter, Yii, CakePHP, Laminas and Magento.
+deeper Symfony, and WordPress, Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento and
+Joomla.
 How the pieces fit is in [frameworks.md](frameworks.md).
 
 Depth for each new framework: types, plus completion, goto, usages, rename and an
 undefined-name inspection for the strings that name things. No tool views in VS Code.
 
-Last updated: 2026-11-20.
+Last updated: 2026-11-22.
 
 ## Status
 
@@ -20,15 +21,21 @@ Last updated: 2026-11-20.
 | 3 | WordPress | Done |
 | 4 | Drupal | Done |
 | 5 | CodeIgniter (4, and 3) | Done |
-| 6 | Yii 2 | Not started |
+| 6 | Yii 2 | Done |
 | 7 | CakePHP 4 and 5 | Not started |
 | 8 | Laminas (MVC and Mezzio) | Not started |
 | 9 | Magento 2 | Not started |
+| 10 | Joomla 6 | Not started |
 
 Order: 0, then 1 → 2 → 4. Phase 2.5 comes before phase 3. Phases 3 and 5–8 need only phase
-0 and can be reordered. Phase 9 is last.
+0 and can be reordered. Phases 9 and 10 come last: they share the XML reader, which is
+built with whichever of them comes first.
 
 ## Decisions
+
+- [x] The PHP-array reader is `frameworks/php_array.rs`, not `base/`: it resolves
+      `Foo::class` through the file's namespace and imports, so it needs the parser and
+      the name scopes, which `base` is below.
 
 - [x] Three foundation pieces are built with their first users, not in phase 0, so that a
       real case shapes each one: the generic name facts with WordPress hooks (phase 3), the
@@ -49,7 +56,7 @@ Order: 0, then 1 → 2 → 4. Phase 2.5 comes before phase 3. Phases 3 and 5–8
 - **0.3 Generic name facts:** moved to phase 3.
 - **0.4 Callable-string references:** moved to phase 2.5.
 - [x] **0.5a YAML reader** moved to `base/yaml.rs` (re-exported from `symfony`).
-- **0.5b PHP-array reader:** moved to phase 6.
+- **0.5b PHP-array reader:** moved to phase 6 (done there: `frameworks/php_array.rs`).
 - [x] **0.6 Symfony routes as references.** `symfonyRoute` kind
       (`frameworks/symfony/refs/route_name.rs`): goto, usages, rename and hover;
       `TypeProvider::known_strings` removed.
@@ -464,18 +471,110 @@ fields other rules name, `only`/`except` of a resource, third-party HMVC.
 
 ## Phase 6 — Yii 2
 
-- [ ] First: the PHP-array reader. A reusable reader for PHP files that return an array,
-      generalised from `frameworks/laravel/config.rs`, with `Foo::class` keys and
-      class-constant values (Laminas needs those).
-- [ ] Then, for Symfony (moved from phase 2, where only the reader was missing):
-  - [ ] `config/services.php` and `config/routes.php` where they return plain arrays: their
-        services, parameters and routes beside the YAML files' (`symfony/mod.rs`).
-  - [ ] PHP translation catalogues (`translations/messages.en.php`): their keys beside the
-        YAML and XLIFF ones (`symfony/translations.rs`).
-- [ ] Types: `Yii::$app->…` components from the config arrays, `Yii::createObject()`,
-      `Yii::$container->get()`, `ActiveQuery<Model>`, relation properties.
-- [ ] Names: views, routes (`Url::to(['site/index'])`), path aliases, translation
-      categories and messages, attribute names in `rules()` and `attributeLabels()`.
+On branch `yii`, uncommitted. See `yii.md`.
+
+- [x] First: the PHP-array reader (`frameworks/php_array.rs`). A reusable reader for PHP
+      files that return an array, with `Foo::class` keys and class-constant values
+      (Laminas needs those). It also follows what Yii's files are written with:
+      `return $config;` and the `$config['a']['b'] = …` after it, a variable for a value,
+      `require` of a path written with `__DIR__` and `dirname()`, `array_merge()` and
+      `ArrayHelper::merge()`. Laravel's `config.rs` uses its helpers; its own walk stays
+      (it keeps each value's source text, which the reader doesn't).
+- [x] Then, for Symfony (moved from phase 2, where only the reader was missing):
+  - [x] `config/services.php`, `config/routes.php` and the PHP files of
+        `config/packages` and `config/routes` where they return plain arrays
+        (`return [...]`, `return App::config([...])`): their services, parameters and
+        routes beside the YAML files' (`symfony/mod.rs`, which reads the array as the
+        YAML reader's mapping). A file returning a closure says nothing.
+  - [x] PHP translation catalogues (`translations/messages.en.php`): their keys beside
+        the YAML and XLIFF ones (`symfony/translations.rs`).
+- [x] The project model (`frameworks/yii/project.rs`, `PhpEngine::yii()`): the
+      applications of the basic and the advanced template, components, modules,
+      parameters, aliases, controller namespaces, the identity class, messages.
+      Detection also by the `yii` script and `vendor/yiisoft/yii2/Yii.php`.
+- [x] Types (`types/provider/yii.rs`): `Yii::$app->…` components from the config arrays
+      (and `get('id')`, and the identity of `user`), `Yii::createObject()`,
+      `Yii::$container->get()`, `ActiveQuery<Model>` with `one()` and `all()`, relation
+      properties, and any property read through a getter. Components and getters are
+      members for completion, hover and goto (`AttributeOrigin::Configured`, `Getter`).
+- [x] Names (`frameworks/yii/refs`): views, layouts, mail views, routes
+      (`Url::to(['site/index'])`), components, modules, path aliases, translation
+      categories and messages, attribute names in `rules()`, `attributeLabels()`,
+      `attributeHints()` and `scenarios()`.
+- [x] A view's variables from the `render()` passing them, and `$this` in a view
+      (`frameworks/yii/views.rs`).
+- [x] Four "unknown name" inspections: `PhpUndefinedYiiView`, `PhpUndefinedYiiLayout`,
+      `PhpUndefinedYiiRoute`, `PhpUnknownYiiAttribute`.
+- [x] Engine tests (`navigate/tests/yii.rs`) and `docs/engine/yii.md`.
+
+- [x] `fixtures/yii-app` (an application laid out like the basic template, on a stand-in
+      for Yii in `lib/`), `tests/yii_fixture.rs` (nothing in the application is
+      reported, one name of each kind resolves, what is passed and configured is typed)
+      and the server's test (`a_yii_application_names_its_views_and_types_them`; the
+      status names the framework).
+- [x] The corpus: `scripts/php-corpus.sh yii yii-framework` (Yii's basic application
+      template and the framework, both 2.0.55; the framework is an include path, as the
+      template has no `vendor/` until Composer runs) and `tests/yii_corpus.rs`. On the
+      real source the configuration is read (16 components over its three files, the
+      identity class, the parameters), views and routes resolve, `Yii::$app->cache`,
+      `->db` and `->user->identity` are typed, and the four Yii inspections report
+      nothing in the template's 20-odd files. What the other inspections say there is
+      the classes of the extensions the corpus doesn't have, and one true report: the
+      template's `models/LoginForm.php` at 2.0.55 has a docblock that is never closed
+      before its class.
+- [x] `SCHEMA_VERSION` 54 (52 on `main`): a summary keeps the question of `Post::find()`, `hasOne()`,
+      `hasMany()` and `createObject()` for the Yii provider.
+
+- [x] The VS Code side: a Yii run of the end-to-end suite (`yiiChecks`, 5 checks on the
+      fixture, pass in VS Code 1.147.0; `PHOXITE_E2E_ONLY=yii`), the settings' text and
+      the schema. The status names the framework without client code: the server sends
+      every detected one.
+- [x] README, `editors/vscode/README.md` and both changelogs (under "Unreleased").
+      `docs/editors.md` needed nothing: no new request or command.
+- [x] Budget runs on laravel/framework, `main` and then the branch: hover 2.30 and 2.23
+      ms, completion 6.91 and 6.78 ms, diagnostics after an edit 210 and 209 ms (budget
+      300), index from an empty cache 1344 and 1373 ms (budget 30000), warm start 55 and
+      54 ms. Within what two runs differ by. The provider keeps a question only for
+      `find()`, `hasOne()`, `hasMany()` and `createObject()`; `get()`, `one()` and
+      `all()` are answered when an expression is typed, not kept in a summary.
+- [x] The advanced application template in the corpus (`yii-advanced`, 2.0.55): four
+      applications, each with its own views, controllers and parameters; the aliases of
+      its bootstrap file; the identity class; no Yii inspection in its 62 files.
+- [x] Parameters as names (`yiiParam`: `Yii::$app->params['adminEmail']`, and one below
+      another, `params['mail']['from']`): the string references read the keys of an
+      array access on a property of a class asked about (`CalleePattern::Read`, with the
+      keys read before in `CallTarget::Read`). A view's own `$this->params` isn't the
+      application's.
+- [x] A name in a view whose receiver is a variable the view is passed
+      (`$form->getAttributeLabel('email')`): `refs::sites_at` types a file's receivers
+      knowing its path. For every framework's views.
+- [x] A component, a module or a parameter several applications configure goes to the
+      asking application's own.
+- [x] Usages of a Symfony service or parameter inside a PHP configuration file
+      (`'@mailer'`, `'alias' => 'mailer'`, `'%app.locale%'`).
+
+- [x] A record's columns from the project's migrations (`frameworks/yii/migrations.rs`,
+      `PhpEngine::yii_tables()`): typed, completed, a target for goto, and attributes of
+      `yiiAttribute`. A migration is read again only when its file changes.
+- [x] `controllerMap`, the actions `actions()` lists, the routes of the URL manager's
+      rules and of a filter's `only`, `except` and `actions`. Where several applications
+      have the controller, a route is the one that has the action.
+- [x] Views where the configuration puts them: `viewPath`, `layoutPath`, the mailer's
+      `viewPath`, themes (`YiiProject::actual` and `logical`).
+- [x] Gettext catalogues (`.po`), the aliases of `vendor/yiisoft/extensions.php` and of
+      `Yii::setAlias()` in every file of `config/` and the entry scripts,
+      `Yii::createObject(['class' => …])`.
+- [x] Budgets again after these, on laravel/framework: hover 2.35 ms, completion 6.84 ms,
+      diagnostics after an edit 215 ms, index from an empty cache 1454 ms, warm start 55
+      ms. As before, within what two runs differ by.
+- [x] The end-to-end runner takes a relative `PHOXITE_SERVER` (it was read from the
+      project VS Code opened, where it names nothing).
+
+Nothing of the phase is open. Not run by hand in VS Code: the phase adds no client code
+and nothing to look at, and the end-to-end suite asks what the editor asks.
+
+What cannot be read without running the application (a table no migration makes,
+messages in a database, names built at run time) is at the end of `yii.md`.
 
 ## Phase 7 — CakePHP 4 and 5
 
@@ -501,7 +600,78 @@ Needs the PHP-array reader (phase 6; build it here if this phase comes first).
 - [ ] Names: events, template ids, layout handles and block names, config paths, ACL
       resources, module names, plugin methods.
 
-## Every framework phase (2–9) also delivers
+## Phase 10 — Joomla 6
+
+Needs the XML reader (phase 9; build it here if this phase comes first).
+
+The target is Joomla 6: 6.2.0 (13 October 2026) is the current release, on PHP 8.3 or
+later (looked up 2026-11-22; sources at the end of this phase). The fixture and the corpus
+are Joomla 6.2. Joomla 5.4 and 4 have the same namespaced API and extension layout, so
+most of this should work there, but nothing is checked on them. Joomla 3's unnamespaced
+classes (`JFactory`, `JText`) are left out unless asked for.
+
+What Joomla 6 changed that this phase follows:
+
+- `Table::getInstance('content')` is replaced by the class itself
+  (`new \Joomla\CMS\Table\Content($db)`), so a table is a plain `new`; the names to
+  resolve are those of the MVC factory (`createTable()`, `getTable()`).
+- `\Joomla\CMS\Input`, `\Joomla\CMS\Filesystem`, `BaseApplication` and `CliApplication`
+  are gone from the core (`\Joomla\Input`, `\Joomla\Filesystem`, `\Joomla\Application`
+  instead) and live on in the "Behaviour - Backward Compatibility 6" plugin, which an
+  upgraded site has enabled. Nothing to build: where the plugin's files are in the
+  project they are declarations the index has; where they aren't, the classes are
+  unknown, as they should be.
+- A plugin's `$app` property is gone: `$this->getApplication()` is what gets a type.
+- `AdminModel::getItem()` returns a `stdClass`, not a `CMSObject` (out of the core in
+  6.0, removed in 7.0): an item's fields can't be typed from the class, only from the
+  table's columns, where the table is known.
+- Events are classes: `onContentPrepare` is
+  `\Joomla\CMS\Event\Content\ContentPrepareEvent`, `onContentBeforeSave` is
+  `\Joomla\CMS\Event\Model\BeforeSaveEvent`. The manual lists the class per event and
+  gives no rule, so the map has to be read from the core (believed to be
+  `Joomla\CMS\Event\CoreEventAware`; check it in the corpus first).
+
+- [ ] Detection: no Composer package names a Joomla site or an extension opened on its
+      own, so by the files too (`libraries/src/Version.php`, an extension's manifest
+      XML).
+- [ ] An INI reader for the language files (`language/en-GB/*.ini`).
+- [ ] Types: `Factory::getApplication()` and what it hands out (`getIdentity()`,
+      `getInput()`, `getDocument()`); `bootComponent('com_content')` and
+      `getMVCFactory()`; `createModel('Article')`, `createTable()` and a controller's
+      `getModel()` by the component's namespace; `$container->get()` from the
+      `services/provider.php` files; `$this` in a view's `tmpl/*.php` and in a layout;
+      `$this->getApplication()` in a plugin; the parameter of a plugin's handler, where
+      nothing types it, from the event class of the name it subscribes to.
+- [ ] Classes of an extension opened on its own: the `<namespace path="src">` of its
+      manifest is a PSR-4 root (no `composer.json` names it), like CodeIgniter's
+      `$psr4`.
+- [ ] Names: language constants (`Text::_()`, `Text::sprintf()`, `Text::plural()`, and
+      the labels and descriptions in XML), layout ids
+      (`LayoutHelper::render('joomla.content.tags')`), view templates and their
+      overrides in a site template's `html/` folder, `HTMLHelper::_('behavior.core')`
+      keys, web asset names (`useScript()`, `useStyle()`, `usePreset()` from
+      `joomla.asset.json`), component, module and plugin names, plugin events
+      (dispatched, and the keys of `getSubscribedEvents()`, with goto to the event's
+      class and to the handler method its value names), ACL actions
+      (`authorise('core.edit')` from `access.xml`), form names and their fields
+      (`loadForm()`, `$form->getValue()` from the XML forms), parameters
+      (`$params->get()` from `config.xml` and the manifests), tables written with the
+      `#__` prefix and their columns, and `option`, `view` and `task` in a route string
+      (`Route::_('index.php?option=com_content&view=article')`).
+- [ ] The XML files as documents (manifests, forms, `access.xml`, `config.xml`), sent to
+      the server only in a Joomla project like Drupal's YAML: goto, hover, usages and
+      completion of the classes, language constants and field types they write.
+      `joomla.asset.json` too, for the asset names and their dependencies.
+
+Not planned: the JavaScript side that 6.1 and 6.2 added (the `media_source` builders,
+`Joomla.editorFilePickers`), and warnings for the classes Joomla 6 removed (they are
+unknown classes already, unless the compatibility plugin declares them).
+
+Sources: the roadmap (developer.joomla.org/roadmap.html) and the manual's upgrade notes
+(manual.joomla.org/updates/54-60, 60-61 and 61-62) and plugin events pages. The 6.1 and
+6.2 notes list no deprecations and no PHP API changes that touch this phase.
+
+## Every framework phase (2–10) also delivers
 
 - [ ] `frameworks/<name>/project.rs` and `frameworks/<name>/refs/`; a provider in
       `types/provider/<name>.rs`.

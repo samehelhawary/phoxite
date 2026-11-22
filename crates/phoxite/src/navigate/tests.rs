@@ -19,6 +19,7 @@ mod references;
 mod rename;
 mod symfony;
 mod wordpress;
+mod yii;
 
 const WAIT: Duration = Duration::from_secs(60);
 const CARET: &str = "/*|*/";

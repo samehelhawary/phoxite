@@ -92,6 +92,7 @@ impl Magic {
                 origin:
                     AttributeOrigin::Relation { method }
                     | AttributeOrigin::Accessor { method }
+                    | AttributeOrigin::Getter { method }
                     | AttributeOrigin::Count { method },
                 ..
             } => (class, method),
@@ -248,6 +249,7 @@ impl PhpEngine {
                     origin:
                         AttributeOrigin::Cast { source: Some(source), .. }
                         | AttributeOrigin::Column { source: Some(source), .. }
+                        | AttributeOrigin::Configured { source: Some(source), .. }
                         | AttributeOrigin::Rule { source: Some(source), .. },
                     ..
                 } = &magic.member.target

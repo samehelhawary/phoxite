@@ -46,6 +46,7 @@ pub use self::codeigniter::CodeIgniterProvider;
 pub use self::drupal::DrupalProvider;
 pub use self::laravel::LaravelProvider;
 pub use self::symfony::SymfonyProvider;
+pub use self::yii::YiiProvider;
 use super::ops::literal_type;
 use super::{Context, LazyType, Resolver, Type};
 use crate::meta::MetaProvider;
@@ -305,6 +306,12 @@ pub enum AttributeOrigin {
     /// A field a Form Request's `rules()` validates (`rules`: the rule
     /// names, pipe-joined).
     Rule { rules: String, source: Option<Source> },
+    /// A property read through the getter `method` (Yii's `$post->author`
+    /// is `getAuthor()`).
+    Getter { method: String },
+    /// What a configuration file declares (`what`: "Yii component"), where
+    /// it does.
+    Configured { what: String, source: Option<Source> },
 }
 
 /// A place in another file.
@@ -414,7 +421,8 @@ impl Default for TypeProviders {
     /// `.phpstorm.meta.php` overrides stay in its stored fallbacks),
     /// Symfony ([`SymfonyProvider`]: container and repository calls, its
     /// fallback what the others say), Drupal ([`DrupalProvider`]: services
-    /// and entity storages), `.phpstorm.meta.php`
+    /// and entity storages), CodeIgniter and Yii ([`CodeIgniterProvider`],
+    /// [`YiiProvider`]), `.phpstorm.meta.php`
     /// ([`MetaProvider`]: its fallback is what the others say), PHPUnit and
     /// the core.
     fn default() -> Self {
@@ -424,6 +432,7 @@ impl Default for TypeProviders {
         providers.register(CORE_ORDER - 25, Arc::new(SymfonyProvider));
         providers.register(CORE_ORDER - 24, Arc::new(DrupalProvider));
         providers.register(CORE_ORDER - 23, Arc::new(CodeIgniterProvider));
+        providers.register(CORE_ORDER - 22, Arc::new(YiiProvider));
         providers.register(CORE_ORDER - 10, Arc::new(PhpUnitProvider));
         providers.register(CORE_ORDER - 20, Arc::new(MetaProvider));
         providers
@@ -904,6 +913,7 @@ pub(crate) mod codeigniter;
 pub(crate) mod drupal;
 pub(crate) mod laravel;
 pub(crate) mod symfony;
+pub(crate) mod yii;
 
 #[cfg(test)]
 mod tests;

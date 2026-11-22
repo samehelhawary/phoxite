@@ -1,7 +1,7 @@
 # Phoxite for VS Code
 
 PHP code intelligence from a native engine written in Rust, with support for Laravel,
-Symfony, WordPress, Drupal, CodeIgniter and Twig: no PHP, Node.js or licence needed for
+Symfony, WordPress, Drupal, CodeIgniter, Yii and Twig: no PHP, Node.js or licence needed for
 any feature.
 
 ![Completion that follows an Eloquent model to its columns and relations](images/completion.gif)
@@ -235,6 +235,55 @@ In a CodeIgniter 3 application (`system/core/CodeIgniter.php`, or an `index.php`
   `->where('title', …)`
 - A view knows the variables `$this->load->view('name', array(...))` passes it
 
+## Yii
+
+In a Yii 2 application (`yiisoft/yii2` in Composer, or a `yii` script at the root):
+
+- Names with completion, Go to Definition, hover and Find All References:
+  - views (`$this->render('index')` in a controller, a view or a widget; `//site/about`,
+    `/layouts/main` and `@app/mail/hello` paths), layouts (`public $layout = 'main'`) and
+    mail views (`compose('welcome')`)
+  - routes (`Url::to(['post/view', 'id' => 1])`, `Url::toRoute()`, `redirect([...])`,
+    `Html::a($text, [...])`, `'url' => [...]` of a menu): the action's method, of this
+    controller for `['view']`, of a module for `['admin/user/index']`, of a controller
+    of `controllerMap`, or the key of an action listed by `actions()`; also in the URL
+    manager's `rules` and a filter's `only`, `except` and `actions`
+  - components (`Yii::$app->get('cache')`), modules (`getModule('admin')`) and parameters
+    (`Yii::$app->params['adminEmail']`, `Yii::$app->params['mail']['from']`), from the
+    configuration
+  - path aliases (`Yii::getAlias('@app/runtime')`), from the configuration, the
+    `Yii::setAlias()` calls of `config/` and the entry scripts, and the installed
+    extensions
+  - message categories and messages (`Yii::t('app', 'Hello')`), from the PHP files and
+    the gettext catalogues (`.po`) of `messages/<language>/`
+  - a model's attributes: in `rules()`, `attributeLabels()`, `attributeHints()` and
+    `scenarios()`, and in `getAttributeLabel()`, `hasErrors()`, `addError()`,
+    `getAttribute()`
+- Types: `Yii::$app->mailer` is the class the configuration gives the component, and
+  `Yii::$app->user->identity` your identity class; `Yii::createObject(Foo::class)` and
+  `Yii::$container->get(Foo::class)` are a `Foo`; `Post::find()->…->one()` is a `Post` or
+  null and `->all()` a list; a relation (`$post->author`, `$post->tags`) is the related
+  model or a list of them; a property read through a getter has the getter's type;
+  `Yii::createObject(['class' => Foo::class])` is a `Foo`
+- A record's columns, from your migrations (`createTable()`, `addColumn()`,
+  `renameColumn()`…): `$post->title` has the column's type, completes and goes to the
+  migration
+- Components after `Yii::$app->`, and the getters of your classes as properties, complete
+  and go to where they are declared
+- A view knows the variables `render()` passes it, with their types, and they aren't
+  reported as undefined; `$this` in a view is the view object
+- Warnings for a name that names nothing: `PhpUndefinedYiiView`, `PhpUndefinedYiiLayout`,
+  `PhpUndefinedYiiRoute` (the controller has no such action) and `PhpUnknownYiiAttribute`
+  (a form model has no such property)
+- Views where the configuration puts them: a `viewPath`, a `layoutPath`, the mailer's
+  `viewPath`, and a theme (the theme's file when it has one)
+- The basic and the advanced application templates: in the advanced one `frontend`,
+  `backend` and `console` each have their own controllers, views and parameters
+
+Not read, as they need the application to run: tables no migration of the project makes
+(declare the attributes with `@property`), messages kept in the database, and names
+built at run time.
+
 ## Drupal
 
 In a Drupal site, or a module or theme opened on its own (Drupal 8 and later; for Drupal
@@ -315,7 +364,7 @@ index, so it works in any folder.
 | `phoxite.stubs` | Extra extension stubs (`redis`, `swoole`…). |
 | `phoxite.exclude` | Globs left out of the index. |
 | `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`. A few are off until enabled here, as what they look for may be defined outside the project: `PhpUndefinedHook`, `PhpUndefinedCodeIgniterEvent`, `PhpUnknownCodeIgniterTable`, `PhpUnknownCodeIgniterColumn`. |
-| `phoxite.frameworks` | Each framework's support: `auto` (detected), `enabled` or `disabled`. Laravel, Symfony, WordPress, Drupal and CodeIgniter have support today. |
+| `phoxite.frameworks` | Each framework's support: `auto` (detected), `enabled` or `disabled`. Laravel, Symfony, WordPress, Drupal, CodeIgniter and Yii have support today. |
 | `phoxite.laravel.*` | Detection, route hints, modules, Inertia page folders. |
 | `phoxite.laravel.database` | A SQLite database to read columns from: `auto` (the one in `.env`) or a path. Empty: the migrations alone. |
 | `phoxite.laravel.artisanCommand` | How Artisan runs: `php artisan`, `./vendor/bin/sail artisan`… |

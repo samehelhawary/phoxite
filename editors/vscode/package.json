@@ -1,7 +1,7 @@
 {
   "name": "phoxite",
   "displayName": "Phoxite — PHP & Laravel IntelliSense",
-  "description": "PHP code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections, Laravel support (routes, views, config, translations, validation, Eloquent, Blade, generators, Artisan), Symfony, WordPress, Drupal and CodeIgniter names and types, and Twig templates.",
+  "description": "PHP code intelligence: completion, navigation, usages, rename, refactorings, formatting, inspections, Laravel support (routes, views, config, translations, validation, Eloquent, Blade, generators, Artisan), Symfony, WordPress, Drupal, CodeIgniter and Yii names and types, and Twig templates.",
   "version": "0.10.0",
   "publisher": "phoxite",
   "license": "Apache-2.0",
@@ -389,7 +389,7 @@
         "phoxite.frameworks": {
           "type": "object",
           "additionalProperties": false,
-          "markdownDescription": "Whether each framework's support is on: `auto` (when Composer installs the framework or one of its own files exists), `enabled` or `disabled`. `laravel` wins over `laravel.detection` unless it is `auto`. Laravel, Symfony, WordPress, Drupal and CodeIgniter have support today; the other names (`yii`, `cakephp`, `laminas`, `magento`) are read now and take effect as each framework's support is released.",
+          "markdownDescription": "Whether each framework's support is on: `auto` (when Composer installs the framework or one of its own files exists), `enabled` or `disabled`. `laravel` wins over `laravel.detection` unless it is `auto`. Laravel, Symfony, WordPress, Drupal, CodeIgniter and Yii have support today; the other names (`cakephp`, `laminas`, `magento`) are read now and take effect as each framework's support is released.",
           "properties": {
             "laravel": {
               "type": "string",

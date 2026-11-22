@@ -65,7 +65,9 @@ fn project(cx: &RefContext<'_>) -> Arc<SymfonyProject> {
 /// The most YAML files looked into for usages.
 const MAX_FILES: usize = 256;
 
-/// The YAML files below `dir`, sorted.
+/// The configuration files below `dir`, sorted: YAML, and PHP (a
+/// `services.php` returning an array writes `'@mailer'` and `'%app.locale%'`
+/// as YAML does).
 fn yaml_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     let mut entries: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
@@ -76,7 +78,7 @@ fn yaml_files(dir: &Path, out: &mut Vec<PathBuf>) {
         }
         if path.is_dir() {
             yaml_files(&path, out);
-        } else if matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml")) {
+        } else if matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml" | "php")) {
             out.push(path);
         }
     }
@@ -108,9 +110,20 @@ fn yaml_usages(cx: &RefContext<'_>, open: &[&str], name: &str, close: &str) -> V
                 from = end;
                 // After `@` or `%`; a key (`alias:`) is followed by the bare name, quoted or not.
                 let bare = line[..start].trim_end_matches(['\'', '"']).trim_end();
-                let opened = open
-                    .iter()
-                    .any(|open| if open.ends_with(':') { bare.ends_with(open) } else { line[..start].ends_with(open) });
+                // In PHP a key is `'alias' => 'name'`.
+                let php_key = |key: &str| {
+                    let key = key.trim_end_matches(':');
+                    bare.strip_suffix("=>").map(str::trim_end).is_some_and(|before| {
+                        before.strip_suffix(['\'', '"']).is_some_and(|before| before.ends_with(key))
+                    })
+                };
+                let opened = open.iter().any(|open| {
+                    if open.ends_with(':') {
+                        bare.ends_with(open) || php_key(open)
+                    } else {
+                        line[..start].ends_with(open)
+                    }
+                });
                 let closed =
                     if close.is_empty() { !line[end..].starts_with(is_name) } else { line[end..].starts_with(close) };
                 // `@@` is an escaped `@`, not a service.
