@@ -22,6 +22,9 @@ CORPORA=(
     "yii https://github.com/yiisoft/yii2-app-basic.git 2.0.55"
     "yii-framework https://github.com/yiisoft/yii2-framework.git 2.0.55"
     "yii-advanced https://github.com/yiisoft/yii2-app-advanced.git 2.0.55"
+    "cakephp https://github.com/cakephp/app.git 5.4.0"
+    "cakephp-framework https://github.com/cakephp/cakephp.git 5.4.4"
+    "cakephp4-framework https://github.com/cakephp/cakephp.git 4.6.6"
 )
 
 check=0
@@ -36,7 +39,7 @@ for name in "${wanted[@]}"; do
         [[ "${entry%% *}" == "$name" ]] && known=1
     done
     if ((!known)); then
-        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7|codeigniter|codeigniter3|yii|yii-framework|yii-advanced]..." >&2
+        echo "usage: $0 [--check] [laravel-framework|symfony|wordpress|drupal|drupal7|codeigniter|codeigniter3|yii|yii-framework|yii-advanced|cakephp|cakephp-framework|cakephp4-framework]..." >&2
         exit 2
     fi
 done

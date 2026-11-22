@@ -46,7 +46,7 @@ impl PhpEngine {
             return known.clone();
         }
         // While this view is worked out, a view asking again has none (a view rendering itself).
-        self.codeigniter_views_cache().lock().insert(path.to_path_buf(), (count, Arc::default()));
+        let Some(_working) = self.view_in_progress(path) else { return Arc::default() };
         let kind: &'static dyn ReferenceKind = &VIEW;
         let candidates = self.usage_candidates(kind, &name).unwrap_or_default();
         let open: Vec<_> = self.open_documents().into_iter().filter(|document| !document.embedded).collect();

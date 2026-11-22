@@ -1128,6 +1128,93 @@ const yiiChecks = [
   }],
 ];
 
+/** The checks of the CakePHP fixture (run.js opens it): an application on a stand-in API. */
+const CAKE_BOOKS = "src/Controller/BooksController.php";
+const CAKE_BOOK_LIST = "templates/Books/index.php";
+const cakeChecks = [
+  ["CakePHP: the project is named", async () => {
+    await open(CAKE_BOOKS);
+    await vscode.extensions.getExtension("phoxite.phoxite").activate();
+    const names = await until("the frameworks", async () => laravel().frameworks, (found) => found.length > 0);
+    assert.deepEqual([...names], ["CakePHP"]);
+    return names.join(", ");
+  }],
+  ["CakePHP: names go to what they name", async () => {
+    const found = {
+      table: await goes(CAKE_BOOKS, "fetchTable('Books')", 14),
+      "table of a plugin": await goes(CAKE_BOOKS, "fetchTable('Reviews.Reviews')", 22),
+      template: await goes(CAKE_BOOKS, "render('view')", 9),
+      layout: await goes(CAKE_BOOKS, "setLayout('default')", 12),
+      element: await goes(CAKE_BOOK_LIST, "element('book_row'", 12),
+      configuration: await goes(CAKE_BOOKS, "read('Library.name')", 16),
+      route: await goes(CAKE_BOOKS, "['_name' => 'home']", 14),
+      action: await goes(CAKE_BOOKS, "['action' => 'index']", 14),
+      controller: await goes(CAKE_BOOKS, "['controller' => 'Authors'", 18),
+      component: await goes("src/Controller/AppController.php", "loadComponent('Shelf')", 17),
+      association: await goes("src/Model/Table/BooksTable.php", "belongsTo('Authors')", 13),
+      message: await goes(CAKE_BOOKS, "__('The book has been saved.')", 8),
+      column: await goes("src/Model/Entity/Book.php", "$this->pages", 8),
+    };
+    assert.deepEqual(found, {
+      table: ["src/Model/Table/BooksTable.php:7"],
+      "table of a plugin": ["plugins/Reviews/src/Model/Table/ReviewsTable.php:7"],
+      template: ["templates/Books/view.php:1"],
+      layout: ["templates/layout/default.php:1"],
+      element: ["templates/element/book_row.php:1"],
+      configuration: ["config/app.php:11"],
+      route: ["config/routes.php:7"],
+      action: [`${CAKE_BOOKS}:10`],
+      controller: ["src/Controller/AuthorsController.php:5"],
+      component: ["src/Controller/Component/ShelfComponent.php:7"],
+      association: ["src/Model/Table/AuthorsTable.php:7"],
+      message: ["resources/locales/de/default.po:5"],
+      column: ["config/Migrations/20240101000000_CreateLibrary.php:16"],
+    });
+    const hover = await hoverAt(CAKE_BOOKS, "['action' => 'index']", 14);
+    assert.ok(hover.includes("action") && hover.includes("BooksController::index()"), hover);
+    return `${Object.keys(found).length} kinds`;
+  }],
+  ["CakePHP: names complete", async () => {
+    const tables = await completes(CAKE_BOOKS, "fetchTable('Books')", 12, "Books");
+    assert.ok(tables.includes("Authors") && tables.includes("Reviews.Reviews"), tables.join(", "));
+    const actions = await completes(CAKE_BOOKS, "['action' => 'index']", 14, "index");
+    assert.ok(actions.includes("add") && actions.includes("view"), actions.join(", "));
+    const templates = await completes(CAKE_BOOKS, "render('view')", 8, "view");
+    assert.ok(templates.includes("index"), templates.join(", "));
+    return `${tables.length} tables, ${actions.length} actions, ${templates.length} templates`;
+  }],
+  ["CakePHP: a name that names nothing is reported", async () => {
+    const document = await open(CAKE_BOOKS);
+    const edit = new vscode.WorkspaceEdit();
+    const at = document.getText().indexOf("render('view')");
+    edit.replace(document.uri, new vscode.Range(document.positionAt(at), document.positionAt(at + 14)), "render('nope')");
+    await vscode.workspace.applyEdit(edit);
+    const problems = await until(
+      "the missing template",
+      async () => vscode.languages.getDiagnostics(document.uri).map((problem) => problem.message),
+      (found) => found.some((message) => message.includes("nope")),
+    );
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    assert.deepEqual(problems, ["Unknown template 'nope'"]);
+    return problems.join("; ");
+  }],
+  ["CakePHP: components, entities and a template's variables are typed", async () => {
+    // A component of the class the controller extends, by its property.
+    assert.deepEqual(await goes(CAKE_BOOKS, "$this->Shelf->capacity()", 9), ["src/Controller/AppController.php:12"]);
+    assert.deepEqual(await goes(CAKE_BOOKS, "$this->Shelf->capacity()", 16), ["src/Controller/Component/ShelfComponent.php:9"]);
+    // In the template: what the action sets, the entity's own and what its table associates.
+    const template = "templates/Books/view.php";
+    assert.deepEqual(await goes(template, "$book->label()", 8), ["src/Model/Entity/Book.php:20"]);
+    const members = await completes(template, "$book->label()", 7, "label");
+    assert.ok(members.includes("author") && members.includes("title"), members.join(", "));
+    const helpers = await completes(template, "$this->Stars->show(", 7, "Stars");
+    assert.ok(helpers.includes("Html"), helpers.join(", "));
+    const problems = vscode.languages.getDiagnostics(file(template)).map((problem) => problem.message);
+    assert.deepEqual(problems, [], "a template's variables aren't undefined");
+    return `${members.filter((name) => ["author", "label", "title"].includes(name)).join(", ")}; no problems in the template`;
+  }],
+];
+
 /** The checks of the Symfony fixture (run.js opens it): an application on a stand-in API. */
 const BLOG = "src/Controller/BlogController.php";
 const SHOW = "templates/blog/show.html.twig";
@@ -1202,6 +1289,7 @@ exports.run = async function run() {
     drupal: drupalChecks,
     codeigniter: codeigniterChecks,
     yii: yiiChecks,
+    cakephp: cakeChecks,
     symfony: symfonyChecks,
   };
   const chosen = byMode[process.env.PHOXITE_E2E_MODE] ?? checks;

@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+- **CakePHP 4 and 5.** In a CakePHP application (Composer installs `cakephp/cakephp`, or
+  the project has `bin/cake`) the names its strings write are references: tables
+  (`fetchTable('Articles')`, `belongsTo('Authors')`, `'className' => 'Blog.Tags'` ↔
+  `ArticlesTable`), components (`loadComponent('Flash')`), helpers (`loadHelper('Form')`,
+  `$helpers`), behaviours (`addBehavior('Timestamp')`), associations
+  (`contain(['Authors', 'Comments.Users'])`), templates (`render('edit')`,
+  `setTemplate()`), layouts (`setLayout('admin')`), elements (`element('sidebar')`),
+  cells (`cell('Inbox::expanded')`), configuration keys (`Configure::read('App.encoding')`
+  ↔ `config/app.php`), named routes (`'_name' => 'login'`) and route arrays
+  (`['controller' => 'Articles', 'action' => 'view']`, `'Articles::view'` ↔
+  `ArticlesController::view()`, under the `prefix` and in the `plugin` beside them).
+  Plugin dot notation everywhere. Each completes, goes to what it names and has a hover
+  and Find References.
+  - Types: `fetchTable('Articles')` and `$this->Articles` in `ArticlesController` are
+    `ArticlesTable`; its `get()`, `newEmptyEntity()`, `save()` and `find()->first()` are
+    an `Article` (the entity of the table's name, or what `setEntityClass()` names),
+    `find()->toArray()` and `paginate()` hold them; `$this->Articles->Authors` is the
+    association and `AuthorsTable`; `$article->author` is an `Author` or null and
+    `$article->comments` a list; `$this->Flash` is the component the controller or
+    `AppController` loads; `$this->Html` in a template is the helper. They complete as
+    members and go to where they are loaded. CakePHP 5's own generics are kept where
+    they already say the class.
+  - A template has the variables its action sets (`set('article', $article)`,
+    `set(compact('article'))`), with their types, and what `beforeRender()` of
+    `AppController` sets; a cell's template and an element have theirs. `$this` in a
+    template is the application's `AppView`.
+  - Inspections for a name that names nothing: `PhpUndefinedCakeTemplate`,
+    `PhpUndefinedCakeLayout`, `PhpUndefinedCakeElement`, `PhpUndefinedCakeComponent`,
+    `PhpUndefinedCakeHelper`, `PhpUndefinedCakeBehavior` and `PhpUndefinedCakeAction`
+    (a controller without that method).
+  - An entity's fields come from the project's migrations (`config/Migrations`:
+    `$this->table('articles')->addColumn('views', 'integer')`, `renameColumn()`,
+    `removeColumn()`, `changeColumn()`, read in the order of the files, without running
+    them): `$article->views` has the column's type (a `datetime` is CakePHP's
+    `DateTime`), completes and goes to the migration.
+  - Translations are names: `__('Saved')` and `__d('shop', 'Cart')` go to the message in
+    `resources/locales/<language>/default.po` (or `shop.po`), complete, and show their
+    translations on hover.
+  - Templates are found where the code puts them: in a theme (`setTheme('Modern')`),
+    in a template path (`setTemplatePath('Common')`) and a layout path. The arrays of
+    `contain(['Comments' => ['Users']])` are followed. In a CakePHP 3 project, names find
+    the `.ctp` templates of `src/Template`.
+- **A view's variables could come back empty.** Two requests asking for the variables of
+  the same view at the same moment (a CodeIgniter, a Yii or a CakePHP view) could leave
+  one of them with none, until the next edit.
 - **Yii 2.** In a Yii application (Composer installs `yiisoft/yii2`, or the project has a
   `yii` script) the names its strings write are references: views (`render('index')` of a
   controller, a view or a widget, found as Yii finds them: beside the view,

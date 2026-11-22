@@ -192,105 +192,6 @@ fn namespace_alias(namespace: &str) -> String {
     format!("@{}", namespace.trim_matches('\\').replace('\\', "/"))
 }
 
-/// A message of a `.po` file: its category, its text, its translation, its line and columns.
-type PoMessage = (String, String, Option<String>, u32, (u32, u32));
-
-/// The messages of a `.po` file that have a context (Yii's category):
-/// `(category, message, translation, line, columns)`.
-fn po_messages(text: &str) -> Vec<PoMessage> {
-    fn quoted(line: &str) -> Option<(usize, usize)> {
-        let start = line.find('"')? + 1;
-        let end = line.rfind('"').filter(|end| *end >= start)?;
-        Some((start, end))
-    }
-    fn unescape(text: &str) -> String {
-        let mut out = String::new();
-        let mut chars = text.chars();
-        while let Some(c) = chars.next() {
-            if c != '\\' {
-                out.push(c);
-                continue;
-            }
-            match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some(other) => out.push(other),
-                None => {}
-            }
-        }
-        out
-    }
-    #[derive(PartialEq)]
-    enum Part {
-        None,
-        Context,
-        Id,
-        Translation,
-    }
-    let mut out = Vec::new();
-    let (mut context, mut id, mut translation) = (None::<String>, None::<String>, None::<String>);
-    let mut place = (0u32, (0u32, 0u32));
-    let mut part = Part::None;
-    let mut flush = |context: &mut Option<String>, id: &mut Option<String>, translation: &mut Option<String>, place| {
-        let (line, columns): (u32, (u32, u32)) = place;
-        if let (Some(context), Some(id)) = (context.take(), id.take())
-            && !id.is_empty()
-        {
-            out.push((context, id, translation.take().filter(|text| !text.is_empty()), line, columns));
-        }
-        *translation = None;
-    };
-    for (number, line) in text.lines().enumerate() {
-        let trimmed = line.trim_start();
-        let column = |byte: usize| line[..byte].encode_utf16().count() as u32;
-        let content = quoted(line).map(|(start, end)| (unescape(&line[start..end]), (column(start), column(end))));
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            if trimmed.is_empty() {
-                flush(&mut context, &mut id, &mut translation, place);
-                part = Part::None;
-            }
-            continue;
-        }
-        let Some((content, columns)) = content else { continue };
-        if trimmed.starts_with("msgctxt") {
-            flush(&mut context, &mut id, &mut translation, place);
-            context = Some(content);
-            part = Part::Context;
-        } else if trimmed.starts_with("msgid_plural") {
-            part = Part::None;
-        } else if trimmed.starts_with("msgid") {
-            if part != Part::Context {
-                flush(&mut context, &mut id, &mut translation, place);
-            }
-            id = Some(content);
-            place = (number as u32, columns);
-            part = Part::Id;
-        } else if trimmed.starts_with("msgstr") {
-            if translation.is_none() {
-                translation = Some(content);
-                part = Part::Translation;
-            } else {
-                part = Part::None;
-            }
-        } else if trimmed.starts_with('"') {
-            match part {
-                Part::Context => context.get_or_insert_with(String::new).push_str(&content),
-                Part::Id => {
-                    // `msgid ""` and the text on the lines after it.
-                    if id.as_deref() == Some("") {
-                        place = (number as u32, columns);
-                    }
-                    id.get_or_insert_with(String::new).push_str(&content);
-                }
-                Part::Translation => translation.get_or_insert_with(String::new).push_str(&content),
-                Part::None => {}
-            }
-        }
-    }
-    flush(&mut context, &mut id, &mut translation, place);
-    out
-}
-
 /// `PostComment` as an id: `post-comment`.
 pub fn id_of(name: &str) -> String {
     let mut out = String::new();
@@ -642,7 +543,8 @@ impl YiiProject {
             catalogues.sort();
             for file in catalogues.into_iter().take(32) {
                 let Some(text) = text_of(&file) else { continue };
-                for (category, message, translation, line, (start, end)) in po_messages(&text) {
+                for (category, message, translation, line, (start, end)) in crate::frameworks::po::messages(&text) {
+                    let Some(category) = category else { continue };
                     self.messages.push(Message {
                         category,
                         message,

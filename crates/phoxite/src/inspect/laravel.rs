@@ -35,7 +35,8 @@
 //!
 //! - `PhpUndefinedTemplate` (Symfony) and `PhpUndefinedHook` (WordPress,
 //!   off by default) are of the other frameworks' kinds, as are
-//!   CodeIgniter's eight ([`CODEIGNITER`]), Yii's four ([`YII`]).
+//!   CodeIgniter's eight ([`CODEIGNITER`]), Yii's four ([`YII`]), CakePHP's seven
+//!   ([`CAKEPHP`]).
 //!
 //! They run only while the indexes are ready, each in projects of its
 //! framework.
@@ -62,7 +63,20 @@ type Inspections = &'static [(&'static str, &'static dyn ReferenceKind)];
 /// …" inspections of its own adds its list here. A kind is only asked in a
 /// project of its framework ([`crate::frameworks::refs::kinds_for`]), so an
 /// inspection reports nothing elsewhere.
-const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER, YII];
+const INSPECTIONS: &[Inspections] = &[LARAVEL, SYMFONY, WORDPRESS, CODEIGNITER, YII, CAKEPHP];
+
+/// CakePHP's: a template, a layout or an element whose file isn't there, a
+/// component, a helper or a behaviour no class is of, an action its
+/// controller doesn't have.
+const CAKEPHP: Inspections = &[
+    ("PhpUndefinedCakeTemplate", &crate::frameworks::cakephp::refs::TEMPLATE),
+    ("PhpUndefinedCakeLayout", &crate::frameworks::cakephp::refs::LAYOUT),
+    ("PhpUndefinedCakeElement", &crate::frameworks::cakephp::refs::ELEMENT),
+    ("PhpUndefinedCakeComponent", &crate::frameworks::cakephp::refs::COMPONENT),
+    ("PhpUndefinedCakeHelper", &crate::frameworks::cakephp::refs::HELPER),
+    ("PhpUndefinedCakeBehavior", &crate::frameworks::cakephp::refs::BEHAVIOR),
+    ("PhpUndefinedCakeAction", &crate::frameworks::cakephp::refs::ACTION),
+];
 
 /// Yii's: a view whose file isn't there, a route whose controller has no
 /// such action, an attribute a form model doesn't have.

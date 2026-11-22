@@ -1049,7 +1049,9 @@ fn call_target<'a>(
             }
             if let Type::Named { fqn, .. } = arg
                 && let Some(model) = resolver.class_model(fqn)
-                && model.is_subclass_of(super::laravel::refs::eloquent::MODEL)
+                // (An Eloquent model, or the entity of a CakePHP query.)
+                && (model.is_subclass_of(super::laravel::refs::eloquent::MODEL)
+                    || model.is_subclass_of(super::cakephp::classes::ENTITY_INTERFACE))
                 && !models.iter().any(|known| known == model.fqn())
             {
                 models.push(model.fqn().to_owned());
@@ -1099,6 +1101,9 @@ pub struct SiteInfo {
     /// The key of the string's entry in the argument's array, when it sits
     /// in one (`'title'` for `['title' => 'required']`).
     pub key: Option<String>,
+    /// The string keys of the arrays the string sits in, from the argument
+    /// down: `Comments` for `'Users'` in `['Comments' => ['Users']]`.
+    pub keys: Vec<String>,
     /// [`StringSite::next_argument`].
     pub next_argument: Vec<String>,
     /// [`StringSite::first_argument`].
@@ -1399,6 +1404,7 @@ pub fn framework_kinds(framework: super::Framework) -> &'static [&'static dyn Re
         super::Framework::Drupal => super::drupal::refs::kinds(),
         super::Framework::CodeIgniter => super::codeigniter::refs::kinds(),
         super::Framework::Yii => super::yii::refs::kinds(),
+        super::Framework::CakePhp => super::cakephp::refs::kinds(),
         _ => &[],
     }
 }
@@ -1585,6 +1591,14 @@ impl PhpEngine {
             class,
             call: Some((site.target.clone(), site.call)),
             key,
+            keys: site
+                .steps
+                .iter()
+                .filter_map(|step| match step {
+                    ArrayStep::Value(Some(key)) => Some(key.clone()),
+                    _ => None,
+                })
+                .collect(),
             next_argument: site.next_argument.clone(),
             first_argument: site.first_argument.clone(),
             rule: rule.cloned(),

@@ -9,12 +9,14 @@
 //! knows about the whole project lives here. `docs/engine/frameworks.md`
 //! says how a framework is added.
 
+pub mod cakephp;
 pub mod codeigniter;
 pub mod detect;
 pub mod drupal;
 pub mod laravel;
 pub mod names;
 pub mod php_array;
+pub mod po;
 pub mod refs;
 pub mod symfony;
 pub mod wordpress;

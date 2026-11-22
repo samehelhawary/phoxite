@@ -1521,7 +1521,7 @@ impl<'a, 'r> ExprTypes<'a, 'r> {
             core: &core,
             next: NO_NEXT,
         };
-        match self.resolver.providers().call(&site) {
+        match self.resolver.providers().call_in(&site, self.resolver) {
             LazyType::Known(ty) => ty,
             lazy => self.resolver.resolve(&lazy, context),
         }

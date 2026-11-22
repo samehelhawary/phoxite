@@ -42,6 +42,7 @@ use mago_syntax::cst::{
     Access, Argument, ArgumentList, ArrayElement, Call, ClassLikeConstantSelector, ClassLikeMemberSelector, Expression,
 };
 
+pub use self::cakephp::CakePhpProvider;
 pub use self::codeigniter::CodeIgniterProvider;
 pub use self::drupal::DrupalProvider;
 pub use self::laravel::LaravelProvider;
@@ -326,6 +327,14 @@ pub trait TypeProvider: Send + Sync {
     /// Identifies the provider's payloads ([`LazyType::Provided`]'s `key`).
     fn key(&self) -> &'static str;
 
+    /// Whether the provider has anything to say in the project `resolver`
+    /// looks up: one that answers for method names every project has
+    /// (`get()`, `find()`) says no outside its framework, and isn't asked
+    /// about the calls of an expression there.
+    fn applies(&self, _resolver: &Resolver<'_>) -> bool {
+        true
+    }
+
     /// Local step for a call: `None` lets the next provider answer.
     fn call(&self, _site: &CallSite<'_>) -> Option<LazyType> {
         None
@@ -433,6 +442,7 @@ impl Default for TypeProviders {
         providers.register(CORE_ORDER - 24, Arc::new(DrupalProvider));
         providers.register(CORE_ORDER - 23, Arc::new(CodeIgniterProvider));
         providers.register(CORE_ORDER - 22, Arc::new(YiiProvider));
+        providers.register(CORE_ORDER - 21, Arc::new(CakePhpProvider));
         providers.register(CORE_ORDER - 10, Arc::new(PhpUnitProvider));
         providers.register(CORE_ORDER - 20, Arc::new(MetaProvider));
         providers
@@ -472,12 +482,21 @@ impl TypeProviders {
     /// The first local answer for a call; `mixed` when none. Each provider
     /// sees what the ones after it say as [`CallSite::next`].
     pub fn call(&self, site: &CallSite<'_>) -> LazyType {
-        self.call_from(0, site)
+        self.call_from(0, site, None)
     }
 
-    fn call_from(&self, start: usize, site: &CallSite<'_>) -> LazyType {
+    /// [`call`](Self::call), asking only the providers that apply in the
+    /// project of `resolver` ([`TypeProvider::applies`]).
+    pub fn call_in(&self, site: &CallSite<'_>, resolver: &Resolver<'_>) -> LazyType {
+        self.call_from(0, site, Some(resolver))
+    }
+
+    fn call_from(&self, start: usize, site: &CallSite<'_>, resolver: Option<&Resolver<'_>>) -> LazyType {
         for (i, (_, provider)) in self.providers.iter().enumerate().skip(start) {
-            let next = || self.call_from(i + 1, site);
+            if resolver.is_some_and(|resolver| !provider.applies(resolver)) {
+                continue;
+            }
+            let next = || self.call_from(i + 1, site, resolver);
             let local = CallSite { next: &next, ..*site };
             if let Some(answer) = provider.call(&local) {
                 return answer;
@@ -909,6 +928,7 @@ impl TypeProvider for PhpUnitProvider {
     }
 }
 
+pub(crate) mod cakephp;
 pub(crate) mod codeigniter;
 pub(crate) mod drupal;
 pub(crate) mod laravel;

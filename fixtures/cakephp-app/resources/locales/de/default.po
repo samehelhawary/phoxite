@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Language: de\n"
+
+msgid "The book has been saved."
+msgstr "Das Buch wurde gespeichert."
+
+msgid "Add a book"
+msgstr "Ein Buch hinzufügen"

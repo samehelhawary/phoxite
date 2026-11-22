@@ -430,6 +430,13 @@ fn replacing_the_inspections_runs_them_again() {
             "PhpUndefinedYiiLayout",
             "PhpUndefinedYiiRoute",
             "PhpUnknownYiiAttribute",
+            "PhpUndefinedCakeTemplate",
+            "PhpUndefinedCakeLayout",
+            "PhpUndefinedCakeElement",
+            "PhpUndefinedCakeComponent",
+            "PhpUndefinedCakeHelper",
+            "PhpUndefinedCakeBehavior",
+            "PhpUndefinedCakeAction",
         ]
     );
 }

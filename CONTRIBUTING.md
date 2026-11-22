@@ -45,7 +45,7 @@ PHOXITE_SERVER=../../target/debug/phoxite-lsp npm run test:e2e
 ```
 
 It opens VS Code once per part: the Laravel fixture (`one-project`, `two-projects`) and
-the `wordpress`, `drupal`, `codeigniter`, `yii` and `symfony` fixtures.
+the `wordpress`, `drupal`, `codeigniter`, `yii`, `cakephp` and `symfony` fixtures.
 `PHOXITE_E2E_ONLY=symfony` runs one part alone.
 
 CI runs the first two blocks on every pull request; run them before you push.
@@ -56,7 +56,7 @@ in bash and need git; the second also needs PHP and Composer, and on Windows dow
 portable PHP when there is none. `--check` says what is missing without fetching:
 
 ```sh
-scripts/php-corpus.sh     # laravel/framework, symfony, WordPress, Drupal, CodeIgniter, Yii
+scripts/php-corpus.sh     # laravel/framework, symfony, WordPress, Drupal, CodeIgniter, Yii, CakePHP
 scripts/laravel-apps.sh   # two Laravel applications with their vendor/, for LARAVEL_APP_DIR
 cargo test -p phoxite --release --test undefined_symbols -- --ignored --nocapture
 ```

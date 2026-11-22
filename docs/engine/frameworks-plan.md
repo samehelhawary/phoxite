@@ -22,7 +22,7 @@ Last updated: 2026-11-22.
 | 4 | Drupal | Done |
 | 5 | CodeIgniter (4, and 3) | Done |
 | 6 | Yii 2 | Done |
-| 7 | CakePHP 4 and 5 | Not started |
+| 7 | CakePHP 4 and 5 | Done |
 | 8 | Laminas (MVC and Mezzio) | Not started |
 | 9 | Magento 2 | Not started |
 | 10 | Joomla 6 | Not started |
@@ -578,10 +578,87 @@ messages in a database, names built at run time) is at the end of `yii.md`.
 
 ## Phase 7 — CakePHP 4 and 5
 
-- [ ] Types: `fetchTable()` and `TableRegistry`, association properties, `loadComponent()`,
-      view helpers, `$this` in templates, entity classes.
-- [ ] Names: table aliases, component, helper and behaviour names, templates and elements,
-      plugin dot notation, `Configure::read()` keys, route arrays.
+On branch `cakephp`. See `cakephp.md`.
+
+- [x] Detection by `bin/cake` and `vendor/cakephp/cakephp/VERSION.txt` too.
+- [x] The project model (`frameworks/cakephp/project.rs`, `PhpEngine::cake()`): the
+      application's namespace, plugins (the application's and Composer's), the
+      configuration's keys as dotted paths, named routes; where a template is from who
+      asks for it.
+- [x] The conventions (`classes.rs`, `inflect.rs`): the class a table's, a component's,
+      a helper's, a behaviour's, a cell's and a controller's name stands for, plugin dot
+      notation, a table's entity and an entity's table. The plural and singular rules
+      are written for this engine; every guess is checked against the project's classes.
+- [x] What a class's code says it loads (`facts.rs`, `PhpEngine::cake_facts()`):
+      components, helpers, behaviours, associations, the entity class, the default
+      table; the class's own and those of the project's classes it extends.
+- [x] Types (`types/provider/cakephp.rs`): `fetchTable()`, a locator's `get()`,
+      `loadModel()`, a controller's table property; a table's entity from `get()`,
+      `newEntity()`, `save()` and the like, a query of it and what it finds,
+      `paginate()`; association properties of a table and of an entity; a controller's
+      components, a view's helpers, `getBehavior()`. All of them members for completion,
+      hover and goto. CakePHP 5's own generics are kept where they name a class of the
+      project.
+- [x] Names (`frameworks/cakephp/refs.rs`, 16 kinds with the two of translations): tables, components, helpers,
+      behaviours, associations (`contain()`), templates, layouts, elements, cells,
+      configuration keys, and route arrays: controllers, actions, plugins, named routes.
+- [x] A template's variables from the action setting them, a cell's and a mailer's, an
+      element's from `element()`; `$this` in a template (`frameworks/cakephp/views.rs`).
+- [x] Seven "unknown name" inspections: `PhpUndefinedCakeTemplate`,
+      `PhpUndefinedCakeLayout`, `PhpUndefinedCakeElement`, `PhpUndefinedCakeComponent`,
+      `PhpUndefinedCakeHelper`, `PhpUndefinedCakeBehavior`, `PhpUndefinedCakeAction`.
+- [x] Engine tests (`navigate/tests/cakephp.rs`), `fixtures/cakephp-app` with
+      `tests/cakephp_fixture.rs`, the server's test, a CakePHP part of the VS Code
+      end-to-end suite (`cakeChecks`, 5 checks; `PHOXITE_E2E_ONLY=cakephp`).
+- [x] The corpus: `scripts/php-corpus.sh cakephp cakephp-framework cakephp4-framework`
+      (the application skeleton 5.4.0, CakePHP 5.4.4 and 4.6.6) and
+      `tests/cakephp_corpus.rs`. The fixture application, without its stand-in, on each
+      real framework: every name resolves, tables, entities, components and helpers are
+      typed, and no inspection of any kind reports anything in its 24 files. In the
+      skeleton the CakePHP inspections report nothing; it found that CakePHP has
+      layouts and elements of its own (`dev_error`), which are now looked for last.
+- [x] `SCHEMA_VERSION` 55: a summary keeps the question of `fetchTable()`,
+      `loadModel()`, `getBehavior()`, `loadComponent()` and `loadHelper()`
+      for the CakePHP provider. The rest (`get()`, `find()`, `first()`…) is answered
+      when an expression is typed, not kept.
+- [x] Budgets on laravel/framework, the phase 6 commit and then this branch, run one
+      after the other: hover 2.30 and 2.31 ms, completion 6.79 and 6.82 ms, diagnostics
+      after an edit 217 and 224 ms, index from an empty cache 1430 and 1436 ms, warm start
+      58 and 57 ms. The first run of the branch was slower (hover 2.9 ms, completion 8.9
+      ms): the provider answers for method names every project has (`get()`, `find()`,
+      `first()`), so it was asked, and asked whether the project is a CakePHP one, for
+      every call. A provider now says whether it applies to the project
+      (`TypeProvider::applies`, asked through `TypeProviders::call_in`), and the resolver
+      asks for the CakePHP project once.
+- [x] `docs/engine/cakephp.md`, README, `editors/vscode/README.md`, both changelogs.
+
+- [x] An entity's fields from the project's migrations
+      (`frameworks/cakephp/migrations.rs`, `PhpEngine::cake_tables()`): typed (dates as
+      CakePHP's own classes), completed, a target for goto.
+- [x] Translations: `cakeMessage` and `cakeDomain` (`__()`, `__d()` and their kin ↔ the
+      `.po` files of `resources/locales`). The gettext reader is shared with Yii
+      (`frameworks/po.rs`).
+- [x] Themes (`setTheme()`), `setTemplatePath()` and `setLayoutPath()`, read from the
+      class asking, the classes it extends, `AppController` and `AppView`.
+- [x] The arrays of `contain(['Comments' => ['Users']])`: a string site knows the keys
+      above it (`SiteInfo::keys`).
+- [x] CakePHP 3's layout for names: `src/Template`, `.ctp`, `src/Locale`.
+- [x] A race in every framework's view variables: while one thread worked a view's
+      variables out, another asking got the empty placeholder left in the cache. A view
+      being worked out is now marked per thread (`PhpEngine::view_in_progress`); it
+      showed as a test of this phase failing once in several runs.
+
+- [x] Budgets once more, the phase 6 commit and then this branch: hover 2.35 and 2.27 ms,
+      completion 6.89 and 6.89 ms, diagnostics after an edit 223 and 215 ms, index from
+      an empty cache 1443 and 1459 ms, warm start 58 and 56 ms. A second slowdown came
+      up on the way (hover 3.0 ms, index 1650 ms): the provider's question whether the
+      project is a CakePHP one went through `PhpEngine::frameworks()`, which looks
+      Symfony's bundle class up again whenever the index changes. The providers' hooks
+      (CakePHP's and Yii's) now ask `detected_frameworks()`, the files' answer alone.
+
+Nothing of the phase is open. What cannot be read without running the application (a
+table no migration makes, names built at run time, another view class's templates) is at
+the end of `cakephp.md`.
 
 ## Phase 8 — Laminas (MVC and Mezzio)
 

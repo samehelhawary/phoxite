@@ -284,6 +284,52 @@ Not read, as they need the application to run: tables no migration of the projec
 (declare the attributes with `@property`), messages kept in the database, and names
 built at run time.
 
+## CakePHP
+
+In a CakePHP 4 or 5 application (`cakephp/cakephp` in Composer, or a `bin/cake` script):
+
+- Names with completion, Go to Definition, hover and Find All References:
+  - tables (`fetchTable('Articles')`, `belongsTo('Authors')`, `'className' => 'Blog.Tags'`),
+    components (`loadComponent('Flash')`), helpers (`loadHelper('Form')`, `$helpers`) and
+    behaviours (`addBehavior('Timestamp')`): the class of that name in your application,
+    in the plugin named (`Blog.Tags`) or in CakePHP
+  - associations (`contain(['Authors', 'Comments.Users'])`, `matching()`,
+    `getAssociation()`): where the table declares them
+  - templates (`$this->render('edit')`, `setTemplate()`), layouts (`setLayout('admin')`),
+    elements (`$this->element('sidebar')`) and cells (`$this->cell('Inbox::expanded')`)
+  - configuration keys (`Configure::read('App.encoding')`), from `config/app.php`,
+    `app_local.php` and the files `bootstrap.php` loads
+  - route arrays (`['controller' => 'Articles', 'action' => 'view']`, with `prefix` and
+    `plugin`), `'Articles::view'` in `config/routes.php`, and named routes
+    (`'_name' => 'login'`)
+  - translations (`__('Saved')`, `__d('shop', 'Cart')`), from the `.po` files of
+    `resources/locales`
+- Types: `fetchTable('Articles')` and `$this->Articles` in `ArticlesController` are your
+  `ArticlesTable`; `get()`, `newEmptyEntity()`, `save()` and `find()->first()` give its
+  entity (`Article`, or what `setEntityClass()` names), `toArray()` and `paginate()` hold
+  them; `$this->Articles->Authors` is the associated table, `$article->author` the
+  associated entity and `$article->comments` a list; `$this->Flash` is the component
+  your controller or `AppController` loads; `$this->Html` in a template is the helper
+- An entity's fields, from your migrations (`config/Migrations`: `addColumn()`,
+  `renameColumn()`, `removeColumn()`…): `$article->views` has the column's type,
+  completes and goes to the migration
+- Components, tables, associations and helpers complete after `->` and go to where they
+  are loaded
+- A template knows the variables its action sets (`$this->set('article', $article)`,
+  `set(compact('article'))`), with their types; so do a cell's template and an element.
+  `$this` in a template is your `AppView`
+- Warnings for a name that names nothing: `PhpUndefinedCakeTemplate`,
+  `PhpUndefinedCakeLayout`, `PhpUndefinedCakeElement`, `PhpUndefinedCakeComponent`,
+  `PhpUndefinedCakeHelper`, `PhpUndefinedCakeBehavior` and `PhpUndefinedCakeAction`
+  (the controller has no such method)
+- Templates where the code puts them: a theme (`setTheme('Modern')`), a template path
+  (`setTemplatePath('Common')`), a layout path
+- Plugins: the ones of `plugins/` and the ones Composer installed
+
+Not read, as they need the application to run: tables no migration of the project makes
+(keep the `@property` tags `bake` writes), and names built at run time. In a CakePHP 3
+project names find the `.ctp` templates, but nothing is offered inside a `.ctp` file.
+
 ## Drupal
 
 In a Drupal site, or a module or theme opened on its own (Drupal 8 and later; for Drupal

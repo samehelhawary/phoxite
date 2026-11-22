@@ -734,14 +734,14 @@ fn each_item<'a>(types: &ExprTypes<'a, '_>, list: &'a ArgumentList<'a>, index: u
     out.push((name, value.widen()));
 }
 
-fn type_of<'a>(types: &ExprTypes<'a, '_>, expr: &'a Expression<'a>) -> Type {
+pub(crate) fn type_of<'a>(types: &ExprTypes<'a, '_>, expr: &'a Expression<'a>) -> Type {
     let frames = types.find(expr.span().start.offset).map(|(_, frames)| frames).unwrap_or_default();
     types.type_of(expr, &frames).widen()
 }
 
 /// The variables of a data argument: an array literal's string keys, or
 /// `compact()`'s names.
-fn data<'a>(types: &ExprTypes<'a, '_>, expr: &'a Expression<'a>, out: &mut Vec<(String, Type)>) {
+pub(crate) fn data<'a>(types: &ExprTypes<'a, '_>, expr: &'a Expression<'a>, out: &mut Vec<(String, Type)>) {
     match expr {
         Expression::Parenthesized(inner) => data(types, inner.expression, out),
         Expression::Array(_) | Expression::LegacyArray(_) => {

@@ -652,6 +652,48 @@ fn a_yii_application_names_its_views_and_types_them() {
 }
 
 #[test]
+fn a_cakephp_application_names_its_templates_and_types_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    copy_dir(&fixture("cakephp-app"), &root);
+    let controller = root.join("src/Controller/BooksController.php");
+    let template = root.join("templates/Books/index.php");
+    let mut c = Client::start(&root);
+    let uri = c.open(&controller, "php");
+    let filled = |v: &Value| v.as_array().is_some_and(|a| !a.is_empty());
+
+    // A template's name goes to its file, a table's to its class, an action to its method.
+    let (line, col) = find(&controller, "render('view')", 9);
+    let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), filled);
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("templates/Books/view.php")), "{found}");
+    let (line, col) = find(&controller, "fetchTable('Books')", 14);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Model/Table/BooksTable.php")), "{found}");
+    let items = c.request::<r::Completion>(at(&uri, line, col)).to_string();
+    assert!(items.contains("\"Books\"") && items.contains("BooksTable"), "{items}");
+    let (line, col) = find(&controller, "['controller' => 'Authors', 'action' => 'view'", 42);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Controller/AuthorsController.php")), "{found}");
+    // A component of the class the controller extends goes to where it is loaded.
+    let (line, col) = find(&controller, "$this->Shelf->capacity()", 9);
+    let found = c.request::<r::GotoDefinition>(at(&uri, line, col));
+    assert!(found[0]["uri"].as_str().is_some_and(|uri| uri.ends_with("Controller/AppController.php")), "{found}");
+
+    // The template has what the action sets, with its type.
+    let page = c.open(&template, "php");
+    let (line, col) = find(&template, "<?= $heading ?>", 5);
+    let hover = c.request_until::<r::HoverRequest>(at(&page, line, col), |v| v.to_string().contains("$heading"));
+    assert!(hover.to_string().contains("$heading"), "{hover}");
+    let (line, col) = find(&template, "<?= $capacity ?>", 5);
+    let hover = c.request::<r::HoverRequest>(at(&page, line, col));
+    assert!(hover.to_string().contains("int"), "{hover}");
+
+    let status = c.call(crate::laravel::STATUS, json!({})).expect("answered");
+    assert_eq!(status["frameworks"], json!(["CakePHP"]), "{status}");
+    c.shutdown();
+}
+
+#[test]
 fn a_twig_template_names_routes_and_templates_of_a_symfony_project() {
     let (_dir, root) = symfony_project();
     let layout = root.join("templates/base.html.twig");

@@ -9,6 +9,7 @@ use crate::project::LayoutConfig;
 use crate::stubs::StubFilter;
 use crate::syntax::{LineIndex, ParsedFile};
 
+mod cakephp;
 mod callables;
 mod codeigniter;
 mod drupal;

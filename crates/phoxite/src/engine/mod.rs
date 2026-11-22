@@ -84,6 +84,18 @@ pub const SERVER_NAME: &str = "PHP (native)";
 /// index database.
 pub const CACHE_SUBDIR: &str = "php";
 
+/// See [`PhpEngine::view_in_progress`].
+pub(crate) struct ViewInProgress<'e> {
+    engine: &'e PhpEngine,
+    key: (PathBuf, std::thread::ThreadId),
+}
+
+impl Drop for ViewInProgress<'_> {
+    fn drop(&mut self) {
+        self.engine.shared.views_in_progress.lock().remove(&self.key);
+    }
+}
+
 /// A view's variables by its path, with the edit count they were read at.
 pub(crate) type TypedViewVariables = Mutex<HashMap<PathBuf, (u64, Arc<Vec<(String, Type)>>)>>;
 
@@ -239,12 +251,24 @@ struct Shared {
     symfony_config: Mutex<Option<Arc<SymfonyConfig>>>,
     /// What a CodeIgniter project's files declare, for an edit count.
     codeigniter: Mutex<Option<(u64, Arc<crate::frameworks::codeigniter::CodeIgniterProject>)>>,
+    /// What a CakePHP project's files say, for an edit count.
+    cake: Mutex<Option<(u64, Arc<crate::frameworks::cakephp::CakeProject>)>>,
+    /// What the code of each class of a CakePHP project says it loads, for
+    /// an edit count.
+    cake_facts: Mutex<HashMap<String, (u64, Arc<crate::frameworks::cakephp::facts::ClassFacts>)>>,
+    /// The tables the migrations of a CakePHP project make.
+    cake_tables: Mutex<crate::frameworks::cakephp::migrations::TableCache>,
+    /// What each template of a CakePHP project is given, for an edit count.
+    cake_views: TypedViewVariables,
     /// What a Yii project's configuration says, for an edit count.
     yii: Mutex<Option<(u64, Arc<crate::frameworks::yii::YiiProject>)>>,
     /// What each view of a Yii project is passed, for an edit count.
     yii_views: TypedViewVariables,
     /// The tables the migrations of a Yii project make.
     yii_tables: Mutex<crate::frameworks::yii::migrations::TableCache>,
+    /// The views whose variables a thread is working out: a view asking for
+    /// its own (one rendering itself) has none meanwhile.
+    views_in_progress: Mutex<std::collections::HashSet<(PathBuf, std::thread::ThreadId)>>,
     /// What each view of a CodeIgniter project is passed, for an edit count.
     codeigniter_views: TypedViewVariables,
     /// What a Drupal project's YAML files declare, until one changes.
@@ -500,10 +524,15 @@ impl PhpEngine {
             symfony_config: Mutex::new(None),
             drupal: Mutex::new(None),
             codeigniter: Mutex::new(None),
+            cake: Mutex::new(None),
+            cake_facts: Mutex::new(HashMap::new()),
+            cake_views: Mutex::new(HashMap::new()),
+            cake_tables: Mutex::default(),
             yii: Mutex::new(None),
             yii_views: Mutex::new(HashMap::new()),
             yii_tables: Mutex::default(),
             codeigniter_views: Mutex::new(HashMap::new()),
+            views_in_progress: Mutex::default(),
             framework_settings: Mutex::new(FrameworkSettings::default()),
             frameworks: Mutex::new(None),
             template_texts: Mutex::new(HashMap::new()),
@@ -983,6 +1012,71 @@ impl PhpEngine {
         project
     }
 
+    /// What the files of a CakePHP project say
+    /// ([`CakeProject`](crate::frameworks::cakephp::CakeProject)): its
+    /// namespace, plugins, configuration and named routes.
+    pub fn cake(&self) -> Arc<crate::frameworks::cakephp::CakeProject> {
+        let count = self.edit_count();
+        if let Some((at, project)) = self.shared.cake.lock().clone()
+            && at == count
+        {
+            return project;
+        }
+        let root = self.shared.layout_config.lock().root.clone();
+        let text_of = |path: &Path| match self.open_document(path) {
+            Some(document) => Some(document.text.to_string()),
+            None => std::fs::read_to_string(path).ok(),
+        };
+        let project = Arc::new(crate::frameworks::cakephp::CakeProject::load(&root, text_of));
+        *self.shared.cake.lock() = Some((count, project.clone()));
+        project
+    }
+
+    /// What the code of the class `class` says it loads
+    /// ([`ClassFacts`](crate::frameworks::cakephp::facts::ClassFacts)), for
+    /// an edit count.
+    pub fn cake_facts(&self, class: &str) -> Option<Arc<crate::frameworks::cakephp::facts::ClassFacts>> {
+        let count = self.edit_count();
+        if let Some((at, facts)) = self.shared.cake_facts.lock().get(class)
+            && *at == count
+        {
+            return Some(facts.clone());
+        }
+        let path = self.class_targets(class).into_iter().next()?.path;
+        let text = match self.open_document(&path) {
+            Some(document) => document.text.to_string(),
+            None => std::fs::read_to_string(&path).ok()?,
+        };
+        let short = class.rsplit(|c: char| !c.is_ascii_alphanumeric() && c != '_').next()?;
+        let facts = Arc::new(crate::frameworks::cakephp::facts::read(&path, text, short));
+        self.shared.cake_facts.lock().insert(class.to_owned(), (count, facts.clone()));
+        Some(facts)
+    }
+
+    /// The tables the migrations of a CakePHP project make
+    /// ([`crate::frameworks::cakephp::migrations`]), for an edit count; a
+    /// migration is read again when its file changes.
+    pub fn cake_tables(&self) -> Arc<Vec<crate::frameworks::cakephp::migrations::Table>> {
+        let count = self.edit_count();
+        let folders = self.cake().migration_paths.clone();
+        let open = |path: &Path| self.open_document(path).map(|document| document.text.to_string());
+        self.shared.cake_tables.lock().tables(count, &folders, open)
+    }
+
+    /// Marks the view at `path` as being worked out by this thread, until
+    /// the guard is dropped. `None` when this thread is already working it
+    /// out: the view is asking for its own variables. (Another thread
+    /// asking at the same time works them out too, and gets them.)
+    pub(crate) fn view_in_progress(&self, path: &Path) -> Option<ViewInProgress<'_>> {
+        let key = (path.to_path_buf(), std::thread::current().id());
+        self.shared.views_in_progress.lock().insert(key.clone()).then_some(ViewInProgress { engine: self, key })
+    }
+
+    /// The cache of [`PhpEngine::cake_view_variables`].
+    pub(crate) fn cake_views_cache(&self) -> &TypedViewVariables {
+        &self.shared.cake_views
+    }
+
     /// What the configuration of a Yii project says
     /// ([`YiiProject`](crate::frameworks::yii::YiiProject)): its components,
     /// modules, parameters, aliases and messages.
@@ -1424,9 +1518,18 @@ impl PhpEngine {
     /// [`laravel`](Self::laravel) has a project. Kept until a file that
     /// detection reads changes.
     pub fn frameworks(&self) -> Frameworks {
+        let found = self.detected_frameworks();
+        self.with_known_symfony(found)
+    }
+
+    /// The frameworks the project's files say it is of, without what the
+    /// index adds ([`frameworks`](Self::frameworks) finds Symfony by its
+    /// classes too). Cheap once known: what a type provider asks for every
+    /// resolver.
+    pub fn detected_frameworks(&self) -> Frameworks {
         let known = *self.shared.frameworks.lock();
         if let Some(known) = known {
-            return self.with_known_symfony(known);
+            return known;
         }
         // Laravel's answer is the project model's: what forces it on or
         // off is settled there, and its Composer files are read once.
@@ -1438,7 +1541,7 @@ impl PhpEngine {
         let found = Frameworks::detect(&self.root(), &settings);
         debug_assert_eq!(found.contains(Framework::Laravel), laravel);
         *self.shared.frameworks.lock() = Some(found);
-        self.with_known_symfony(found)
+        found
     }
 
     /// `found` with Symfony when its `FrameworkBundle` class is known though
@@ -1996,12 +2099,31 @@ impl Declarations for PhpEngine {
         })
     }
 
+    fn cake(&self) -> Option<Arc<crate::frameworks::cakephp::CakeProject>> {
+        self.detected_frameworks().contains(crate::frameworks::Framework::CakePhp).then(|| PhpEngine::cake(self))
+    }
+
+    fn cake_facts(&self, class: &str) -> Option<Arc<crate::frameworks::cakephp::facts::ClassFacts>> {
+        PhpEngine::cake_facts(self, class)
+    }
+
+    fn cake_tables(&self) -> Option<Arc<Vec<crate::frameworks::cakephp::migrations::Table>>> {
+        self.detected_frameworks().contains(crate::frameworks::Framework::CakePhp).then(|| PhpEngine::cake_tables(self))
+    }
+
+    fn namespace_classes(&self, namespace: &str) -> Vec<String> {
+        let Some(index) = self.index() else { return Vec::new() };
+        let children = index.namespace_children(namespace).unwrap_or_default();
+        let classes = children.into_iter().filter(|decl| matches!(decl.kind, crate::index::DeclKind::ClassLike(_)));
+        classes.map(|decl| decl.fqn).collect()
+    }
+
     fn yii(&self) -> Option<Arc<crate::frameworks::yii::YiiProject>> {
-        self.frameworks().contains(crate::frameworks::Framework::Yii).then(|| PhpEngine::yii(self))
+        self.detected_frameworks().contains(crate::frameworks::Framework::Yii).then(|| PhpEngine::yii(self))
     }
 
     fn yii_tables(&self) -> Option<Arc<Vec<crate::frameworks::yii::migrations::Table>>> {
-        self.frameworks().contains(crate::frameworks::Framework::Yii).then(|| PhpEngine::yii_tables(self))
+        self.detected_frameworks().contains(crate::frameworks::Framework::Yii).then(|| PhpEngine::yii_tables(self))
     }
 
     fn yii_table_name(&self, class: &str) -> Option<String> {
@@ -2024,6 +2146,14 @@ impl Declarations for PhpEngine {
     }
 
     fn view_variable(&self, path: &Path, name: &str) -> Option<Type> {
+        // CakePHP: a file of a `templates` folder; `$this` is the view object.
+        if self.frameworks().contains(crate::frameworks::Framework::CakePhp) && self.is_cake_template(path) {
+            if name == "this" {
+                return self.cake_view_class(path).map(|class| Type::named(&class));
+            }
+            let variables = self.cake_view_variables(path);
+            return variables.iter().find(|(known, _)| known == name).map(|(_, ty)| ty.clone());
+        }
         // Yii: a file of a `views` or a `mail` folder; `$this` is the view object.
         if self.frameworks().contains(crate::frameworks::Framework::Yii) {
             if !self.is_yii_view(path) {

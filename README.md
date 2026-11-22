@@ -50,6 +50,13 @@ servers. What it does:
   `Yii::createObject()`, of Active Record queries and relations, of a record's columns
   (from the migrations), of properties read through a getter, and of the variables a
   controller passes its view. Views are found where a `viewPath` or a theme puts them.
+- **CakePHP 4 and 5:** tables, components, helpers, behaviours, associations,
+  templates, layouts, elements, cells, configuration keys and route arrays by name
+  (plugin dot notation too), with a warning for a template, a component, a helper, a
+  behaviour or an action that names nothing; the types of `fetchTable()`, of a table's
+  entities and queries, of an entity's fields (from the migrations), of association
+  properties, of a controller's components and a view's helpers, and of the variables an
+  action sets for its template. Translations (`__()`) by name; templates found in themes.
 - **Drupal:** services, routes, permissions, libraries, configuration, entity types,
   plugins, theme hooks and hooks, from the module's YAML files, attributes and
   annotations; the types of `\Drupal::service()`, of an entity storage and of a hook

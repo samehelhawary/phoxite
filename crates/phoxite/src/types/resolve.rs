@@ -188,6 +188,24 @@ pub trait Declarations {
     fn yii_tables(&self) -> Option<std::sync::Arc<Vec<crate::frameworks::yii::migrations::Table>>> {
         None
     }
+    /// What the files of a CakePHP application say: its namespace, its
+    /// plugins, its configuration. `None` outside a CakePHP project.
+    fn cake(&self) -> Option<std::sync::Arc<crate::frameworks::cakephp::CakeProject>> {
+        None
+    }
+    /// What the code of the class `class` (FQN) says it loads, in a CakePHP
+    /// project: components, helpers, behaviours, associations.
+    fn cake_facts(&self, _class: &str) -> Option<std::sync::Arc<crate::frameworks::cakephp::facts::ClassFacts>> {
+        None
+    }
+    /// The tables the migrations of a CakePHP project make.
+    fn cake_tables(&self) -> Option<std::sync::Arc<Vec<crate::frameworks::cakephp::migrations::Table>>> {
+        None
+    }
+    /// The classes declared directly in the namespace `namespace` (FQNs).
+    fn namespace_classes(&self, _namespace: &str) -> Vec<String> {
+        Vec::new()
+    }
     /// The table the `tableName()` of the class `class` returns as a
     /// string, in a Yii project.
     fn yii_table_name(&self, _class: &str) -> Option<String> {
@@ -590,6 +608,9 @@ pub struct Resolver<'a> {
     /// The lowest index in `building` a cycle has led back to since the
     /// current model build started (`usize::MAX` for none).
     model_cycle: Cell<usize>,
+    /// [`Declarations::cake`], asked once: providers ask it for every call
+    /// and property.
+    cake: std::cell::OnceCell<Option<std::sync::Arc<crate::frameworks::cakephp::CakeProject>>>,
 }
 
 impl<'a> Resolver<'a> {
@@ -605,6 +626,7 @@ impl<'a> Resolver<'a> {
             cuts: RefCell::new(Vec::new()),
             building: RefCell::new(Vec::new()),
             model_cycle: Cell::new(usize::MAX),
+            cake: std::cell::OnceCell::new(),
         }
     }
 
@@ -919,6 +941,31 @@ impl<'a> Resolver<'a> {
     /// [`Declarations::yii`].
     pub fn yii(&self) -> Option<std::sync::Arc<crate::frameworks::yii::YiiProject>> {
         self.decls.yii()
+    }
+
+    /// [`Declarations::cake`].
+    pub fn cake(&self) -> Option<std::sync::Arc<crate::frameworks::cakephp::CakeProject>> {
+        self.cake.get_or_init(|| self.decls.cake()).clone()
+    }
+
+    /// Whether the project is a CakePHP one.
+    pub fn is_cake(&self) -> bool {
+        self.cake.get_or_init(|| self.decls.cake()).is_some()
+    }
+
+    /// [`Declarations::cake_facts`].
+    pub fn cake_facts(&self, class: &str) -> Option<std::sync::Arc<crate::frameworks::cakephp::facts::ClassFacts>> {
+        self.decls.cake_facts(class)
+    }
+
+    /// [`Declarations::cake_tables`].
+    pub fn cake_tables(&self) -> Option<std::sync::Arc<Vec<crate::frameworks::cakephp::migrations::Table>>> {
+        self.decls.cake_tables()
+    }
+
+    /// [`Declarations::namespace_classes`].
+    pub fn namespace_classes(&self, namespace: &str) -> Vec<String> {
+        self.decls.namespace_classes(namespace)
     }
 
     /// [`Declarations::yii_table_name`].

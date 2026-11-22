@@ -247,7 +247,10 @@ fn registry_order_and_resolve_step() {
     let run = |providers: &TypeProviders, body: &str| type_with(Some(providers), &[LIB], &format!("{header}{body}"));
 
     let builtin = TypeProviders::default();
-    assert_eq!(builtin.keys(), ["laravel", "symfony", "drupal", "codeigniter", "yii", "meta", "phpunit", "core"]);
+    assert_eq!(
+        builtin.keys(),
+        ["laravel", "symfony", "drupal", "codeigniter", "yii", "cakephp", "meta", "phpunit", "core"]
+    );
     assert_eq!(run(&builtin, "magic(Foo::class)/*|*/;"), "object");
 
     // Before the core: overrides declared returns, the resolve step's
@@ -256,7 +259,7 @@ fn registry_order_and_resolve_step() {
     before.register(CORE_ORDER - 1, Arc::new(Magic));
     assert_eq!(
         before.keys(),
-        ["laravel", "symfony", "drupal", "codeigniter", "yii", "meta", "phpunit", "magic", "core"]
+        ["laravel", "symfony", "drupal", "codeigniter", "yii", "cakephp", "meta", "phpunit", "magic", "core"]
     );
     assert_eq!(run(&before, "magic(Foo::class)/*|*/;"), "Lib\\Foo");
     assert_eq!(run(&before, "magic('Lib\\Foo')/*|*/;"), "Lib\\Foo");
@@ -268,7 +271,7 @@ fn registry_order_and_resolve_step() {
     after.register(CORE_ORDER + 1, Arc::new(Magic));
     assert_eq!(
         after.keys(),
-        ["laravel", "symfony", "drupal", "codeigniter", "yii", "meta", "phpunit", "core", "magic"]
+        ["laravel", "symfony", "drupal", "codeigniter", "yii", "cakephp", "meta", "phpunit", "core", "magic"]
     );
     assert_eq!(run(&after, "magic(Foo::class)/*|*/;"), "object");
     assert_eq!(run(&after, "plain(Foo::class)/*|*/;"), "Lib\\Foo");

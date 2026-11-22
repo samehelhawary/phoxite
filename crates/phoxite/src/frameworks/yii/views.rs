@@ -44,7 +44,7 @@ impl PhpEngine {
             return known.clone();
         }
         // While this view is worked out, a view asking again has none (a view rendering itself).
-        self.yii_views_cache().lock().insert(path.to_path_buf(), (count, Arc::default()));
+        let Some(_working) = self.view_in_progress(path) else { return Arc::default() };
         // Every usage names the view by its file ([`ReferenceKind::canonical`]).
         let root = self.root();
         let key = path.strip_prefix(&root).unwrap_or(path).to_string_lossy().replace('\\', "/");
