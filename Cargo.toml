@@ -26,7 +26,7 @@ blake3 = "1"
 dunce = "1"
 zip = { version = "9.2.3", default-features = false, features = ["deflate"] }
 nucleo-matcher = "0.3"
-redb = "4"
+redb = "5"
 insta = { version = "1", features = ["yaml"] }
 tempfile = "3"
 tokio-util = "0.7"
