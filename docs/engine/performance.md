@@ -32,12 +32,12 @@ cargo test -p phoxite --release --test budgets -- --ignored --nocapture
 Medians of `tests/budgets.rs` on fixtures/php-library and laravel/framework, release build, 2026-11-17, Windows x86_64, 16 threads.
 <!-- bench:budgets:end -->
 
-laravel/framework is the pinned corpus from `scripts/php-corpus.sh`; without the corpus its rows are skipped. `node scripts/bench_report.mjs` runs the test and the memory test below and rewrites both tables. The criterion benches in `crates/phoxite/benches/engine.rs` time the same operations (`cargo bench -p phoxite --bench engine`) with their distributions, and the Laravel support budgets, which no test enforces yet.
+laravel/framework is the pinned corpus from `scripts/php-corpus.sh`; without the corpus its rows are skipped. A third workload, `php_magento` (the `magento` corpus, `Catalog/Model/ProductRepository.php`), is timed when that corpus is there, which is the nightly run and not the one of each push: 16.2 s cold, 557 ms warm, 2.8 ms hover, 3.5 ms completion and 172 ms diagnostics on 2026-11-26 (Windows x86_64), against budgets of 120 s, 5 s, 50 ms, 50 ms and 300 ms. `node scripts/bench_report.mjs` runs the test and the memory test below and rewrites both tables. The criterion benches in `crates/phoxite/benches/engine.rs` time the same operations (`cargo bench -p phoxite --bench engine`) with their distributions, and the Laravel support budgets, which no test enforces yet.
 
 What the benches measure:
 
 - **Cold index / warm start:** `PhpEngine::open` until `wait_idle` reports the indexes up to date.
-- **Hover and completion after a keystroke:** a statement is typed in the open file first (`Eloquent/Builder.php`, 2.5k lines, or the fixture's `Library.php`), so the parse and the type cache are stale, which is the slower case. The background inspection of that edit finishes before the clock starts. Criterion reports means. The p95 of completion on the fixture is also asserted by `complete::tests::completion_on_the_fixture_is_fast`.
+- **Hover and completion after a keystroke:** a statement is typed in the open file first (`Eloquent/Builder.php`, 2.5k lines, or the fixture's `Library.php`), so the parse and the type cache are stale, which is the slower case. The background inspection of that edit finishes before the clock starts. Criterion reports means.
 - **Diagnostics after an edit:** from `document_changed` until the background run has inspected the new version. This includes the 120 ms debounce and every built-in inspection.
 
 ## What it took

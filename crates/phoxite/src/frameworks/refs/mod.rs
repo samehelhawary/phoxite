@@ -27,7 +27,7 @@
 //! A kind may describe a usage for hover ([`ReferenceKind::hover`]) and say
 //! what is wrong with one that names nothing ([`ReferenceKind::undefined`]),
 //! which the "undefined …" inspections
-//! ([`crate::inspect::laravel::UndefinedReference`]) report.
+//! ([`crate::inspect::references::UndefinedReference`]) report.
 //!
 //! A kind sees the string's site ([`SiteInfo`]): its file, and the class it
 //! is about (the `Foo::class` before it in its array, or the controller of
@@ -2362,3 +2362,6 @@ pub struct StringHighlight {
     /// The declaration (as opposed to a usage).
     pub write: bool,
 }
+
+#[cfg(test)]
+mod tests;

@@ -8,7 +8,7 @@
 //!   "includePaths": ["../shared"],
 //!   "stubs": ["redis"],
 //!   "exclude": ["storage", "node_modules"],
-//!   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true, "severity": "error" } },
+//!   "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpParams": { "strict": true, "severity": "error" } },
 //!   "laravel": { "routeHints": true, "modules": "auto", "generation": { "module": "Blog" } },
 //!   "frameworks": { "laravel": "auto", "symfony": "auto", "wordpress": "disabled" },
 //!   "format": { "lineWidth": 120, "tool": "phoxite", "twig": "phoxite" },
@@ -358,7 +358,7 @@ mod tests {
                 "inspections": {
                     "*": { "enabled": true },
                     "PhpUndefinedMethod": { "enabled": false },
-                    "PhpTypeMismatch": { "strict": true, "severity": "error" }
+                    "PhpParams": { "strict": true, "severity": "error" }
                 },
                 "laravel": { "routeHints": false, "modules": "nwidart" }
             }
@@ -368,10 +368,10 @@ mod tests {
         assert_eq!(config.language_level, "8.1");
         assert_eq!(config.excludes, DEFAULT_EXCLUDES);
         assert_eq!(config.inspections["lsp:php:PhpUndefinedMethod"].enabled, Some(false));
-        assert!(config.inspections["lsp:php:PhpTypeMismatch"].options.as_ref().unwrap()["strict"]);
+        assert!(config.inspections["lsp:php:PhpParams"].options.as_ref().unwrap()["strict"]);
         assert!(config.inspections.contains_key("lsp:php"));
         assert!(!config.laravel.route_hints);
-        assert_eq!(settings.severity("PhpTypeMismatch"), Some(Severity::Error));
+        assert_eq!(settings.severity("PhpParams"), Some(Severity::Error));
         assert_eq!(settings.format.line_width, 120);
     }
 

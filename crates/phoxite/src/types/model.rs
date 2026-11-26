@@ -21,7 +21,7 @@
 //!    enum, as static methods, and the `name` (and `value`) readonly
 //!    properties. Enums also implement `UnitEnum` (and `BackedEnum`).
 //! 4. **Parent class:** its members except the `private` ones; a member
-//!    redeclared here records what it [overrides](ModelMethod::overrides).
+//!    redeclared here records what it [overrides](MemberInfo::overrides).
 //! 5. **Interfaces** (all of them, an interface reached twice through a
 //!    diamond counted once): methods and constants not yet present. An
 //!    interface's parents are its `extends`.

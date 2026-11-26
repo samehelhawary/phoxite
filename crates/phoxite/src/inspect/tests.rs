@@ -509,3 +509,6 @@ mod settings_tests;
 
 #[path = "access_tests.rs"]
 mod access_tests;
+
+#[path = "reference_tests.rs"]
+mod reference_tests;

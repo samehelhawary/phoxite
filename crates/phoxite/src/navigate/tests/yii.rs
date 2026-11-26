@@ -788,3 +788,33 @@ fn a_records_columns_are_its_attributes() {
     found.sort();
     assert_eq!(found, ["compose", "send"]);
 }
+
+/// The project's model is read from its configuration: typing in a file it never read
+/// keeps it, and typing in one it read has it read again.
+#[test]
+fn the_project_is_read_again_only_when_a_file_it_read_changes() {
+    let mut project = yii();
+    let params = |project: &Project| -> Vec<String> {
+        project.engine.yii().params.iter().map(|param| param.name.clone()).collect()
+    };
+    assert_eq!(params(&project), ["adminEmail"]);
+
+    // A controller's body: the configuration didn't read it. (Opening a document moves
+    // the modification count; typing in it doesn't, while its declarations stay.)
+    let controller = project.open(SITE, CONTROLLER);
+    let first = project.engine.yii();
+    project.engine.document_changed(
+        controller,
+        2,
+        &CONTROLLER.replace("class SiteController", "class  SiteController"),
+    );
+    assert!(Arc::ptr_eq(&first, &project.engine.yii()), "an edit elsewhere read the project again");
+
+    // The parameters file, as the editor has it.
+    let file = project.open("config/params.php", "<?php\nreturn ['adminEmail' => 'admin@example.com'];\n");
+    project.engine.document_changed(file, 2, "<?php\nreturn ['adminEmail' => 'a@example.com', 'pageSize' => 20];\n");
+    assert_eq!(params(&project), ["adminEmail", "pageSize"]);
+    // And closed again without saving: the file on disk is what counts.
+    project.engine.document_closed(file);
+    assert_eq!(params(&project), ["adminEmail"]);
+}

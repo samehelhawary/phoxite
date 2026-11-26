@@ -3,7 +3,7 @@
 //! and what the file names that isn't there.
 //!
 //! The open text is read like the file on disk
-//! ([`project::read`](super::project::read)); the caret is on one of the
+//! ([`super::project::read`]); the caret is on one of the
 //! names it writes ([`Mention`]):
 //!
 //! | name | where | answered by |

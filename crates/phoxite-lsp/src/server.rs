@@ -2,7 +2,8 @@
 //! order on this thread), requests (each on its own thread, cancellable),
 //! and the engine's events (diagnostics, indexing progress).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crossbeam_channel::{Receiver, select};
@@ -197,6 +198,7 @@ pub fn run(connection: Connection) -> Result<(), String> {
         options.cache_dir.clone().unwrap_or_else(default_cache_dir),
         events_tx,
     ));
+    state.watch_templates();
     state.set_trusted(options.trusted.unwrap_or(true));
     state.apply_settings(options.settings.as_ref().unwrap_or(&Value::Null), std::mem::take(&mut rejected));
     #[allow(deprecated)]
@@ -210,6 +212,11 @@ pub fn run(connection: Connection) -> Result<(), String> {
             state.add_workspace(&path);
         }
     }
+    // The caches of projects not opened for long, once those open now are marked as used.
+    let cache_dir = state.cache_dir.clone();
+    let _ = std::thread::Builder::new()
+        .name("cache pruning".into())
+        .spawn(move || crate::state::prune_caches(&cache_dir, crate::state::CACHE_KEPT));
     // `initialize_finish` returned, so the client's `initialized` has come (it reads the
     // notification itself): the server may ask the client things from here on.
     let mut server = Server {
@@ -223,6 +230,7 @@ pub fn run(connection: Connection) -> Result<(), String> {
         xml: false,
         joomla: false,
         failure: None,
+        in_memory: HashSet::new(),
     };
     server.watch_files();
     server.main_loop(&connection, &events_rx)?;
@@ -251,6 +259,8 @@ struct Server {
     joomla: bool,
     /// Why indexing last failed, once the client was told; none after it worked again.
     failure: Option<String>,
+    /// The folders whose index is kept in memory, as the user was told.
+    in_memory: HashSet<PathBuf>,
 }
 
 impl Server {
@@ -298,6 +308,7 @@ impl Server {
                 // What makes a folder a Laravel project is read with the index.
                 if !indexing {
                     self.laravel_status();
+                    self.in_memory_index();
                 }
             }
             e::IdeEvent::LanguageServer { status, message, .. } => {
@@ -309,6 +320,34 @@ impl Server {
                 }
             }
             e::IdeEvent::LanguageServerRemoved { .. } => {}
+        }
+    }
+
+    /// Tells the user, once for each folder, that its index is not stored: another
+    /// program has the index file open (a second window on the same folder), or it
+    /// can't be written. Everything works, but the folder is indexed again from
+    /// nothing at each start.
+    fn in_memory_index(&mut self) {
+        let unstored: Vec<PathBuf> = {
+            let workspaces = self.state.workspaces.read();
+            let unstored = workspaces.iter().filter(|w| {
+                let status = w.engine.status();
+                status.state == phoxite::engine::EngineState::Ready && !status.persistent
+            });
+            unstored.map(|w| w.root.clone()).collect()
+        };
+        for root in unstored {
+            if !self.in_memory.insert(root.clone()) {
+                continue;
+            }
+            self.state.notify::<n::ShowMessage>(lsp::ShowMessageParams {
+                typ: lsp::MessageType::WARNING,
+                message: format!(
+                    "Phoxite keeps the index of {} in memory: its index file is in use (another window has \
+                     the folder open?) or can't be written. The folder is indexed again at each start.",
+                    root.display()
+                ),
+            });
         }
     }
 
@@ -577,23 +616,28 @@ impl Server {
 
     fn request(&self, request: Request) {
         let token = CancellationToken::new();
-        self.pending.lock().insert(request.id.clone(), token.clone());
+        let asked = request.id.clone();
+        self.pending.lock().insert(asked.clone(), token.clone());
         let state = self.state.clone();
         let pending = self.pending.clone();
-        std::thread::Builder::new()
-            .name(format!("request {}", request.method))
-            .spawn(move || {
-                let id = request.id.clone();
-                let response = dispatch(&state, request, &token);
-                pending.lock().remove(&id);
-                let response = if token.is_cancelled() {
-                    Response::new_err(id, ErrorCode::RequestCanceled as i32, "cancelled".into())
-                } else {
-                    response
-                };
-                let _ = state.sender.send(Message::Response(response));
-            })
-            .expect("spawn a request thread");
+        let started = std::thread::Builder::new().name(format!("request {}", request.method)).spawn(move || {
+            let id = request.id.clone();
+            let response = dispatch(&state, request, &token);
+            pending.lock().remove(&id);
+            let response = if token.is_cancelled() {
+                Response::new_err(id, ErrorCode::RequestCanceled as i32, "cancelled".into())
+            } else {
+                response
+            };
+            let _ = state.sender.send(Message::Response(response));
+        });
+        // The system gives no more threads: this request fails, the server goes on.
+        if let Err(e) = started {
+            tracing::error!("no thread for a request: {e}");
+            self.pending.lock().remove(&asked);
+            let refused = Response::new_err(asked, ErrorCode::InternalError as i32, format!("no thread: {e}"));
+            let _ = self.state.sender.send(Message::Response(refused));
+        }
     }
 }
 
@@ -701,6 +745,11 @@ fn respond<T: Serialize>(id: RequestId, result: h::Result<T>) -> Response {
     }
 }
 
+/// Answered once every engine has done its queued work, for the tests: what they ask next
+/// is answered from an index that has read everything the server was told about.
+#[cfg(test)]
+pub const WAIT_IDLE: &str = "phoxite/test/waitIdle";
+
 /// Answers one request.
 fn dispatch(state: &State, request: Request, cancel: &CancellationToken) -> Response {
     let Request { id, method, params } = request;
@@ -766,6 +815,11 @@ fn dispatch(state: &State, request: Request, cancel: &CancellationToken) -> Resp
             cancel
         )),
         r::ExecuteCommand::METHOD => on!(r::ExecuteCommand, |p| execute_command(state, p)),
+        #[cfg(test)]
+        WAIT_IDLE => {
+            let idle = state.engines().iter().all(|engine| engine.wait_idle(std::time::Duration::from_secs(50)));
+            respond(id, if idle { Ok(()) } else { Err("the index is still busy".to_owned()) })
+        }
         custom if laravel::METHODS.contains(&custom) => respond(id, laravel::request(state, custom, params)),
         custom if refactor::METHODS.contains(&custom) => respond(id, refactor::request(state, custom, params, cancel)),
         _ => Response::new_err(id, ErrorCode::MethodNotFound as i32, format!("unknown request {method}")),

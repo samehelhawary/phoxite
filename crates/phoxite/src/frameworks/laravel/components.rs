@@ -878,7 +878,7 @@ impl PhpEngine {
         out
     }
 
-    /// "Add constructor parameter '$name' to <x-tag>" on an attribute of a
+    /// "Add constructor parameter '$name' to `<x-tag>`" on an attribute of a
     /// class component's tag that its constructor doesn't take: a promoted
     /// public parameter (so the view sees it too), `string` for a plain
     /// attribute and `mixed` for a bound one, optional (`= null`) after
@@ -932,7 +932,7 @@ impl PhpEngine {
         })
     }
 
-    /// "Add 'name' to the @props of <x-tag>" on an attribute of an
+    /// "Add 'name' to the @props of `<x-tag>`" on an attribute of an
     /// anonymous component's tag that its `@props` doesn't list.
     fn add_prop_fix(&self, text: &str, offset: u32) -> Option<ImportAction> {
         let TagPlace::Attribute { component, name, .. } = tag_place(text, offset)? else { return None };

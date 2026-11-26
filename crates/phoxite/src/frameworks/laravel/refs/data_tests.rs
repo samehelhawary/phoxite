@@ -36,7 +36,7 @@ impl Project {
             .iter()
             .filter(|d| {
                 d.code.as_deref().is_some_and(|code| {
-                    crate::inspect::laravel::UndefinedReference::all()
+                    crate::inspect::references::UndefinedReference::all()
                         .iter()
                         .any(|i| crate::inspect::Inspection::id(i) == code)
                 })

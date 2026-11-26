@@ -125,7 +125,7 @@ All have completion, goto, hover and Find References. Nothing is renamed.
 
 ### Names that name nothing
 
-`ReferenceKind::undefined`, as inspections (`inspect/laravel.rs`, `YII`):
+`ReferenceKind::undefined`, as inspections (`inspect/references.rs`, `YII`):
 
 | Inspection | Reported when |
 | --- | --- |

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::base::{IdeEvent, SharedSink};
 
@@ -373,10 +373,11 @@ fn triggers_open_completion_only_where_they_start_a_context() {
     assert!(has(&found, "title"));
 }
 
-/// The roadmap's budget: p95 under 50 ms on the fixture (a release build;
-/// debug builds get more room).
+/// Completion answers at each place a line can be typed in the fixture. How long it
+/// takes is `tests/budgets.rs`'s to say (`completion_after_keystroke`), in a release
+/// build: a clock in this suite fails on a busy machine.
 #[test]
-fn completion_on_the_fixture_is_fast() {
+fn completion_on_the_fixture_answers_wherever_a_line_is_typed() {
     let root =
         dunce::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/php-library")).unwrap();
     let cache = tempfile::tempdir().unwrap();
@@ -385,23 +386,14 @@ fn completion_on_the_fixture_is_fast() {
     let anchor = "$lent = $book->withAvailability(false);";
     let cases =
         ["        $lent->", "        $genre = Genr", "        $", "        Genre::", "        $this->checkout("];
-    let mut times = Vec::new();
-    for _ in 0..4 {
-        for typed in cases {
-            let source = library.replacen(anchor, &format!("{anchor}\n{typed}/*|*/"), 1);
-            let started = Instant::now();
-            let found = project.complete("src/Library.php", &source);
-            times.push(started.elapsed());
-            assert!(!found.items.is_empty() || typed.ends_with('('), "{typed}");
-        }
+    for typed in cases {
+        let source = library.replacen(anchor, &format!("{anchor}\n{typed}/*|*/"), 1);
+        let found = project.complete("src/Library.php", &source);
+        assert!(!found.items.is_empty() || typed.ends_with('('), "{typed}");
     }
     let found =
         project.complete("src/Library.php", &library.replacen(anchor, &format!("{anchor}\n        $lent->/*|*/"), 1));
     assert!(has(&found, "label"), "{:?}", labels(&found));
-    times.sort();
-    let p95 = times[times.len() * 95 / 100 - 1];
-    let budget = if cfg!(debug_assertions) { Duration::from_millis(500) } else { Duration::from_millis(50) };
-    assert!(p95 < budget, "p95 {p95:?} over {budget:?}: {times:?}");
 }
 
 /// Of two classes matching the prefix alike, the project's comes before a

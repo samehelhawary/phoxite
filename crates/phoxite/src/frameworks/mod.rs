@@ -3,7 +3,8 @@
 //! ([`refs`]), the names files declare for a framework ([`names`]), the reader of PHP
 //! files that return an array ([`php_array`]), and
 //! each framework's project model and reference kinds ([`laravel`],
-//! [`symfony`], [`wordpress`]).
+//! [`symfony`], [`wordpress`], [`drupal`], [`codeigniter`], [`yii`],
+//! [`cakephp`], [`laminas`], [`magento`], [`joomla`]).
 //!
 //! The type providers stay in [`crate::types::provider`]; what a framework
 //! knows about the whole project lives here. `docs/engine/frameworks.md`
@@ -26,3 +27,6 @@ pub mod wordpress;
 pub mod yii;
 
 pub use detect::{ComposerPackages, Framework, Frameworks};
+
+#[cfg(test)]
+mod overview_tests;

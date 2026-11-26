@@ -74,7 +74,7 @@ All have goto, hover and Find References; all but a route's handler complete. A 
 
 ### Names that name nothing
 
-`ReferenceKind::undefined`, as inspections (`inspect/laravel.rs`, `CODEIGNITER`):
+`ReferenceKind::undefined`, as inspections (`inspect/references.rs`, `CODEIGNITER`):
 
 | Inspection | Reported when |
 | --- | --- |

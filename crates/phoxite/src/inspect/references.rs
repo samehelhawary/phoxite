@@ -1,4 +1,4 @@
-//! The "undefined …" inspections of Laravel string references
+//! The "undefined …" inspections of the frameworks' string references
 //! ([`UndefinedReference`]), each over one reference kind and reporting
 //! what [`ReferenceKind::undefined`] says, with its quick-fix:
 //!

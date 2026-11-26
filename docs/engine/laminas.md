@@ -101,7 +101,7 @@ All have completion, goto, hover and Find References. Nothing is renamed.
 
 ### Names that name nothing
 
-`ReferenceKind::undefined`, as inspections (`inspect/laravel.rs`, `LAMINAS`), only where
+`ReferenceKind::undefined`, as inspections (`inspect/references.rs`, `LAMINAS`), only where
 the string is an argument of a call, never for an array's entry:
 
 | Inspection | Reported when |

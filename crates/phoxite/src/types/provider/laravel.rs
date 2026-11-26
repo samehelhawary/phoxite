@@ -39,7 +39,7 @@
 //! - **Bindings:** besides the core aliases, `app('id')`, `make('id')` and
 //!   facade accessors resolve ids that service providers bind
 //!   (`$this->app->singleton('id', …)`; see
-//!   [`LaravelFacts`](crate::summary::LaravelFacts)).
+//!   [`crate::summary::LaravelFacts`]).
 //!
 //! - **Members** ([`TypeProvider::magic_members`]): after `Facade::` the
 //!   service's public methods (as static); after `Model::` the model's

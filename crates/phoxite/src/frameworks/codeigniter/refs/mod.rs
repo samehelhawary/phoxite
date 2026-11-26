@@ -15,7 +15,7 @@
 //! | `codeigniterController` | a method of a controller: `Books::show/$1`, in the namespace of the group around it (`'namespace' => …`), else the default one | the handler of a route (`$routes->get('books/(:num)', 'Books::show/$1')`) |
 //! | `codeigniterCell` | a method of a class of `App\Cells`: `Card::render` | `view_cell()` |
 //! | `codeigniterEvent` | what `Events::trigger('name')` fires | `Events::on()`, `trigger()`, `removeListener()` |
-//! | `codeigniterRule` | a method of a class of `Config\Validation::$ruleSets`, each rule of `required|min_length[3]` | `setRules()`, `setRule()`, a controller's `validate()` and `validateData()`, a model's `$validationRules`, the groups of `Config\Validation` |
+//! | `codeigniterRule` | a method of a class of `Config\Validation::$ruleSets`, each rule of `required\|min_length[3]` | `setRules()`, `setRule()`, a controller's `validate()` and `validateData()`, a model's `$validationRules`, the groups of `Config\Validation` |
 //! | `codeigniterRuleGroup` | a property of `Config\Validation` | `run($data, 'group')`, `setRuleGroup()`, a controller's `validate('group')` |
 //! | `codeigniterTable` | a table a migration makes (`createTable('books')`) | the connection's `table()`, a model's `$table`, `from()`, `join()`, the forge's methods |
 //! | `codeigniterColumn` | a field of that table (`addField()`, `addColumn()`) | a model's `$allowedFields`, `$primaryKey` and the like; `where()`, `orderBy()`, `select()`… of a model or of a builder of a known table |

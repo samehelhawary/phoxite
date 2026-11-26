@@ -158,7 +158,7 @@ pub fn short_name(fqn: &str) -> &str {
 /// The `use` lines of a generated class: the imported classes, sorted,
 /// leaving out the ones of its own namespace and duplicates. A class whose
 /// short name is the generated class's, or another import's, is imported
-/// under an alias (`use App\Models\Post as PostModel;`); [`Imports::name`]
+/// under an alias (`use App\Models\Post as PostModel;`); [`Imports::add`]
 /// answers the name to write.
 #[derive(Clone, Debug, Default)]
 pub struct Imports {

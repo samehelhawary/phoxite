@@ -768,7 +768,7 @@ fn verbatim(text: &str) -> Vec<Span<u32>> {
     out
 }
 
-/// The edits turning `text` into `formatted` (from [`format`], which
+/// The edits turning `text` into `formatted` (from [`format()`], which
 /// changes lines in place): one per changed line, only those from
 /// `lines.0` to `lines.1` when given (a range format); the whole text also
 /// gets its trailing blank lines and final line break.

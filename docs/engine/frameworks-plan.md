@@ -52,7 +52,7 @@ built with whichever of them comes first.
       `laravel.detection` unless it is `auto`.
 - [x] **0.2 Shared string references.** The machinery is `frameworks/refs/`; Laravel's 24
       kinds stay in `frameworks/laravel/refs/` and register through `kinds_for`. The
-      inspection list in `inspect/laravel.rs` is per framework.
+      inspection list in `inspect/references.rs` is per framework.
 - **0.3 Generic name facts:** moved to phase 3.
 - **0.4 Callable-string references:** moved to phase 2.5.
 - [x] **0.5a YAML reader** moved to `base/yaml.rs` (re-exported from `symfony`).
@@ -450,7 +450,7 @@ See `codeigniter.md`.
 - [x] An inline `@var` declares a variable nothing sets (`$routes`).
 - [x] Modules: the `$psr4` of `Config/Autoload.php` and Composer's namespaces; a moved
       application, framework or views folder by `Config/Paths.php`.
-- [x] Fifteen "unknown name" inspections (`inspect/laravel.rs`, `CODEIGNITER`; the
+- [x] Fifteen "unknown name" inspections (`inspect/references.rs`, `CODEIGNITER`; the
       event, table and column ones off unless turned on), checked on CodeIgniter's own
       application, framework, tests and user guide examples. `SCHEMA_VERSION` 51.
 - [x] Several columns in one string, a column in an expression, the table and field of

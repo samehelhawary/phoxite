@@ -36,6 +36,11 @@ impl Client {
 
     /// The same for a client that does (or doesn't) watch files for the server.
     fn start_as(root: &Path, experimental: Value, watches_files: bool) -> Self {
+        Self::start_in(root, experimental, watches_files, None)
+    }
+
+    /// The same with the indexes kept in `cache_dir`; in a folder of its own without one.
+    fn start_in(root: &Path, experimental: Value, watches_files: bool, cache_dir: Option<&Path>) -> Self {
         let (client, server) = Connection::memory();
         let handle = std::thread::spawn(move || crate::server::run(server).unwrap());
         let cache = tempfile::tempdir().unwrap();
@@ -65,12 +70,19 @@ impl Client {
             "rootUri": null,
             "capabilities": caps,
             "workspaceFolders": [{ "uri": Url::from_file_path(root).unwrap(), "name": "fixture" }],
-            "initializationOptions": { "cacheDir": c._cache.path(), "settings": { "phoxite": {} } }
+            "initializationOptions": { "cacheDir": cache_dir.unwrap_or(c._cache.path()), "settings": { "phoxite": {} } }
         }));
         assert_eq!(init["serverInfo"]["name"], "phoxite-lsp");
         assert_eq!(init["capabilities"]["experimental"]["phoxite"]["refactor"], true);
         c.notify::<n::Initialized>(json!({}));
+        c.wait_indexed();
         c
+    }
+
+    /// Blocks until the server's engines have done their queued work: the first scan, and
+    /// whatever the notifications sent before this queued (they are handled in order).
+    fn wait_indexed(&mut self) {
+        self.call(crate::server::WAIT_IDLE, Value::Null).unwrap_or_else(|message| panic!("{message}"));
     }
 
     fn request<R: r::Request>(&mut self, params: Value) -> Value {
@@ -121,26 +133,30 @@ impl Client {
         uri
     }
 
-    /// Asks until the index has caught up (an empty answer first).
+    /// Asks until `done` accepts the answer, for what follows the index (a model built
+    /// from it, a database read beside it). Panics with the last answer when none is
+    /// accepted in time.
     fn request_until<R: r::Request>(&mut self, params: Value, done: impl Fn(&Value) -> bool) -> Value {
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             let found = self.request::<R>(params.clone());
-            if done(&found) || Instant::now() > deadline {
+            if done(&found) {
                 return found;
             }
+            assert!(Instant::now() < deadline, "{} never gave the answer waited for; the last was {found}", R::METHOD);
             std::thread::sleep(Duration::from_millis(200));
         }
     }
 
     /// Asks custom request `method` until `done` accepts the answer. A refusal is retried
-    /// too: until the index has caught up the server may not know the classes asked about.
+    /// too. Panics with the last answer when none is accepted in time.
     fn call_until(&mut self, method: &str, params: Value, done: impl Fn(&Value) -> bool) -> Value {
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             let late = Instant::now() > deadline;
             match self.call(method, params.clone()) {
-                Ok(found) if late || done(&found) => return found,
+                Ok(found) if done(&found) => return found,
+                Ok(found) if late => panic!("{method} never gave the answer waited for; the last was {found}"),
                 Err(message) if late => panic!("{method}: {message}"),
                 _ => std::thread::sleep(Duration::from_millis(200)),
             }
@@ -534,6 +550,7 @@ fn a_drupal_module_names_what_its_yaml_files_declare() {
     c.notify::<n::DidChangeWatchedFiles>(
         json!({ "changes": [{ "uri": Url::from_file_path(&routing).unwrap(), "type": 2 }] }),
     );
+    c.wait_indexed();
     c.request_until::<r::Completion>(at(&uri, line, col), |v| v.to_string().contains("\"shop.authors\""));
 
     // A theme's template includes a module's by its namespace.
@@ -770,6 +787,7 @@ fn a_magento_module_names_what_its_xml_declares() {
     c.notify::<n::DidChangeWatchedFiles>(
         json!({ "changes": [{ "uri": Url::from_file_path(&events).unwrap(), "type": 1 }] }),
     );
+    c.wait_indexed();
     let (line, col) = find(&checkout, "dispatch('shop_cart_saved'", 14);
     c.request_until::<r::Completion>(at(&uri, line, col), |v| v.to_string().contains("\"shop_cart_shared\""));
 
@@ -1015,6 +1033,7 @@ fn a_framework_turned_off_in_the_settings_has_no_string_references() {
     c.notify::<n::DidChangeConfiguration>(
         json!({ "settings": { "phoxite": { "frameworks": { "symfony": "disabled" } } } }),
     );
+    c.wait_indexed();
     let found = c.request_until::<r::GotoDefinition>(at(&uri, line, col), |v| !v.to_string().contains("routes.yaml"));
     assert!(!found.to_string().contains("routes.yaml"), "{found}");
     c.shutdown();
@@ -1216,6 +1235,7 @@ fn a_new_template_is_a_template_name_once_the_client_reports_it() {
     c.notify::<n::DidChangeWatchedFiles>(json!({
         "changes": [{ "uri": Url::from_file_path(&fresh).unwrap(), "type": 1 }]
     }));
+    c.wait_indexed();
     let found = c.request_until::<r::Completion>(at(&uri, line, col), |v| v.to_string().contains("fresh.html.twig"));
     assert!(found.to_string().contains("fresh.html.twig"), "{found}");
     c.shutdown();
@@ -1975,6 +1995,7 @@ fn the_database_schema_joins_the_migrations() {
     // The setting on: the database's columns join the migrations'.
     let settings = |database: &str| json!({ "settings": { "phoxite": { "laravel": { "database": database } } } });
     c.notify::<n::DidChangeConfiguration>(settings("auto"));
+    c.wait_indexed();
     let with = c.call_until("phoxite/laravel/modelView", model.clone(), |v| column(v, "rating").is_some());
     let rating = column(&with, "rating").unwrap();
     assert_eq!(rating["source"], "database", "{rating}");
@@ -1987,6 +2008,7 @@ fn the_database_schema_joins_the_migrations() {
     c.notify::<n::DidChangeWatchedFiles>(
         json!({ "changes": [{ "uri": Url::from_file_path(&file).unwrap(), "type": 2 }] }),
     );
+    c.wait_indexed();
     c.call_until("phoxite/laravel/modelView", model.clone(), |v| column(v, "stars").is_some());
     let status = c.call("phoxite/laravel/refreshSchema", json!({})).unwrap();
     assert_eq!(status["tables"], 2);
@@ -2069,6 +2091,7 @@ fn the_server_asks_the_client_to_watch_the_files_it_indexes() {
     c.notify::<n::DidChangeWatchedFiles>(
         json!({ "changes": [{ "uri": Url::from_file_path(&migration).unwrap(), "type": 1 }] }),
     );
+    c.wait_indexed();
     c.call_until(l::MODEL_VIEW, model.clone(), |v| column(v, "votes"));
     assert!(column(&c.call(l::MODEL_VIEW, model).unwrap(), "votes"));
     c.shutdown();
@@ -2078,6 +2101,57 @@ fn the_server_asks_the_client_to_watch_the_files_it_indexes() {
     c.call_until(l::ROUTES, json!({}), |v| v.as_array().is_some_and(|a| !a.is_empty()));
     assert!(c.requests.iter().all(|r| r.method != "client/registerCapability"));
     c.shutdown();
+}
+
+/// The cache of a project not opened for long is removed; one without a mark of when it
+/// was last opened gets one, and what the server didn't make is left alone.
+#[test]
+fn the_caches_of_projects_not_opened_for_long_are_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = |name: &str| {
+        let path = dir.path().join(name).join(phoxite::engine::CACHE_SUBDIR);
+        std::fs::create_dir_all(&path).unwrap();
+        path.parent().unwrap().to_path_buf()
+    };
+    let (stale, unmarked, other) = (folder("0123456789abcdef"), folder("fedcba9876543210"), folder("not-a-cache"));
+    std::fs::write(stale.join("last-used"), "").unwrap();
+    std::fs::write(other.join("last-used"), "").unwrap();
+    // Kept for a long time: nothing goes.
+    crate::state::prune_caches(dir.path(), crate::state::CACHE_KEPT);
+    assert!(stale.is_dir() && unmarked.is_dir() && other.is_dir());
+    assert!(unmarked.join("last-used").is_file());
+    // Kept for no time at all: what is marked goes.
+    std::thread::sleep(Duration::from_millis(20));
+    crate::state::prune_caches(dir.path(), Duration::ZERO);
+    assert!(!stale.exists() && !unmarked.exists());
+    assert!(other.is_dir());
+}
+
+/// A second server on a folder can't open the index file the first one holds: it indexes
+/// in memory and says so, once.
+#[test]
+fn the_user_is_told_when_the_index_is_kept_in_memory() {
+    let told = |c: &Client| -> Vec<String> {
+        let shown = c.notifications.iter().filter(|n| n.method == n::ShowMessage::METHOD);
+        shown
+            .filter_map(|n| n.params["message"].as_str().map(str::to_owned))
+            .filter(|m| m.contains("in memory"))
+            .collect()
+    };
+    let root = fixture("php-library");
+    let cache = tempfile::tempdir().unwrap();
+    let mut first = Client::start_in(&root, Value::Null, true, Some(cache.path()));
+    let mut second = Client::start_in(&root, Value::Null, true, Some(cache.path()));
+    // Each answer is read after what the server sent before it; a rescan ends a second index pass.
+    for c in [&mut first, &mut second] {
+        c.request::<r::ExecuteCommand>(json!({ "command": crate::commands::RESCAN, "arguments": [] }));
+        c.wait_indexed();
+        c.request::<r::WorkspaceSymbolRequest>(json!({ "query": "Library" }));
+    }
+    assert!(told(&first).is_empty(), "{:?}", told(&first));
+    assert_eq!(told(&second).len(), 1, "{:?}", told(&second));
+    second.shutdown();
+    first.shutdown();
 }
 
 /// A client is told which folders are Laravel projects once the index knows, and again
@@ -2118,6 +2192,7 @@ fn the_client_is_told_which_folders_are_laravel_projects() {
         "added": [],
         "removed": [{ "uri": Url::from_file_path(&root).unwrap(), "name": "fixture" }],
     } }));
+    c.wait_indexed();
     c.call_until(l::STATUS, json!({}), |v| v["laravel"] == false);
     let gone = json!({ "laravel": false, "folders": [], "frameworks": [] });
     wait(&mut c, &|told| told.last() == Some(&gone));
