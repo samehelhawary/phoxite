@@ -50,7 +50,7 @@ insta.workspace = true
 serde.workspace = true
 tempfile.workspace = true
 dunce.workspace = true
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.8", default-features = false }
 
 [[bench]]
 name = "engine"
