@@ -30,7 +30,7 @@ redb = "4"
 insta = { version = "1", features = ["yaml"] }
 tempfile = "3"
 tokio-util = "0.7"
-lsp-server = "0.7"
+lsp-server = "0.10"
 lsp-types = "0.95.1"
 crossbeam-channel = "0.5"
 url = "2"
