@@ -1,0 +1,50 @@
+name: Nightly
+
+# The tests that read real projects (scripts/php-corpus.sh pins each one's tag): too much to
+# clone for every push, so they run once a night and when asked for.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  corpora:
+    # Not in forks: a schedule there only spends their minutes.
+    if: github.event_name != 'schedule' || github.repository == 'samehelhawary/phoxite'
+    runs-on: ubuntu-latest
+    env:
+      PHP_CORPUS_DIR: ${{ github.workspace }}/php-corpus
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: php-corpus
+          key: php-corpus-${{ hashFiles('scripts/php-corpus.sh') }}
+      - run: scripts/php-corpus.sh
+      # The differential and memory tests need Intelephense, and the Laravel parity tests an
+      # installed application: they stay with a developer's machine.
+      - run: >
+          cargo test --locked --release -p phoxite
+          --test cakephp_corpus --test codeigniter_corpus --test drupal_corpus
+          --test joomla_corpus --test laminas_corpus --test magento_corpus
+          --test wordpress_corpus --test yii_corpus
+          --test calls_types --test undefined_members --test undefined_symbols
+          -- --ignored
+      # The budgets again, with the Magento workload the corpora above make possible (the
+      # push runs have laravel/framework only). Three times the budget, as in ci.yml.
+      - run: cargo test --locked --release -p phoxite --test budgets -- --ignored --nocapture
+        env:
+          PHOXITE_BUDGET_FACTOR: 3
+      # What was measured, kept to set a slower run beside an earlier one.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: budgets-nightly
+          path: target/php-budgets.json
+          if-no-files-found: ignore

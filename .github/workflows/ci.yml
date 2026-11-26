@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to a pull request replaces the run of the one before it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -23,8 +28,32 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
         if: matrix.os == 'ubuntu-latest'
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      # The links of the documentation name what is there. (Public text may name a
+      # private item: the documentation is read with the private items in it.)
+      - run: cargo doc --workspace --no-deps --locked --document-private-items
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          RUSTDOCFLAGS: -D warnings -A rustdoc::private_intra_doc_links
+
+  # The oldest Rust the manifests promise (`rust-version`) still builds it.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets --locked
+
+  # Known vulnerabilities in the dependencies, and their licences (deny.toml).
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses
 
   vscode:
     runs-on: ubuntu-latest
@@ -42,11 +71,18 @@ jobs:
       - run: npm test
       # The tag, the manifests and the changelog state one version.
       - run: node ../../scripts/check_versions.mjs
+      # docs/settings.md says what the schema of `phoxite.json` does.
+      - run: node ../../scripts/settings_doc.mjs --check
 
   # The extension in a real VS Code, with a server built here: the end-to-end suite, and
   # the package as a release would make it.
   vscode-e2e:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows too: its paths (drive letters, backslashes) take their own code.
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -62,15 +98,23 @@ jobs:
           path: editors/vscode/.vscode-test
           key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package-lock.json') }}
       - name: End-to-end suite
+        if: runner.os == 'Linux'
         working-directory: editors/vscode
         env:
           PHOXITE_SERVER: ${{ github.workspace }}/target/debug/phoxite-lsp
         run: xvfb-run -a npm run test:e2e
+      - name: End-to-end suite (Windows)
+        if: runner.os == 'Windows'
+        working-directory: editors/vscode
+        env:
+          PHOXITE_SERVER: ${{ github.workspace }}/target/debug/phoxite-lsp.exe
+        run: npm run test:e2e
       # The grammar tests need VS Code's own grammars, which the run above downloaded.
       - name: Grammar tests
         working-directory: editors/vscode
         run: node --test --experimental-strip-types test/grammar.test.mts
       - name: Package (dry run)
+        if: runner.os == 'Linux'
         run: |
           cd editors/vscode && npm run vscode:prepublish && cd ../..
           node scripts/package_vscode.mjs --server target/debug/phoxite-lsp --target linux-x64
@@ -128,6 +172,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: scripts/php-corpus.sh laravel-framework
       - run: cargo test --locked --release -p phoxite --test budgets -- --ignored --nocapture
+      # What was measured, kept to set a slower run beside an earlier one.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: budgets
+          path: target/php-budgets.json
+          if-no-files-found: ignore
 
   bench:
     runs-on: ubuntu-latest

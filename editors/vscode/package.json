@@ -363,7 +363,7 @@
         "phoxite.inspections": {
           "type": "object",
           "default": {},
-          "markdownDescription": "Per-inspection settings by id, e.g. `{ \"PhpUndefinedMethod\": { \"enabled\": false }, \"PhpTypeMismatch\": { \"strict\": true, \"severity\": \"error\" } }`. The key `*` with `enabled: false` turns every inspection off.",
+          "markdownDescription": "Per-inspection settings by id, e.g. `{ \"PhpUndefinedMethod\": { \"enabled\": false }, \"PhpParams\": { \"strict\": true, \"severity\": \"error\" } }`. The key `*` with `enabled: false` turns every inspection off.",
           "additionalProperties": {
             "type": "object",
             "properties": {
@@ -924,7 +924,7 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "1.85.0",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.2.0",
+    "@vscode/vsce": "^4.1.1",
     "esbuild": "^0.24.0",
     "eslint": "^10.15.0",
     "gifenc": "^1.0.3",
