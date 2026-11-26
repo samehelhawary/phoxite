@@ -13,7 +13,7 @@
 //!   array (with the imports its class names need), injects it in place of
 //!   the request parameter's type, and drops the call, or replaces it with
 //!   `$request->validated()` where its value is used.
-//! - **Generate validation rules from '<Model>'**: in a Form Request's
+//! - **Generate validation rules from '`<Model>`'**: in a Form Request's
 //!   `rules()` array or a `validate([...])` array, adds an entry for each
 //!   column of the model the class name points to (`StorePostRequest`,
 //!   `PostController` → `Post`; its `$fillable` when it has one) that the
@@ -479,7 +479,7 @@ impl PhpEngine {
         }]
     }
 
-    /// "Generate validation rules from '<Model>'".
+    /// "Generate validation rules from '`<Model>`'".
     fn generate_rules(&self, parsed: &ParsedFile, path: &Path, start: u32, end: u32) -> Vec<ImportAction> {
         let text = parsed.text();
         let nodes = path_to(Node::Program(parsed.program()), start, end);

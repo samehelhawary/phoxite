@@ -2,7 +2,7 @@
 //! model ([`project`]) every Laravel feature reads, the Artisan commands
 //! ([`artisan`]), the configuration keys
 //! ([`config`]), a live database schema ([`database`]), the environment
-//! keys ([`env`]), the gates, policies, guards and password brokers
+//! keys ([`mod@env`]), the gates, policies, guards and password brokers
 //! ([`auth`]), the translations
 //! ([`lang`]), the Vite assets ([`assets`]), the routes and middleware
 //! ([`routes`]), the Eloquent model view ([`model_view`]), the whole model at once

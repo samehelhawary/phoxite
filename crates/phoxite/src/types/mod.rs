@@ -17,7 +17,7 @@
 //!
 //! Types come from native hints ([`Type::from_hint`]) and from the PHPDoc
 //! type expressions stored in summaries ([`Type::from_doc`],
-//! [`parse_doc_type`]). They print as PHP/PHPDoc syntax ([`fmt::Display`]),
+//! [`parse_doc_type`]). They print as PHP/PHPDoc syntax ([`std::fmt::Display`]),
 //! and [`Type::is_subtype_of`] answers subtyping against a class
 //! [`Hierarchy`]. [`Type::union`] and [`Type::intersection`] build
 //! simplified compound types.

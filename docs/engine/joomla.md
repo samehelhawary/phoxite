@@ -111,7 +111,7 @@ else: the other names are file names, class names or parts of them.
 
 ### Names that name nothing
 
-`ReferenceKind::undefined`, as inspections (`inspect/laravel.rs`, `JOOMLA`):
+`ReferenceKind::undefined`, as inspections (`inspect/references.rs`, `JOOMLA`):
 
 | Inspection | Reported when |
 | --- | --- |

@@ -81,7 +81,7 @@ impl Framework {
 
     /// The Composer packages one of which every project of the framework
     /// installs.
-    fn packages(self) -> &'static [&'static str] {
+    pub(crate) fn packages(self) -> &'static [&'static str] {
         match self {
             Framework::Laravel => &["laravel/framework"],
             Framework::Symfony => &["symfony/framework-bundle"],
@@ -221,10 +221,6 @@ const HEADER_BYTES: usize = 8192;
 /// How many files of the root folder are looked at for a header.
 const MAX_ROOT_FILES: usize = 64;
 
-/// Whether the folder is a WordPress plugin or theme on its own: a PHP file
-/// at its root has a `Plugin Name:` header, or its `style.css` a
-/// `Theme Name:` one (the file headers WordPress's plugin and theme
-/// handbooks describe).
 /// Whether the folder is a Joomla extension on its own: one of its XML
 /// files is a manifest (`<extension type="component">`).
 fn joomla_extension(root: &Path) -> bool {
@@ -241,6 +237,10 @@ fn joomla_extension(root: &Path) -> bool {
         })
 }
 
+/// Whether the folder is a WordPress plugin or theme on its own: a PHP file
+/// at its root has a `Plugin Name:` header, or its `style.css` a
+/// `Theme Name:` one (the file headers WordPress's plugin and theme
+/// handbooks describe).
 fn wordpress_extension(root: &Path) -> bool {
     if header_has(&root.join("style.css"), "Theme Name:") {
         return true;

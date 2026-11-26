@@ -36,7 +36,7 @@
 //! A kind may describe a usage for hover ([`ReferenceKind::hover`]) and say
 //! what is wrong with one that names nothing ([`ReferenceKind::undefined`]),
 //! which the "undefined …" inspections
-//! ([`crate::inspect::laravel::UndefinedReference`]) and the problems of
+//! ([`crate::inspect::references::UndefinedReference`]) and the problems of
 //! Blade templates ([`PhpEngine::blade_problems`]) report.
 //!
 //! A kind sees the string's site ([`SiteInfo`]): its file, and the class it
@@ -239,7 +239,7 @@ impl PhpEngine {
             &ViewName,
         ]
         .into_iter()
-        .filter(|kind| crate::inspect::laravel::inspection_id(kind.id()).is_some_and(|id| enabled.contains(&id)))
+        .filter(|kind| crate::inspect::references::inspection_id(kind.id()).is_some_and(|id| enabled.contains(&id)))
         .collect();
         // Route names have their own inspection (`crate::inspect::routes`).
         let routes = if enabled.contains(&"PhpUndefinedRoute") && self.status().state == EngineState::Ready {
@@ -284,7 +284,7 @@ impl PhpEngine {
                 severity: found.problem.severity,
                 message: found.problem.message,
                 source: Some(crate::blade::structure::DIAGNOSTIC_SOURCE.into()),
-                code: Some(crate::inspect::laravel::inspection_id(found.kind).unwrap_or(found.kind).into()),
+                code: Some(crate::inspect::references::inspection_id(found.kind).unwrap_or(found.kind).into()),
                 unnecessary: false,
                 deprecated: false,
                 server: None,

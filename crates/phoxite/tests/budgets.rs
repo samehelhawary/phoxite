@@ -25,7 +25,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use workload::{Workload, fixture, laravel};
+use workload::{Workload, fixture, laravel, magento};
 
 /// Runs of the operations that take the longest (opening the engine).
 const STARTUP_RUNS: usize = 5;
@@ -84,7 +84,7 @@ fn the_engine_is_within_its_budgets() {
         Err(_) => 1.0,
     };
     let release = !cfg!(debug_assertions);
-    let workloads: Vec<Workload> = std::iter::once(fixture()).chain(laravel()).collect();
+    let workloads: Vec<Workload> = std::iter::once(fixture()).chain(laravel()).chain(magento()).collect();
 
     let mut results = Vec::new();
     let mut exceeded = Vec::new();

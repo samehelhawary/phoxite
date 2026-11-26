@@ -16,7 +16,7 @@
 //!   returning; [`level`]: syntax newer than the project's PHP version and
 //!   uses of deprecated symbols; [`routes`]: Symfony and Laravel route
 //!   names no route defines; [`views`]: Laravel view names no view file
-//!   has; [`laravel`]: undefined Laravel configuration keys, environment
+//!   has; [`references`]: undefined Laravel configuration keys, environment
 //!   keys, translations and Vite assets); [`PhpEngine::set_inspections`] replaces the
 //!   set, and [`PhpEngine::configure_inspections`] builds it from the
 //!   settings ([`InspectionConfig`]: the inspection profile in effect, where
@@ -55,10 +55,10 @@ pub mod control;
 pub mod deprecated_syntax;
 pub(crate) mod fixes;
 pub(crate) mod intentions;
-pub mod laravel;
 pub mod level;
 pub mod magento;
 pub mod members;
+pub mod references;
 pub mod routes;
 pub(crate) mod runner;
 pub mod suppress;
@@ -172,7 +172,7 @@ impl Inspections {
             Arc::new(views::UndefinedView),
             Arc::new(magento::UndefinedPluginMethod),
         ];
-        for inspection in laravel::UndefinedReference::all() {
+        for inspection in references::UndefinedReference::all() {
             list.push(Arc::new(inspection));
         }
         Self::new(list)

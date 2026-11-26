@@ -8,11 +8,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::Sender;
 use lsp_server::{Message, Notification, Request, RequestId};
 use lsp_types::{self as lsp, Url};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Condvar, Mutex, RwLock};
 use phoxite::base::settings::PhpConfig;
 use phoxite::base::{self as e, DocId, Document};
 use phoxite::engine::{CACHE_SUBDIR, EngineConfig, PhpEngine};
@@ -54,6 +55,12 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// The server itself looks for the problems of such a document (the engine
+    /// publishes a PHP file's).
+    fn has_template_problems(self) -> bool {
+        matches!(self, Kind::Blade | Kind::Twig | Kind::MagentoXml)
+    }
+
     pub fn of(language: &str, path: &Path) -> Self {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_ascii_lowercase();
         if language == "blade" || name.ends_with(".blade.php") {
@@ -132,6 +139,48 @@ pub fn engine_config(cache_dir: &Path, root: &Path, php: &PhpConfig) -> EngineCo
     }
 }
 
+/// The file in a project's cache folder whose time says when the project was last opened.
+const LAST_USED: &str = "last-used";
+
+/// How long a project's cache is kept after the project was last opened.
+pub const CACHE_KEPT: Duration = Duration::from_secs(90 * 24 * 60 * 60);
+
+/// Notes that the project whose engine keeps its index in `engine_cache` (an
+/// [`EngineConfig::cache_dir`]) is open now.
+fn mark_cache_used(engine_cache: &Path) {
+    let Some(folder) = engine_cache.parent() else { return };
+    if std::fs::create_dir_all(folder).is_ok() {
+        let _ = std::fs::write(folder.join(LAST_USED), b"");
+    }
+}
+
+/// Removes the cache folders of projects not opened for [`CACHE_KEPT`]: a project that
+/// was moved or deleted would leave its index behind for good. Only folders this server
+/// named and marked are looked at; one without a mark (an older version made it) gets
+/// one now, so its time starts here.
+pub fn prune_caches(cache_dir: &Path, kept: Duration) {
+    let Ok(entries) = std::fs::read_dir(cache_dir) else { return };
+    for folder in entries.flatten().map(|entry| entry.path()) {
+        let name = folder.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        let ours =
+            name.len() == 16 && name.bytes().all(|b| b.is_ascii_hexdigit()) && folder.join(CACHE_SUBDIR).is_dir();
+        if !ours {
+            continue;
+        }
+        let mark = folder.join(LAST_USED);
+        let Ok(used) = std::fs::metadata(&mark).and_then(|mark| mark.modified()) else {
+            let _ = std::fs::write(&mark, b"");
+            continue;
+        };
+        if used.elapsed().is_ok_and(|unused| unused > kept) {
+            match std::fs::remove_dir_all(&folder) {
+                Ok(()) => tracing::info!("removed the unused cache {}", folder.display()),
+                Err(e) => tracing::warn!("can't remove the unused cache {}: {e}", folder.display()),
+            }
+        }
+    }
+}
+
 pub struct Workspace {
     pub root: PathBuf,
     pub engine: Arc<PhpEngine>,
@@ -165,6 +214,51 @@ pub struct ClientSupport {
     pub dialogs: bool,
 }
 
+/// How long a template is left alone after its last change before its problems are
+/// looked for: what a PHP file waits too (`phoxite::inspect`).
+const TEMPLATE_DEBOUNCE: Duration = Duration::from_millis(120);
+
+/// The templates waiting for their problems to be looked for, each with the time it is
+/// due: a change while one waits moves that time on.
+#[derive(Default)]
+struct TemplateQueue {
+    waiting: Mutex<(HashMap<Url, Instant>, bool)>,
+    wake: Condvar,
+}
+
+impl TemplateQueue {
+    fn push(&self, uri: Url) {
+        self.waiting.lock().0.insert(uri, Instant::now() + TEMPLATE_DEBOUNCE);
+        self.wake.notify_all();
+    }
+
+    fn stop(&self) {
+        self.waiting.lock().1 = true;
+        self.wake.notify_all();
+    }
+
+    /// Waits for the template due first; none once the server shuts down.
+    fn next(&self) -> Option<Url> {
+        let mut waiting = self.waiting.lock();
+        loop {
+            if waiting.1 {
+                return None;
+            }
+            let first = waiting.0.iter().min_by_key(|(_, due)| **due).map(|(uri, due)| (uri.clone(), *due));
+            match first {
+                Some((uri, due)) if due <= Instant::now() => {
+                    waiting.0.remove(&uri);
+                    return Some(uri);
+                }
+                Some((_, due)) => {
+                    self.wake.wait_until(&mut waiting, due);
+                }
+                None => self.wake.wait(&mut waiting),
+            }
+        }
+    }
+}
+
 pub struct State {
     pub sender: Sender<Message>,
     pub support: ClientSupport,
@@ -192,6 +286,8 @@ pub struct State {
     /// as the user was told.
     rejected_settings: Mutex<Vec<String>>,
     next_doc: AtomicU32,
+    /// The templates whose problems are to be looked for ([`State::watch_templates`]).
+    templates: Arc<TemplateQueue>,
 }
 
 impl State {
@@ -216,6 +312,7 @@ impl State {
             trusted: AtomicBool::new(true),
             rejected_settings: Mutex::default(),
             next_doc: AtomicU32::new(1),
+            templates: Arc::default(),
         }
     }
 
@@ -233,6 +330,7 @@ impl State {
         let (settings, rejected) = Settings::layered(&self.client_settings.read().0, file.as_ref(), self.is_trusted());
         let php = settings.engine_config();
         let config = engine_config(&self.cache_dir, &root, &php);
+        mark_cache_used(&config.cache_dir);
         let events = self.events.clone();
         let sink: e::SharedSink = Arc::new(move |event: e::IdeEvent| {
             let _ = events.send(event);
@@ -506,7 +604,7 @@ impl State {
             engine.set_template_text(&path, Some(doc.text.as_str()));
         }
         self.docs.write().insert(uri.clone(), doc);
-        self.template_problems(&uri);
+        self.template_changed(&uri);
     }
 
     pub fn change(&self, uri: &Url, version: i32, changes: Vec<lsp::TextDocumentContentChangeEvent>) {
@@ -532,7 +630,7 @@ impl State {
         {
             engine.set_template_text(&path, Some(&text));
         }
-        self.template_problems(uri);
+        self.template_changed(uri);
     }
 
     pub fn close(&self, uri: &Url) {
@@ -570,9 +668,50 @@ impl State {
         self.twig.lock().remove(root);
     }
 
+    /// Starts the thread that looks for the problems of templates. They are
+    /// found off the main loop, which a slow template would hold up for every
+    /// request and cancellation behind it, and once the typing pauses.
+    pub fn watch_templates(self: &Arc<Self>) {
+        let queue = self.templates.clone();
+        let state = Arc::downgrade(self);
+        let run = move || {
+            while let Some(uri) = queue.next() {
+                let Some(state) = state.upgrade() else { return };
+                let looked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| state.template_problems(&uri)));
+                if looked.is_err() {
+                    tracing::error!("looking for the problems of {uri} panicked");
+                }
+            }
+        };
+        if let Err(e) = std::thread::Builder::new().name("template problems".into()).spawn(run) {
+            tracing::error!("can't start the template problems thread: {e}");
+        }
+    }
+
+    /// The template at `uri` was opened or changed, or what it names was: its
+    /// problems are looked for again once it has been left alone for
+    /// [`TEMPLATE_DEBOUNCE`].
+    fn template_changed(&self, uri: &Url) {
+        let known = self.docs.read().get(uri).is_some_and(|doc| doc.kind.has_template_problems());
+        if known {
+            self.templates.push(uri.clone());
+        }
+    }
+
     /// A template's own problems: a Blade template's unclosed sections and
     /// pushes, a Twig template's syntax errors.
     fn template_problems(&self, uri: &Url) {
+        self.template_problems_of(uri);
+        // Closed meanwhile: `close` cleared its problems before these were published.
+        if !self.docs.read().contains_key(uri)
+            && let Some(path) = convert::path_of(uri)
+            && self.problems.lock().remove(dunce::simplified(&path)).is_some()
+        {
+            self.publish(dunce::simplified(&path));
+        }
+    }
+
+    fn template_problems_of(&self, uri: &Url) {
         let Some(doc) = self.snapshot(uri) else { return };
         if doc.kind == Kind::Twig {
             let reported = self.settings_for(&doc.path).inspection_enabled(phoxite::twig::SYNTAX_CODE);
@@ -608,7 +747,7 @@ impl State {
         let open: Vec<Url> =
             self.docs.read().values().filter(|doc| doc.kind == Kind::MagentoXml).map(|doc| doc.uri.clone()).collect();
         for uri in open {
-            self.template_problems(&uri);
+            self.template_changed(&uri);
         }
     }
 
@@ -646,6 +785,7 @@ impl State {
     }
 
     pub fn shutdown(&self) {
+        self.templates.stop();
         for w in self.workspaces.write().drain(..) {
             w.engine.shutdown();
         }

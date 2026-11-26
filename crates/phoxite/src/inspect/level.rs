@@ -1,8 +1,8 @@
 //! Language level and deprecation.
 //!
 //! - [`LanguageLevel`] (`PhpLanguageLevel`): syntax newer than the
-//!   project's PHP version ([`PhpEngine::language_level`], from Settings ›
-//!   PHP or `composer.json`'s `require.php`, the latest the stubs know
+//!   project's PHP version ([`crate::engine::PhpEngine::language_level`], from the `phpVersion`
+//!   setting or `composer.json`'s `require.php`, the latest the stubs know
 //!   otherwise), an error since PHP refuses to compile it:
 //!   - 7.0: scalar parameter types, return types, `??`, `<=>`, anonymous
 //!     classes

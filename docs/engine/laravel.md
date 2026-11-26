@@ -23,9 +23,9 @@ Final verification (phase 9.8, 2026-11-11, release builds, `vendor/` installed):
 
 ## Turning it on
 
-Laravel support turns on by itself when the project is a Laravel project: `composer.json` requires `laravel/framework`, `composer.lock` lists it, or there's an `artisan` file at a content root. Settings › PHP › Laravel › Laravel support forces it on or off.
+Laravel support turns on by itself when the project is a Laravel project: `composer.json` requires `laravel/framework`, `composer.lock` lists it, or there's an `artisan` file at a content root. The `laravel.detection` setting forces it on or off.
 
-It needs the native engine (Settings › PHP › Engine › Native, the default). It works without `vendor/`, but with `vendor/` installed it also knows the packages: their service providers, configuration, views, translations, Blade components, routes and `ide.json` files.
+It works without `vendor/`, but with `vendor/` installed it also knows the packages: their service providers, configuration, views, translations, Blade components, routes and `ide.json` files.
 
 Livewire and Inertia support turn on when the package is installed (`composer.lock` or `vendor/composer/installed.json`). An `ide.json` can turn a package's support off with `packages.disabledPackages`.
 
@@ -72,7 +72,7 @@ return redirect()->route('posts.show', $post);   // completes, goes to ->name('s
 - **Resources:** the actions in `Route::resource(…)->only([...])` and `except([...])`.
 - Also understood: `Route::resources()`, `apiResources()`, `singleton()`, `apiSingleton()`, `fallback()`, `->names('prefix')`, `domain()`, the array form of `Route::group([...])`, groups with `withoutMiddleware`, routes registered inside `if` blocks, and route files at paths computed from `config('…')`.
 
-**Route hints.** A code lens above each controller method lists the routes that reach it (method, URI, name), and an inlay hint after each `Route::get(…)` shows the full URI with group prefixes and domain. Clicking one offers to go to the route, copy its URL, open it in the browser (using `APP_URL` from `.env`) or create an HTTP client request (`.http` file; a `POST`, `PUT` or `PATCH` gets a JSON body naming the fields of the Form Request its controller method takes, each with an empty value of its rules' type). Settings › PHP › Laravel › Hints turns them off. Hovering a route name (`route('posts.show')`, in templates too) shows its method and URI, action, middleware, URL and file.
+**Route hints.** A code lens above each controller method lists the routes that reach it (method, URI, name), and an inlay hint after each `Route::get(…)` shows the full URI with group prefixes and domain. Clicking one offers to go to the route, copy its URL, open it in the browser (using `APP_URL` from `.env`) or create an HTTP client request (`.http` file; a `POST`, `PUT` or `PATCH` gets a JSON body naming the fields of the Form Request its controller method takes, each with an empty value of its rules' type). The `laravel.routeHints` setting turns them off. Hovering a route name (`route('posts.show')`, in templates too) shows its method and URI, action, middleware, URL and file.
 
 **Route search.** Search Everywhere has a **Routes** tab, searching by name or by part of the URI.
 
@@ -202,9 +202,9 @@ The **Laravel › Generate** submenu (in the Project view, the editor and the Ne
 - **Classes**, grouped in submenus: controller, resource controller, middleware, Form Request, JSON resource and collection, factory, seeder, migration (create or update a table), pivot-table migration, event, listener, job, mail, notification, observer, policy, rule, exception, HTTP exception, service provider, console command, Blade component (class or anonymous), view, view composer, broadcasting channel, enum, Livewire component (Livewire 2 or 3 layout), feature and unit tests.
 - **`ide.json` code generations** of the project and its packages, with their own input fields.
 
-Generators put files in the application or a chosen module, use the namespace and class suffixes of Settings › PHP › Laravel › Code generation, and register what they create: an observer in its model's `#[ObservedBy]`, a listener in the event service provider's `$listen`, a service provider in `bootstrap/providers.php` or the module's `module.json`.
+Generators put files in the application or a chosen module, use the namespace and class suffixes of the `laravel.generation` settings, and register what they create: an observer in its model's `#[ObservedBy]`, a listener in the event service provider's `$listen`, a service provider in `bootstrap/providers.php` or the module's `module.json`.
 
-The file contents come from the **Laravel …** templates in Editor › File and Code Templates, which can be edited. Inside a model, Generate also offers **JSON resource from model**, **Factory from model** and **Add all fields** to `$fillable`, which use the same edited templates.
+The file contents come from the generator templates, which can be edited: the edited ones are kept in the folder the `templates.path` setting names (`.phoxite/templates` by default). Inside a model, Generate also offers **JSON resource from model**, **Factory from model** and **Add all fields** to `$fillable`, which use the same edited templates.
 
 ### Intentions in PHP
 
@@ -227,7 +227,7 @@ Packages in `vendor/` are read through their service providers (package discover
 
 ## Inspections
 
-The Laravel inspections are in the inspection profile (Settings › PHP › Inspections, group "Laravel"; the route check is in "Frameworks"), each with an on/off switch and a severity. They run in the editor and in batch **Inspect Code**. Inspections that depend on a schema or a configuration file stay quiet when it isn't known for certain.
+The Laravel inspections are set like the others, in the `inspections` setting, each with an on/off switch and a severity (`docs/inspections.md` lists their ids). They run in the editor and in `phoxite-lsp check`. Inspections that depend on a schema or a configuration file stay quiet when it isn't known for certain.
 
 | Inspection                                     | Reports                                                                                                              | Quick-fix                     |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
@@ -254,14 +254,14 @@ The engine's general PHP inspections (undefined classes and methods, argument ty
 
 ## Settings
 
-Settings › PHP › Laravel, stored under `languages.php.laravel` (the engine receives them as one `LaravelSettings` struct, `crates/phoxite/src/base/settings.rs`):
+The settings under `laravel` (`docs/settings.md`; `phoxite.laravel.*` in VS Code). The engine receives them as one `LaravelSettings` struct, `crates/phoxite/src/base/settings.rs`:
 
 | Setting              | Key                                                                                              | Default                                                 | What it does                                                                                                                         |
 | -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Laravel support      | `detection`                                                                                      | `auto`                                                  | `auto` (from `composer.json`, `composer.lock`, `artisan`), `enabled` or `disabled`                                                   |
 | Modules              | `modules`                                                                                        | `auto`                                                  | `auto` (nwidart modules when installed, and module folders), `nwidart`, `directory` or `none`                                        |
 | Show route hints     | `routeHints`                                                                                     | on                                                      | the route code lenses and URI inlay hints                                                                                            |
-| Database             | `database`                                                                                       | none                                                    | a data source of the Database tool window whose live schema is merged with the migrations; refreshed on demand and on schema changes |
+| Database             | `database`                                                                                       | none                                                    | a SQLite database (`auto`: the one in `.env`, or a path) whose live schema is merged with the migrations; refreshed on demand and when the file changes |
 | Inertia page folders | `inertiaPages`                                                                                   | empty: `ide.json`, else `resources/js/Pages`            | folders of Inertia pages, relative to the project                                                                                    |
 | Code generation      | `generation.namespace`                                                                           | the `composer.json` namespace of `app/`                 | the application's root namespace                                                                                                     |
 |                      | `generation.module`                                                                              | the application                                         | the module new classes go to unless the dialog picks another                                                                         |
@@ -269,7 +269,7 @@ Settings › PHP › Laravel, stored under `languages.php.laravel` (the engine r
 |                      | `generation.constructorPromotion`                                                                | on                                                      | constructors promote their parameters                                                                                                |
 |                      | `generation.typeHints`                                                                           | on                                                      | generated methods declare return types                                                                                               |
 
-The inspections are set in the inspection profile, and the generator templates in Editor › File and Code Templates.
+The inspections are set in the `inspections` setting, and the folder of the edited generator templates in `templates.path`.
 
 ## ide.json
 

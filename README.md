@@ -124,6 +124,9 @@ exceeded.
 | `editors/vscode` | The VS Code extension (also Cursor, VSCodium, Windsurf through Open VSX). |
 | `editors/openidea` | The Laravel tools as an OpenIDEA plugin. |
 | `docs/editors.md` | Setting the server up in OpenIDEA, Neovim, Helix, Zed and Sublime Text. |
+| `docs/frameworks.md` | What each framework's support knows: its kinds of name and its inspections. |
+| `docs/settings.md` | Every setting of `phoxite.json`. |
+| `docs/inspections.md` | Every inspection: its id, severity and defaults. |
 | `docs/engine` | The engine's design notes and roadmap. |
 | `docs/openidea.md` | How OpenIDEA uses Phoxite, and what a release must keep for it. |
 | `CONTRIBUTING.md` | Building, testing and sending a change. |
@@ -158,7 +161,7 @@ The server reads its settings from `initializationOptions.settings` and from
   "includePaths": ["../shared", "../../config.php"],
   "stubs": ["redis"],
   "exclude": ["node_modules", "/storage"],
-  "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpTypeMismatch": { "strict": true } },
+  "inspections": { "PhpUndefinedMethod": { "enabled": false }, "PhpParams": { "strict": true } },
   "laravel": {
     "routeHints": true, "modules": "auto", "detection": "auto", "database": "",
     "generation": { "module": "", "controllerSuffix": "Controller", "typeHints": true }

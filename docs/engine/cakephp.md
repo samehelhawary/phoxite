@@ -119,7 +119,7 @@ All have completion, goto, hover and Find References. Nothing is renamed.
 
 ### Names that name nothing
 
-`ReferenceKind::undefined`, as inspections (`inspect/laravel.rs`, `CAKEPHP`):
+`ReferenceKind::undefined`, as inspections (`inspect/references.rs`, `CAKEPHP`):
 
 | Inspection | Reported when |
 | --- | --- |

@@ -77,18 +77,7 @@ impl PhpEngine {
             let types = ExprTypes::new(&file.parsed, &names, &summary, &resolver).at_path(Some(&candidate));
             passed.extend(crate::frameworks::laravel::views::passed_variables(&types, &file.parsed, &starts));
         }
-        let mut names: Vec<String> = passed.iter().map(|(name, _)| name.clone()).collect();
-        names.sort();
-        names.dedup();
-        let variables: Vec<(String, Type)> = names
-            .into_iter()
-            .map(|name| {
-                let types: Vec<Type> =
-                    passed.iter().filter(|(known, _)| *known == name).map(|(_, ty)| ty.clone()).collect();
-                (name, Type::union(types))
-            })
-            .collect();
-        let variables = Arc::new(variables);
+        let variables = Arc::new(crate::frameworks::laravel::views::joined_variables(passed));
         self.codeigniter_views_cache().lock().insert(path.to_path_buf(), (count, variables.clone()));
         variables
     }

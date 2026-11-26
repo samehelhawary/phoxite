@@ -206,9 +206,9 @@ the last three are guesses only what the editor shows uses
 
 - Indexing runs on the engine's worker thread and rayon. It can be cancelled
   and reports `IdeEvent::IndexState` while it runs. The engine also reports
-  itself as a language server (`starting` → `busy` → `ready`) so the frontend's
-  availability logic (`src/editor/lsp/availability.ts`) treats it like one.
-- Requests run on the host's blocking pool, never on a Tauri command thread, and
+  itself as a language server (`starting` → `busy` → `ready`), for a host that
+  treats it like one.
+- Requests run on the host's threads (`phoxite-lsp` gives each its own), and
   take a `CancellationToken` where the work is large (references, rename,
   workspace symbols, implementations).
 - Background inspections wait 120 ms after the last change to a document; a

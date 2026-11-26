@@ -8,7 +8,7 @@ Laravel's own notes are in [laravel.md](laravel.md).
 | Framework | Detection | Types | String references |
 | --- | --- | --- | --- |
 | Laravel | yes | `types::provider::LaravelProvider` | 24 kinds (`frameworks::laravel::refs`) |
-| Symfony, Doctrine | yes | `types::provider::SymfonyProvider` | route names, template names, service ids, parameters, translation keys and Doctrine fields (`frameworks::symfony::refs`) |
+| Symfony, Doctrine | yes | `types::provider::SymfonyProvider` | route names, template names, service ids, parameters, translation keys and Doctrine fields (`frameworks::symfony::refs`; see [`symfony.md`](symfony.md)) |
 | WordPress | yes | none (hook callbacks and `global` variables are typed by the engine itself, from name facts) | hooks, shortcodes, post types, taxonomies, script and style handles, options, image sizes, menu locations, template parts (`frameworks::wordpress::refs`; see [`wordpress.md`](wordpress.md)) |
 | Drupal | yes | `types::provider::DrupalProvider` (services, entity storages); hook implementations by the engine itself | services, routes, permissions, libraries, configuration, modules, entity types, plugins, theme hooks, hooks (`frameworks::drupal::refs`; see [`drupal.md`](drupal.md)) |
 | CodeIgniter (4, and 3) | yes | `types::provider::CodeIgniterProvider` (helper functions, a model's finders, a builder's table, what CodeIgniter 3's loader gives a controller); a view's variables by the engine itself | views, helpers, language lines, routes, filters, route handlers, configurations, models, services, view cells, events, validation rules and groups, tables and columns; 3's libraries, configuration items and controller paths (`frameworks::codeigniter::refs`; see [`codeigniter.md`](codeigniter.md)) |
@@ -40,8 +40,6 @@ Whether Symfony's Twig extensions are known there depends on Composer installing
 | Yii | `yiisoft/yii2` | `yii`, `vendor/yiisoft/yii2/Yii.php` |
 | CakePHP | `cakephp/cakephp` | `bin/cake`, `vendor/cakephp/cakephp/VERSION.txt` |
 | Laminas | `laminas/laminas-mvc`, `mezzio/mezzio` | `config/modules.config.php`, `vendor/laminas/laminas-mvc/composer.json` |
-| CakePHP | `cakephp/cakephp` | |
-| Laminas | `laminas/laminas-mvc`, `mezzio/mezzio` | |
 | Magento | `magento/framework`, `magento/product-community-edition`, `magento/product-enterprise-edition` | `app/etc/di.xml`; `registration.php` with `etc/module.xml` |
 | Joomla | none | `libraries/src/Version.php`; a root XML file that is a manifest (`<extension type=…>`) |
 
@@ -87,7 +85,7 @@ arguments), and the handling of a few Laravel kinds in `undefined_references`.
    registered in `TypeProviders::default()`.
 3. **String references.** Kinds in `frameworks/<name>/refs/`, listed by a `kinds()` function
    that `refs::framework_kinds` returns for the framework. A kind with an "undefined …"
-   inspection of its own adds its list to `INSPECTIONS` in `inspect/laravel.rs`; route names
+   inspection of its own adds its list to `INSPECTIONS` in `inspect/references.rs`; route names
    are reported by `inspect/routes.rs` (`PhpUndefinedRoute`).
 4. **Facts from PHP files.** For a name a call declares (a hook, a post type): a
    `DeclaredKind` in `summary/names.rs` and a row of the table in

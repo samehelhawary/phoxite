@@ -589,6 +589,22 @@ fn literal_string(expr: &Expression<'_>) -> Option<String> {
     }
 }
 
+/// What a view has of the variables its callers passed it ([`passed_variables`], of
+/// every call): each name once, sorted, with the types it was passed joined.
+pub fn joined_variables(passed: Vec<(String, Type)>) -> Vec<(String, Type)> {
+    let mut names: Vec<String> = passed.iter().map(|(name, _)| name.clone()).collect();
+    names.sort();
+    names.dedup();
+    names
+        .into_iter()
+        .map(|name| {
+            let types: Vec<Type> =
+                passed.iter().filter(|(known, _)| *known == name).map(|(_, ty)| ty.clone()).collect();
+            (name, Type::union(types))
+        })
+        .collect()
+}
+
 /// The variables (`(name, type)`, in order, repeated per call) that the calls
 /// naming a view with the string literals whose content starts at `starts`
 /// pass to it.

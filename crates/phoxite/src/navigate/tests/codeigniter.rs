@@ -310,6 +310,18 @@ fn a_view_has_what_its_controller_passes() {
     assert!(project.engine.codeigniter_view_variables(&project.root.join(CONTROLLER)).is_empty());
 }
 
+/// A project Yii is found in too (its `yii` script is there) still has its CodeIgniter
+/// views typed: Yii answers for its own views only.
+#[test]
+fn a_view_is_typed_beside_another_framework() {
+    let mut project = codeigniter();
+    std::fs::write(project.root.join("yii"), "#!/usr/bin/env php\n").unwrap();
+    project.engine.rescan();
+    assert!(project.engine.wait_idle(std::time::Duration::from_secs(60)));
+    let hover = project.ci_hover(VIEW, "<h1><?= $ti/*|*/tle ?></h1>\n");
+    assert!(hover.contains("string"), "{hover}");
+}
+
 #[test]
 fn codeigniter_names_are_only_read_in_a_codeigniter_project() {
     let mut project =

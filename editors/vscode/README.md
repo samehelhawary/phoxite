@@ -548,8 +548,8 @@ index, so it works in any folder.
 | `phoxite.includePaths` | Folders and single files outside the project to index (`../shared`, `../../config.php`). |
 | `phoxite.stubs` | Extra extension stubs (`redis`, `swoole`…). |
 | `phoxite.exclude` | Globs left out of the index. |
-| `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`. A few are off until enabled here, as what they look for may be defined outside the project: `PhpUndefinedHook`, `PhpUndefinedCodeIgniterEvent`, `PhpUnknownCodeIgniterTable`, `PhpUnknownCodeIgniterColumn`. |
-| `phoxite.frameworks` | Each framework's support: `auto` (detected), `enabled` or `disabled`. Laravel, Symfony, WordPress, Drupal, CodeIgniter and Yii have support today. |
+| `phoxite.inspections` | Per-inspection `enabled`, `strict` and `severity`, by the ids [the inspection reference](https://github.com/samehelhawary/phoxite/blob/main/docs/inspections.md) lists. A few are off until enabled here, as what they look for may be defined outside the project: `PhpUndefinedHook`, `PhpUndefinedCodeIgniterEvent`, `PhpUnknownCodeIgniterTable`, `PhpUnknownCodeIgniterColumn`. |
+| `phoxite.frameworks` | Each framework's support: `auto` (detected), `enabled` or `disabled`. Laravel, Symfony, WordPress, Drupal, CodeIgniter, Yii, CakePHP, Laminas, Magento and Joomla have support today. |
 | `phoxite.laravel.*` | Detection, route hints, modules, Inertia page folders. |
 | `phoxite.laravel.database` | A SQLite database to read columns from: `auto` (the one in `.env`) or a path. Empty: the migrations alone. |
 | `phoxite.laravel.artisanCommand` | How Artisan runs: `php artisan`, `./vendor/bin/sail artisan`… |

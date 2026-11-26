@@ -27,6 +27,16 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+Three pages of `docs/` are written from the code, and a check fails when one is out of
+date. Write them again after adding or renaming an inspection, a framework's kind of name
+or a setting:
+
+```sh
+PHOXITE_WRITE_DOCS=1 cargo test -p phoxite --lib inspection_reference   # docs/inspections.md
+PHOXITE_WRITE_DOCS=1 cargo test -p phoxite --lib framework_overview     # docs/frameworks.md
+node scripts/settings_doc.mjs                                           # docs/settings.md
+```
+
 The extension:
 
 ```sh

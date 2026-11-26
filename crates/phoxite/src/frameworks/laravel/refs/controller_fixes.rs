@@ -1,4 +1,4 @@
-//! `PhpUndefinedController` ([`ControllerAction::undefined`]): a route
+//! `PhpUndefinedController` (`ControllerAction::undefined`): a route
 //! action naming a controller class or method that doesn't exist, and its
 //! quick-fixes.
 //!

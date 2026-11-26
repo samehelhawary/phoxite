@@ -6,7 +6,7 @@
 //!
 //! Completion lists the pages, goto opens the page's file (Vue, React or
 //! Svelte). A name no page has is reported by `PhpUndefinedInertiaPage`
-//! ([`crate::inspect::laravel`]) when a page folder exists, with a
+//! ([`crate::inspect::references`]) when a page folder exists, with a
 //! "Create page" quick-fix writing the file. Renaming the last segment of a
 //! name renames the page's file and every usage; find usages and rename
 //! also start from the page file itself

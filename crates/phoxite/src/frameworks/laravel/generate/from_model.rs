@@ -1,10 +1,10 @@
 //! The Generate menu inside an Eloquent model class: context actions
 //! whose titles start the way the editor's Generate menu lists them.
 //!
-//! - **Generate JSON resource from '<Model>'**: a `<Model>Resource` whose
+//! - **Generate JSON resource from '`<Model>`'**: a `<Model>Resource` whose
 //!   `toArray()` lists the model's visible columns and its relations when
 //!   loaded (through their own resources when the project has them).
-//! - **Generate factory from '<Model>'**: a `<Model>Factory` with a fake
+//! - **Generate factory from '`<Model>`'**: a `<Model>Factory` with a fake
 //!   value per column, and the related model's factory for the key of a
 //!   `belongsTo` relation.
 //! - **Add all fields to $fillable**: the model's columns missing from its

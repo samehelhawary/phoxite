@@ -19,7 +19,7 @@
 //! - **Convert controller string to array callable**: `'PostController@index'`
 //!   in a route becomes `[PostController::class, 'index']` (importing the
 //!   controller), for one or every one in the file.
-//! - **Convert scope to #[Scope] method**: on a `scopePublished()` method of
+//! - **Convert scope to `#[Scope]` method**: on a `scopePublished()` method of
 //!   a model, with Laravel 12's `Illuminate\Database\Eloquent\Attributes\Scope`
 //!   installed: renames it `published()`, makes it protected and adds the
 //!   attribute (imported), for one or every scope of the class.
@@ -686,7 +686,7 @@ impl PhpEngine {
 
     // ------------------------------------------------------------ scopes
 
-    /// "Convert scope 'scopeX' to #[Scope] method" and the one for every
+    /// "Convert scope 'scopeX' to `#[Scope]` method" and the one for every
     /// scope of the model.
     fn attribute_scopes(
         &self,

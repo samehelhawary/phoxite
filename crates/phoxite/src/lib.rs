@@ -44,7 +44,7 @@
 //!   ([`complete::Completions`]): members, variables, keywords, names with
 //!   auto-import, named arguments, expected values, enum cases and array
 //!   keys.
-//! - [`format`]: Reformat Code for documents and ranges through
+//! - [`mod@format`]: Reformat Code for documents and ranges through
 //!   `mago-formatter` (PSR-12, with the editor's indentation and line length).
 //! - [`imports`]: the auto-import quick-fix for unresolved names, Optimize
 //!   Imports, and inserting `use` statements in the file's own style.
@@ -63,9 +63,10 @@
 //! - [`blade`]: Blade templates: the PHP of echoes, directives and PHP
 //!   blocks compiled into an embedded document the engine answers on, and
 //!   goto definition of views and components.
-//! - [`frameworks`]: what a framework knows about the whole project: the
-//!   Laravel project model (version, paths, app namespace, route files
-//!   with their groups, modules).
+//! - [`frameworks`]: which frameworks a project uses, and what each one
+//!   knows about the whole project (for Laravel: version, paths, app
+//!   namespace, route files with their groups, modules), with the string
+//!   references they share.
 //! - [`twig`]: Twig templates: outline, completion of variables, tags,
 //!   filters, functions, tests and template names, and goto definition of
 //!   the templates a template loads, through `mago-twig-syntax`.

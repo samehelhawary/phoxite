@@ -22,7 +22,7 @@
 //!   [`LARAVEL_FILES_KEY`] → a [`Decl`] per file with Laravel bindings,
 //!   migrations or casts, and [`SYMFONY_FILES_KEY`] one per file with
 //!   `#[Route]` names or repository entities (same table).
-//! - **words**: lower-case identifier ([`words`]) → the files containing it
+//! - **words**: lower-case identifier ([`words()`]) → the files containing it
 //!   anywhere (code, comments, strings), by a 64-bit id of the path; the
 //!   candidates of a find-usages search. Each content hash keeps its word
 //!   list, so a file's entries are removed exactly.

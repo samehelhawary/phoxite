@@ -66,16 +66,43 @@ pub fn fixture() -> Workload {
     }
 }
 
-/// laravel/framework from the corpora, when it is there.
-pub fn laravel() -> Option<Workload> {
+/// The folder of the corpus `name`, when it is there.
+fn corpus(group: &str, name: &str) -> Option<PathBuf> {
     let base = std::env::var_os("PHP_CORPUS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../php-corpus"));
-    let root = base.join("laravel-framework");
+    let root = base.join(name);
     if !root.join("composer.json").is_file() {
-        eprintln!("php_laravel: no corpus at {} (scripts/php-corpus.sh), skipped", root.display());
+        eprintln!("{group}: no corpus at {} (scripts/php-corpus.sh), skipped", root.display());
         return None;
     }
+    Some(root)
+}
+
+/// Magento from the corpora, when it is there: the largest project of the corpora, and a
+/// framework whose names are declared in XML the engine reads beside the index.
+pub fn magento() -> Option<Workload> {
+    let root = corpus("php_magento", "magento")?;
+    Some(Workload {
+        group: "php_magento",
+        root: canonical(&root),
+        file: "app/code/Magento/Catalog/Model/ProductRepository.php",
+        hover: ("$product->load($productId)", 10),
+        anchor: "$product->load($productId);",
+        typed: "            $product->",
+        budgets: Budgets {
+            cold_index: ms(120_000),
+            warm_start: ms(5_000),
+            hover_after_keystroke: ms(50),
+            completion_after_keystroke: ms(50),
+            diagnostics_after_edit: ms(300),
+        },
+    })
+}
+
+/// laravel/framework from the corpora, when it is there.
+pub fn laravel() -> Option<Workload> {
+    let root = corpus("php_laravel", "laravel-framework")?;
     Some(Workload {
         group: "php_laravel",
         root: canonical(&root),

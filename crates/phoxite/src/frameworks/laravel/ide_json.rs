@@ -11,7 +11,7 @@
 //!   names a `complete` type, mapped onto a reference kind of [`super::refs`]
 //!   ([`completion_kind`]), and `condition`s (any of them) saying where the
 //!   string sits, matched against the same string sites as the built-in
-//!   place patterns ([`Condition::matches`]). `options.prefix` is put before
+//!   place patterns ([`Condition::place_matches`]). `options.prefix` is put before
 //!   the string; `staticStrings` and `directoryFiles` are kinds of their own
 //!   ([`super::refs::rules`]).
 //! - **`view.paths`:** more view folders, with an optional namespace.

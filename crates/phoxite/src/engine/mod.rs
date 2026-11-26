@@ -16,9 +16,8 @@
 //! While a scan runs the engine is in dumb mode: it emits
 //! `IdeEvent::IndexState { indexing: true }` and `false` when done. It also
 //! reports itself as a language server (`IdeEvent::LanguageServer` with its
-//! own [`ServerId`], `starting` → `busy` → `ready`) so the frontend's
-//! availability logic (`src/editor/lsp/availability.ts`) treats it like one:
-//! back-offs are cleared and stale answers re-requested once it is ready.
+//! own [`ServerId`], `starting` → `busy` → `ready`), so a host can treat it
+//! like one: clear its back-offs and ask again once it is ready.
 //!
 //! Open documents ([`PhpEngine::document_opened`] and friends) are kept as
 //! overlays: [`PhpEngine::summary`] answers from the buffer of an open file
@@ -45,7 +44,7 @@ pub(crate) mod parts;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -143,6 +142,19 @@ pub struct EngineStatus {
 /// An open document's version before its first edit since its declarations
 /// were last compared, and that version's summary when it was extracted.
 type Unsettled = (OpenDocument, Option<Arc<FileSummary>>);
+
+/// A framework's project model with what it was read from: the modification and disk
+/// counts it was read at, and each file it asked for with the version of the open
+/// document that answered (none: the file on disk did, or nothing). It stands until one
+/// of these changes; an edit of a file it never asked for leaves it alone.
+struct ModelRead<T> {
+    modification: u64,
+    disk: u64,
+    files: Vec<(PathBuf, Option<u32>)>,
+    project: Arc<T>,
+}
+
+type ReadModel<T> = Mutex<Option<ModelRead<T>>>;
 
 /// An open document, which overrides the file on disk.
 #[derive(Clone, Debug)]
@@ -249,8 +261,8 @@ struct Shared {
     /// The project's Symfony configuration, read on first use; dropped
     /// when a YAML file changes.
     symfony_config: Mutex<Option<Arc<SymfonyConfig>>>,
-    /// What a CodeIgniter project's files declare, for an edit count.
-    codeigniter: Mutex<Option<(u64, Arc<crate::frameworks::codeigniter::CodeIgniterProject>)>>,
+    /// What a CodeIgniter project's files declare, until one of them changes.
+    codeigniter: ReadModel<crate::frameworks::codeigniter::CodeIgniterProject>,
     /// What a Joomla project's files declare, until one changes.
     joomla: Mutex<crate::frameworks::joomla::project::JoomlaCache>,
     /// What a Magento project's XML files declare, until one changes.
@@ -259,12 +271,12 @@ struct Shared {
     magento_generated: Mutex<HashMap<String, (u64, Option<ClassLike>)>>,
     /// What each template of a Magento project is given, for an edit count.
     magento_views: TypedViewVariables,
-    /// What a Laminas project's configuration says, for an edit count.
-    laminas: Mutex<Option<(u64, Arc<crate::frameworks::laminas::LaminasProject>)>>,
+    /// What a Laminas project's configuration says, until one of its files changes.
+    laminas: ReadModel<crate::frameworks::laminas::LaminasProject>,
     /// What each template of a Laminas project is given, for an edit count.
     laminas_views: TypedViewVariables,
-    /// What a CakePHP project's files say, for an edit count.
-    cake: Mutex<Option<(u64, Arc<crate::frameworks::cakephp::CakeProject>)>>,
+    /// What a CakePHP project's files say, until one of them changes.
+    cake: ReadModel<crate::frameworks::cakephp::CakeProject>,
     /// What the code of each class of a CakePHP project says it loads, for
     /// an edit count.
     cake_facts: Mutex<HashMap<String, (u64, Arc<crate::frameworks::cakephp::facts::ClassFacts>)>>,
@@ -272,8 +284,8 @@ struct Shared {
     cake_tables: Mutex<crate::frameworks::cakephp::migrations::TableCache>,
     /// What each template of a CakePHP project is given, for an edit count.
     cake_views: TypedViewVariables,
-    /// What a Yii project's configuration says, for an edit count.
-    yii: Mutex<Option<(u64, Arc<crate::frameworks::yii::YiiProject>)>>,
+    /// What a Yii project's configuration says, until one of its files changes.
+    yii: ReadModel<crate::frameworks::yii::YiiProject>,
     /// What each view of a Yii project is passed, for an edit count.
     yii_views: TypedViewVariables,
     /// The tables the migrations of a Yii project make.
@@ -330,9 +342,9 @@ struct Shared {
     component_props: Mutex<ViewVariables>,
     /// The Blade components and custom directives, for a modification count.
     laravel_blade: Mutex<Option<(u64, Arc<BladeCatalog>)>>,
-    /// What Laravel support shows (Settings › PHP › Laravel).
+    /// What Laravel support shows (the `laravel` settings).
     laravel_settings: Mutex<LaravelSettings>,
-    /// The tables of the data source chosen in Settings › PHP › Laravel.
+    /// The tables of the data source the `laravel` settings choose.
     live_schema: RwLock<Option<Arc<LiveSchema>>>,
     /// The user's edited Laravel generator templates, for the generators
     /// that aren't given them with the request (the in-model actions).
@@ -815,13 +827,17 @@ impl PhpEngine {
             let touched: Vec<PathBuf> = changed.iter().chain(removed).map(|p| normalize(p)).collect();
             self.shared.parts.forget_below(&touched);
         }
+        // Each path is looked at on disk once: a batch can be a whole checkout, and this
+        // runs on the thread that takes the client's messages.
+        let folders: HashSet<&PathBuf> = changed.iter().filter(|p| p.is_dir()).collect();
+        let is_dir = |p: &PathBuf| folders.contains(p);
         // Templates created or removed, and what says where they are.
-        let twig = |p: &PathBuf| p.extension().is_some_and(|ext| ext == "twig") || is_yaml_path(p) || p.is_dir();
+        let twig = |p: &PathBuf| p.extension().is_some_and(|ext| ext == "twig") || is_yaml_path(p) || is_dir(p);
         if changed.iter().any(twig) || removed.iter().any(|p| !is_php_path(p)) {
             *self.shared.twig_paths.lock() = None;
         }
         // Joomla's declarations: manifests, forms, language files, asset lists, SQL scripts.
-        let joomla = |p: &PathBuf| crate::frameworks::joomla::project::is_read(p) || p.is_dir();
+        let joomla = |p: &PathBuf| crate::frameworks::joomla::project::is_read(p) || is_dir(p);
         if changed.iter().any(joomla) || removed.iter().any(|p| !is_php_path(p)) {
             self.shared.joomla.lock().forget();
             let named = |p: &PathBuf| p.extension().is_some_and(|ext| ext == "ini" || ext == "sql" || ext == "json");
@@ -836,7 +852,7 @@ impl PhpEngine {
         let magento = |p: &PathBuf| {
             p.extension().is_some_and(|ext| ext == "xml" || ext == "graphqls")
                 || p.ends_with("registration.php")
-                || p.is_dir()
+                || is_dir(p)
         };
         if changed.iter().any(magento) || removed.iter().any(|p| !is_php_path(p) || p.ends_with("registration.php")) {
             self.shared.magento.lock().forget();
@@ -846,7 +862,7 @@ impl PhpEngine {
                 self.shared.inspect_open_documents();
             }
         }
-        let block = |p: &PathBuf| crate::frameworks::wordpress::assets::is_block_json(p) || p.is_dir();
+        let block = |p: &PathBuf| crate::frameworks::wordpress::assets::is_block_json(p) || is_dir(p);
         if changed.iter().any(block) || removed.iter().any(|p| !is_php_path(p)) {
             *self.shared.wordpress_blocks.lock() = None;
         }
@@ -869,13 +885,13 @@ impl PhpEngine {
             self.shared.modification.fetch_add(1, Ordering::SeqCst);
             self.shared.inspect_open_documents();
         }
-        if changed.iter().any(|p| is_laravel_input(p) || p.is_dir()) || removed.iter().any(|p| !is_php_path(p)) {
+        if changed.iter().any(|p| is_laravel_input(p) || is_dir(p)) || removed.iter().any(|p| !is_php_path(p)) {
             // Detection, paths and modules are read again on next use.
             self.reset_laravel_cache();
         }
         let changed: Vec<PathBuf> = changed
             .iter()
-            .filter(|p| is_php_path(p) || is_manifest_name(p) || p.is_dir())
+            .filter(|p| is_php_path(p) || is_manifest_name(p) || is_dir(p))
             .map(|p| normalize(p))
             .collect();
         // A removed folder can't be told from a removed file without an
@@ -1036,24 +1052,51 @@ impl PhpEngine {
         config
     }
 
+    /// A framework's project model kept in `slot`: `load` reads it, from the project's
+    /// root and each file as the editor has it, and it is read again once the index or
+    /// the disk changed, or a document it read (or looked for) was edited, opened or
+    /// closed. Typing in any other file keeps it.
+    fn read_model<T>(
+        &self,
+        slot: &ReadModel<T>,
+        load: impl FnOnce(&Path, &dyn Fn(&Path) -> Option<String>) -> T,
+    ) -> Arc<T> {
+        let modification = self.modification_count();
+        let disk = self.shared.disk.load(Ordering::SeqCst);
+        let version_of =
+            |path: &Path| self.shared.documents.lock().values().find(|d| d.path == path).map(|d| d.version);
+        if let Some(read) = slot.lock().as_ref()
+            && read.modification == modification
+            && read.disk == disk
+            && read.files.iter().all(|(path, version)| version_of(path) == *version)
+        {
+            return read.project.clone();
+        }
+        let root = self.shared.layout_config.lock().root.clone();
+        let files = std::cell::RefCell::new(Vec::new());
+        let text_of = |path: &Path| {
+            let open = self.open_document(path);
+            files.borrow_mut().push((normalize(path), open.as_ref().map(|document| document.version)));
+            match open {
+                Some(document) => Some(document.text.to_string()),
+                None => std::fs::read_to_string(path).ok(),
+            }
+        };
+        let project = Arc::new(load(&root, &text_of));
+        let mut files = files.into_inner();
+        files.sort();
+        files.dedup();
+        *slot.lock() = Some(ModelRead { modification, disk, files, project: project.clone() });
+        project
+    }
+
     /// What the files of a CodeIgniter project declare
     /// ([`CodeIgniterProject`](crate::frameworks::codeigniter::CodeIgniterProject)):
     /// its language lines and filter aliases.
     pub fn codeigniter(&self) -> Arc<crate::frameworks::codeigniter::CodeIgniterProject> {
-        let count = self.edit_count();
-        if let Some((at, project)) = self.shared.codeigniter.lock().clone()
-            && at == count
-        {
-            return project;
-        }
-        let root = self.shared.layout_config.lock().root.clone();
-        let text_of = |path: &Path| match self.open_document(path) {
-            Some(document) => Some(document.text.to_string()),
-            None => std::fs::read_to_string(path).ok(),
-        };
-        let project = Arc::new(crate::frameworks::codeigniter::CodeIgniterProject::load(&root, text_of));
-        *self.shared.codeigniter.lock() = Some((count, project.clone()));
-        project
+        self.read_model(&self.shared.codeigniter, |root, text_of| {
+            crate::frameworks::codeigniter::CodeIgniterProject::load(root, text_of)
+        })
     }
 
     /// What the files of a Joomla site or extension declare
@@ -1105,22 +1148,11 @@ impl PhpEngine {
     /// ([`LaminasProject`](crate::frameworks::laminas::LaminasProject)): its
     /// services, routes, templates and keys.
     pub fn laminas(&self) -> Arc<crate::frameworks::laminas::LaminasProject> {
-        let count = self.edit_count();
-        if let Some((at, project)) = self.shared.laminas.lock().clone()
-            && at == count
-        {
-            return project;
-        }
-        let root = self.shared.layout_config.lock().root.clone();
-        let text_of = |path: &Path| match self.open_document(path) {
-            Some(document) => Some(document.text.to_string()),
-            None => std::fs::read_to_string(path).ok(),
-        };
         // The modules and providers Composer installed are found by their class.
         let class_file = |class: &str| self.class_targets(class).into_iter().next().map(|target| target.path);
-        let project = Arc::new(crate::frameworks::laminas::LaminasProject::load(&root, &text_of, &class_file));
-        *self.shared.laminas.lock() = Some((count, project.clone()));
-        project
+        self.read_model(&self.shared.laminas, |root, text_of| {
+            crate::frameworks::laminas::LaminasProject::load(root, &text_of, &class_file)
+        })
     }
 
     /// The cache of [`PhpEngine::laminas_view_variables`].
@@ -1132,20 +1164,7 @@ impl PhpEngine {
     /// ([`CakeProject`](crate::frameworks::cakephp::CakeProject)): its
     /// namespace, plugins, configuration and named routes.
     pub fn cake(&self) -> Arc<crate::frameworks::cakephp::CakeProject> {
-        let count = self.edit_count();
-        if let Some((at, project)) = self.shared.cake.lock().clone()
-            && at == count
-        {
-            return project;
-        }
-        let root = self.shared.layout_config.lock().root.clone();
-        let text_of = |path: &Path| match self.open_document(path) {
-            Some(document) => Some(document.text.to_string()),
-            None => std::fs::read_to_string(path).ok(),
-        };
-        let project = Arc::new(crate::frameworks::cakephp::CakeProject::load(&root, text_of));
-        *self.shared.cake.lock() = Some((count, project.clone()));
-        project
+        self.read_model(&self.shared.cake, |root, text_of| crate::frameworks::cakephp::CakeProject::load(root, text_of))
     }
 
     /// What the code of the class `class` says it loads
@@ -1197,20 +1216,7 @@ impl PhpEngine {
     /// ([`YiiProject`](crate::frameworks::yii::YiiProject)): its components,
     /// modules, parameters, aliases and messages.
     pub fn yii(&self) -> Arc<crate::frameworks::yii::YiiProject> {
-        let count = self.edit_count();
-        if let Some((at, project)) = self.shared.yii.lock().clone()
-            && at == count
-        {
-            return project;
-        }
-        let root = self.shared.layout_config.lock().root.clone();
-        let text_of = |path: &Path| match self.open_document(path) {
-            Some(document) => Some(document.text.to_string()),
-            None => std::fs::read_to_string(path).ok(),
-        };
-        let project = Arc::new(crate::frameworks::yii::YiiProject::load(&root, text_of));
-        *self.shared.yii.lock() = Some((count, project.clone()));
-        project
+        self.read_model(&self.shared.yii, |root, text_of| crate::frameworks::yii::YiiProject::load(root, text_of))
     }
 
     /// The tables the migrations of a Yii project make
@@ -2310,10 +2316,7 @@ impl Declarations for PhpEngine {
             return variables.iter().find(|(known, _)| known == name).map(|(_, ty)| ty.clone());
         }
         // Yii: a file of a `views` or a `mail` folder; `$this` is the view object.
-        if self.frameworks().contains(crate::frameworks::Framework::Yii) {
-            if !self.is_yii_view(path) {
-                return None;
-            }
+        if self.frameworks().contains(crate::frameworks::Framework::Yii) && self.is_yii_view(path) {
             if name == "this" {
                 let resolver = self.resolver();
                 let classes = ["yii\\web\\View", "yii\\base\\View"];

@@ -3,7 +3,7 @@
 //! attributes and, where they name PHP versions, the `@since` and `@removed`
 //! docblock tags. Each rule is keyed by the start of the declaration's name,
 //! which is the [`Loc::start`](crate::summary::Loc) of its `name_loc` in the
-//! [`FileSummary`](crate::summary::FileSummary).
+//! [`crate::summary::FileSummary`].
 //!
 //! The attribute semantics follow the phpstorm-stubs README and its
 //! `JetBrains\PhpStorm\Internal` attribute classes (Apache-2.0): `from` and

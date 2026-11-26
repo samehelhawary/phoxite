@@ -162,7 +162,7 @@ are a front name and class names) and a table (the database has it).
 
 ### Names that name nothing
 
-`ReferenceKind::undefined`, as inspections (`inspect/laravel.rs`, `MAGENTO`):
+`ReferenceKind::undefined`, as inspections (`inspect/references.rs`, `MAGENTO`):
 
 | Inspection | Reported when |
 | --- | --- |
