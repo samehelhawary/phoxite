@@ -18,8 +18,8 @@ jobs:
   versions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - if: github.ref_type == 'tag'
@@ -43,7 +43,7 @@ jobs:
           - { target: aarch64-apple-darwin, os: macos-latest }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -53,7 +53,7 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - run: cargo build --release --locked -p phoxite-lsp --target ${{ matrix.target }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Package the extension
@@ -67,7 +67,7 @@ jobs:
           cp target/${{ matrix.target }}/release/phoxite-lsp${{ matrix.exe }} \
             dist/phoxite-lsp-${{ matrix.target }}${{ matrix.exe }}
           cp editors/vscode/*.vsix dist/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: dist/*
@@ -76,8 +76,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -98,7 +98,7 @@ jobs:
         run: |
           minor="$(echo "${GITHUB_REF_NAME#v}" | cut -d. -f2)"
           case "$minor" in *[13579]) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           draft: true
           prerelease: ${{ steps.channel.outputs.prerelease }}

@@ -19,10 +19,10 @@ jobs:
     env:
       PHP_CORPUS_DIR: ${{ github.workspace }}/php-corpus
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: php-corpus
           key: php-corpus-${{ hashFiles('scripts/php-corpus.sh') }}
@@ -42,7 +42,7 @@ jobs:
         env:
           PHOXITE_BUDGET_FACTOR: 3
       # What was measured, kept to set a slower run beside an earlier one.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: budgets-nightly
