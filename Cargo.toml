@@ -5,7 +5,7 @@ members = ["crates/phoxite", "crates/phoxite-lsp"]
 [workspace.package]
 version = "0.12.0"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.99"
 license = "Apache-2.0"
 authors = ["Sameh Elhawary"]
 repository = "https://github.com/samehelhawary/phoxite"
