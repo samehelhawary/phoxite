@@ -422,6 +422,15 @@ impl PhpEngine {
                     {
                         return None;
                     }
+                    // An alias (`class_alias()`, a Laravel alias) is declared by a
+                    // string: what goto finds is the class it stands for, which a
+                    // rename of the alias must not reach.
+                    if let Decl::ClassLike(fqn) = decl
+                        && let Some(class) = resolver.declarations().class_like(fqn)
+                        && !fqn_eq(NameKind::ClassLike, &class.fqn, fqn)
+                    {
+                        return None;
+                    }
                     let targets = self.decl_targets(decl, path, here);
                     if targets.is_empty() || targets.iter().any(|target| self.is_library(&target.path)) {
                         return None;

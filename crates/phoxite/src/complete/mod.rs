@@ -1410,6 +1410,19 @@ impl<'e, 'r> Collector<'e, 'r> {
                 }
             }
         }
+        // The aliases of `class_alias()`, each as the kind of class it stands for. After
+        // the index: a class declared under the name is the one listed.
+        if classes {
+            let aliases = self.engine.class_aliases();
+            for (alias, class, library) in aliases.all() {
+                if quality(short_name(alias), short).is_none() {
+                    continue;
+                }
+                if let Some(class) = self.resolver.declarations().class_like(&class) {
+                    add(&mut found, alias, DeclKind::ClassLike(class.kind), false, library);
+                }
+            }
+        }
         let stubs = self.engine.stubs();
         for file in &stubs.files {
             for class in &file.summary.class_likes {

@@ -165,6 +165,7 @@ impl PhpEngine {
         }
         let mut sought = sought;
         sought.extend(self.model_method_aliases(&sought));
+        sought.extend(self.class_alias_names(&sought));
         let found = self.find_usages(&sought, &path, &here, include_declaration, cancel);
         Some(found.and_then(|mut usages| {
             // A controller method's routes count as its usages, and a
@@ -195,6 +196,39 @@ impl PhpEngine {
             }
             Ok(usages)
         }))
+    }
+
+    /// The other names of the classes among `sought` (`class_alias()`): a class's
+    /// usages are also where it is written by an alias, and an alias's are where the
+    /// class or another of its aliases is. Find usages only: a rename, a move and the
+    /// refactorings match the exact name, so code written with an alias keeps it.
+    fn class_alias_names(&self, sought: &[Sought]) -> Vec<Sought> {
+        let classes: Vec<&str> = sought
+            .iter()
+            .filter_map(|sought| match sought {
+                Sought::Name { kind: NameKind::ClassLike, fqn } => Some(fqn.as_str()),
+                _ => None,
+            })
+            .collect();
+        if classes.is_empty() {
+            return Vec::new();
+        }
+        let aliases = self.class_aliases();
+        let mut out: Vec<Sought> = Vec::new();
+        for &name in &classes {
+            let class = aliases.resolve(name).unwrap_or_else(|| name.trim_start_matches('\\').to_owned());
+            let names = std::iter::once(class.as_str()).chain(aliases.aliases_of(&class));
+            for other in names {
+                let known = |sought: &Sought| {
+                    matches!(sought, Sought::Name { kind: NameKind::ClassLike, fqn }
+                        if fqn_eq(NameKind::ClassLike, fqn, other))
+                };
+                if !classes_contain(&classes, other) && !out.iter().any(known) {
+                    out.push(Sought::Name { kind: NameKind::ClassLike, fqn: other.to_owned() });
+                }
+            }
+        }
+        out
     }
 
     /// The other names Eloquent model methods among `sought` are used by:
@@ -1277,6 +1311,11 @@ impl<'a, 'r, 's> Walker<'a, 'a, Scan<'a, 'r, 's>> for ScanWalker {
     fn walk_out_property_hook(&self, _: &'a PropertyHook<'a>, cx: &mut Scan<'a, 'r, 's>) {
         cx.frames.pop();
     }
+}
+
+/// Whether `name` is one of `classes`, as class names compare.
+fn classes_contain(classes: &[&str], name: &str) -> bool {
+    classes.iter().any(|class| fqn_eq(NameKind::ClassLike, class, name))
 }
 
 #[cfg(test)]

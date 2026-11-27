@@ -5,7 +5,11 @@
 - **Class aliases.** A class `class_alias('Real\Name', 'Alias\Name')` makes (its names
   written as strings or as `Foo::class`) is that class: Go to Definition goes to the
   class it stands for, its members resolve and it is no longer reported as undefined.
-  An alias of an alias is followed; a name put together at run time is not.
+  Class-name completion lists it, as the kind of class it stands for, and Find Usages of
+  the class includes the places written with an alias (and the other way round). A rename
+  started on an alias is refused, and renaming the class leaves code written with an alias
+  as it is. An alias of an alias is followed; a name put together at run time is not.
+  Thanks to @shoman4eg (#14).
 
 ## 0.12.0 — 2026-11-23
 

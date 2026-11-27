@@ -467,3 +467,42 @@ fn function_names_in_a_string_where_a_callable_is_expected() {
     let found = project.complete("src/run.php", &run("strlen('by_/*|*/');"));
     assert!(!has(&found, "by_name"), "{:?}", labels(&found));
 }
+
+/// A name `class_alias()` declares is listed like a class, as the kind of class it
+/// stands for, and imported like one; a class declared under the name is listed alone.
+#[test]
+fn class_aliases_are_listed_as_the_class_they_stand_for() {
+    let mut project = Project::new(&[
+        ("src/Model/Genre.php", "<?php\nnamespace App\\Model;\n\nenum Genre: string { case Fiction = 'fiction'; }\n"),
+        (
+            "src/Model/Book.php",
+            "<?php\nnamespace App\\Model;\n\nclass Book { public function title(): string { return ''; } }\n",
+        ),
+        ("src/Legacy/Kind.php", "<?php\nnamespace App\\Legacy;\n\nclass Kind {}\n"),
+        (
+            "src/compat.php",
+            "<?php\nclass_alias(\\App\\Model\\Genre::class, 'App\\Legacy\\Category');\n\
+             class_alias('App\\Model\\Book', 'Legacy_Volume');\n\
+             class_alias('App\\Model\\Book', 'App\\Legacy\\Kind');\n",
+        ),
+    ]);
+    let source = "<?php\nnamespace App\\Http;\n\nfunction show(): void\n{\n    $c = Categ/*|*/\n}\n";
+    let found = project.complete("src/Http/show.php", source);
+    let category = item(&found, "Category");
+    assert_eq!(category.kind, CompletionKind::Enum);
+    assert_eq!(category.insert_text, "Category");
+    let (text, _) = caret(source);
+    let mut document = crate::base::Document::new(&text);
+    document.apply_edits(&category.additional_edits).unwrap();
+    assert!(document.text().contains("use App\\Legacy\\Category;\n"), "{}", document.text());
+
+    // An alias without a namespace, and the members behind it.
+    let found = project.complete("src/Http/show.php", &source.replace("$c = Categ/*|*/", "$v = new Legacy_Vol/*|*/"));
+    assert_eq!(item(&found, "Legacy_Volume").kind, CompletionKind::Class);
+    let members = "<?php\nfunction read(\\Legacy_Volume $volume): void\n{\n    $volume->ti/*|*/\n}\n";
+    assert!(has(&project.complete("src/read.php", members), "title"));
+
+    // `App\Legacy\Kind` is a class: it is listed once, and not as the alias of that name.
+    let found = project.complete("src/Http/show.php", &source.replace("$c = Categ/*|*/", "$k = Kin/*|*/"));
+    assert_eq!(found.items.iter().filter(|item| item.label == "Kind").count(), 1, "{:?}", labels(&found));
+}

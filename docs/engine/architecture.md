@@ -217,6 +217,16 @@ only when the project and the stubs have no class of that name, and then
 answer with the class it stands for. Only names written as strings or
 `Foo::class` count.
 
+Class-name completion lists each alias as the kind of class it stands for,
+after the index, so a class declared under the name is the one listed.
+Find Usages widens a class to the class and all its aliases
+(`ClassAliases::aliases_of`), whichever of them the caret is on. Only Find
+Usages does: a rename, a move and the refactorings go on matching the exact
+name, so renaming a class leaves code written with an alias as it is. The
+class's own name in `class_alias()` is renamed with it, written as a string or
+as `Foo::class`; the alias's name is not. A rename started on an alias is
+refused, since what goto finds there is the class it stands for.
+
 ## Threads and cancellation
 
 - Indexing runs on the engine's worker thread and rayon. It can be cancelled
