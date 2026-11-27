@@ -159,3 +159,90 @@ fn the_project_s_alias_wins_over_a_library_s() {
     let aliases = ClassAliases::new([(&own, false), (&library, true)]);
     assert_eq!(aliases.resolve("Shop\\Field").as_deref(), Some("Own\\Field"));
 }
+
+/// A rename started on an alias is refused: its name is declared by a string of
+/// `class_alias()`, and renaming would reach for the class it stands for.
+#[test]
+fn an_alias_is_not_renamed() {
+    let mut project = project();
+    for (from, to) in [
+        (r"instanceof \Shop\Field", r"instanceof \Shop\Fi/*|*/eld"),
+        (r"Entity\ScalarField $typed", r"Entity\Scalar/*|*/Field $typed"),
+    ] {
+        let (text, pos) = caret(&USER.replacen(from, to, 1));
+        let doc = project.open(HERE, &text);
+        assert_eq!(project.engine.prepare_rename(doc, pos), Some(None), "{to}");
+        let renamed = project.engine.rename(doc, pos, "Renamed", &CancellationToken::new()).unwrap();
+        assert!(renamed.is_err(), "{to}: {renamed:?}");
+        project.engine.document_closed(doc);
+    }
+    // The files are as they were.
+    assert_eq!(std::fs::read_to_string(project.root.join(FIELDS)).unwrap(), REAL);
+}
+
+/// The usages of a class are also where an alias writes it, and those of an alias
+/// are the class's; a rename of the class leaves code written with an alias alone.
+#[test]
+fn usages_reach_through_aliases_and_a_rename_does_not() {
+    let mut project = project();
+    let lines = |project: &mut Project, source: &str| -> Vec<(String, u32)> {
+        let (text, pos) = caret(source);
+        let doc = project.open(HERE, &text);
+        let usages = project.engine.references(doc, pos, false, &CancellationToken::new()).unwrap().unwrap();
+        project.engine.document_closed(doc);
+        let mut out: Vec<(String, u32)> = usages
+            .iter()
+            .map(|usage| {
+                let rel = usage.path.strip_prefix(&project.root).unwrap().to_string_lossy().replace('\\', "/");
+                (rel, usage.range.start.line)
+            })
+            .collect();
+        out.sort();
+        out
+    };
+    // From the real class (its declaration): the aliases' uses in the user's file are
+    // among its usages, beside the `class_alias()` arguments naming it.
+    let from_class = {
+        let (text, pos) = caret(&REAL.replacen("class ScalarField", "class Scalar/*|*/Field", 1));
+        let doc = project.open(FIELDS, &text);
+        let found = project.engine.references(doc, pos, false, &CancellationToken::new()).unwrap().unwrap();
+        project.engine.document_closed(doc);
+        found
+            .iter()
+            .filter(|usage| usage.path.ends_with("datamanager.php"))
+            .map(|usage| usage.range.start.line)
+            .collect::<Vec<u32>>()
+    };
+    // Lines from 0: `Entity\ScalarField $typed` (7), the `instanceof Entity\ScalarField` (9),
+    // `\Shop\Field` (11) and `\Older_Field` (12), an alias of an alias.
+    for line in [7, 9, 11, 12] {
+        assert!(from_class.contains(&line), "line {line} in {from_class:?}");
+    }
+    // Not `Entity\BooleanField`: another class.
+    assert!(!from_class.contains(&10), "{from_class:?}");
+
+    // From an alias: the same places.
+    let from_alias = lines(&mut project, &USER.replacen(r"instanceof \Shop\Field", r"instanceof \Shop\Fi/*|*/eld", 1));
+    let here: Vec<u32> = from_alias.iter().filter(|(rel, _)| rel == HERE).map(|(_, line)| *line).collect();
+    for line in [7, 9, 11, 12] {
+        assert!(here.contains(&line), "line {line} in {from_alias:?}");
+    }
+
+    // A rename of the class doesn't touch what an alias writes, nor the alias's own
+    // name; the class's name in `class_alias()` follows, as a string or `Foo::class`.
+    let (text, pos) = caret(&REAL.replacen("class ScalarField", "class Scalar/*|*/Field", 1));
+    let doc = project.open(FIELDS, &text);
+    let edit = project.engine.rename(doc, pos, "PlainField", &CancellationToken::new()).unwrap().unwrap();
+    project.engine.document_closed(doc);
+    let files = project.apply(&edit);
+    assert!(!files.contains_key(HERE), "{:?}", files.get(HERE));
+    assert_eq!(
+        files["include/compatibility.php"],
+        COMPATIBILITY
+            .replace(r"class_alias('Acme\Orm\Fields\ScalarField'", r"class_alias('Acme\Orm\Fields\PlainField'")
+    );
+    let autoload = &files["include/autoload.php"];
+    assert!(autoload.contains(r"use Acme\Orm\Fields\PlainField;"), "{autoload}");
+    assert!(autoload.contains(r"class_alias('\Acme\Orm\Fields\PlainField', '\Shop\Field');"), "{autoload}");
+    assert!(autoload.contains("class_alias(PlainField::class, 'Legacy_Field');"), "{autoload}");
+}

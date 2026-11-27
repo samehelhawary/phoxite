@@ -102,23 +102,25 @@ impl NamesProject {
 /// alias, in lower case without the leading `\`, to the class it stands for.
 #[derive(Clone, Debug, Default)]
 pub struct ClassAliases {
-    /// The class, and whether a library declares the alias.
-    aliases: HashMap<String, (String, bool)>,
+    /// The alias as it is written, the class, and whether a library declares
+    /// the alias.
+    aliases: HashMap<String, (String, String, bool)>,
 }
 
 impl ClassAliases {
     /// The project's own alias wins over a library's; between two of the
     /// same kind, the first in path order.
     pub fn new<'a>(facts: impl IntoIterator<Item = (&'a NameFacts, bool)>) -> Self {
-        let mut aliases: HashMap<String, (String, bool)> = HashMap::new();
+        let mut aliases: HashMap<String, (String, String, bool)> = HashMap::new();
         for (facts, library) in facts {
             for alias in facts.declared.iter().filter(|name| name.kind == DeclaredKind::ClassAlias) {
                 let Some(class) = alias.classes.first() else { continue };
                 let key = alias_key(&alias.name);
                 match aliases.get(&key) {
-                    Some((_, known_library)) if !*known_library || library => {}
+                    Some((_, _, known_library)) if !*known_library || library => {}
                     _ => {
-                        aliases.insert(key, (class.clone(), library));
+                        let written = alias.name.trim_start_matches('\\').to_owned();
+                        aliases.insert(key, (written, class.clone(), library));
                     }
                 }
             }
@@ -129,14 +131,34 @@ impl ClassAliases {
     /// The class `name` is an alias of, following an alias of an alias to
     /// the end; `None` when `name` is no alias or the aliases make a loop.
     pub fn resolve(&self, name: &str) -> Option<String> {
-        let mut class = &self.aliases.get(&alias_key(name))?.0;
+        let mut class = &self.aliases.get(&alias_key(name))?.1;
         for _ in 0..ALIAS_HOPS {
             match self.aliases.get(&alias_key(class)) {
-                Some((next, _)) => class = next,
+                Some((_, next, _)) => class = next,
                 None => return Some(class.clone()),
             }
         }
         None
+    }
+
+    /// Every alias that stands for a class: its name as written, the class at
+    /// the end of its aliases, and whether a library declares it. Sorted by
+    /// name.
+    pub fn all(&self) -> Vec<(&str, String, bool)> {
+        let mut all: Vec<(&str, String, bool)> = self
+            .aliases
+            .values()
+            .filter_map(|(alias, _, library)| Some((alias.as_str(), self.resolve(alias)?, *library)))
+            .collect();
+        all.sort();
+        all
+    }
+
+    /// The aliases that stand for `class`, through other aliases too, as
+    /// they are written. Sorted.
+    pub fn aliases_of(&self, class: &str) -> Vec<&str> {
+        let class = alias_key(class);
+        self.all().into_iter().filter(|(_, end, _)| alias_key(end) == class).map(|(alias, ..)| alias).collect()
     }
 }
 
