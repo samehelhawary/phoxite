@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.0 — 2026-11-27
 
 - **Class aliases.** A class `class_alias('Real\Name', 'Alias\Name')` makes (its names
   written as strings or as `Foo::class`) is that class: Go to Definition goes to the
@@ -10,6 +10,30 @@
   started on an alias is refused, and renaming the class leaves code written with an alias
   as it is. An alias of an alias is followed; a name put together at run time is not.
   Thanks to @shoman4eg (#14).
+- **Faster typing in templates.** A Blade, Twig or Magento XML file's own problems are
+  looked for 120 ms after the last change, off the thread that answers the editor,
+  instead of on every keystroke; completion and cancellations no longer wait behind them.
+- **Framework models read again only when needed.** The configuration of a Yii, CakePHP,
+  Laminas or CodeIgniter project is read again when a file it was read from changes, not
+  after every edit anywhere. An editor that doesn't report file changes to the server
+  sees a configuration file changed outside it once the project is indexed again.
+- **An index kept in memory is reported.** When a folder's index file is in use (another
+  window has the folder open) or can't be written, the server says so once; the folder
+  is then indexed again at each start.
+- **Old caches are removed.** The index of a project not opened for 90 days is deleted
+  from the cache folder at start-up.
+- **Fixed:** in a project where Yii is detected too, a CodeIgniter view's variables had
+  no types.
+- **Fixed:** a request the system can't start a thread for fails on its own instead of
+  stopping the server.
+- **Reference pages:** `docs/inspections.md` (every inspection's id, severity and
+  defaults), `docs/settings.md` (every setting of `phoxite.json`) and
+  `docs/frameworks.md` (what each framework's support knows), written from the code;
+  and a design note for Symfony. The README's inspection example named an inspection
+  that doesn't exist (`PhpTypeMismatch`); it is `PhpParams`.
+- **Building from source needs Rust 1.99** (it said 1.96, which no longer built Mago).
+- **Security:** `url` 2.5.9, for RUSTSEC-2026-0592 (a stack overflow in
+  `Url::origin()` on nested `blob:` URLs).
 
 ## 0.12.0 — 2026-11-23
 
